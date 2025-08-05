@@ -1,0 +1,83 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build
+
+      - name: Package application
+        run: npm run package:all
+
+      - name: Create versions.json
+        run: |
+          cat << EOF > website/versions.json
+          {
+            "version": "${{ github.event.release.tag_name }}",
+            "releaseDate": "${{ github.event.release.published_at }}",
+            "changelog": [
+              $(
+                IFS=$'\n'
+                changelog_entries=""
+                for entry in $(echo "${{ github.event.release.body }}" | sed -n 's/^- //p'); do
+                  if [ -n "$changelog_entries" ]; then
+                    changelog_entries="$changelog_entries,"
+                  fi
+                  changelog_entries="$changelog_entries\"$entry\""
+                done
+                echo "$changelog_entries"
+              )
+            ],
+            "downloads": {
+              "macos": {
+                "url": "/downloads/cindy-macos-${{ github.event.release.tag_name }}.dmg",
+                "fileName": "cindy-macos-${{ github.event.release.tag_name }}.dmg",
+                "fileSize": "Unknown",
+                "checksum": "Unknown"
+              },
+              "windows": {
+                "url": "/downloads/cindy-windows-${{ github.event.release.tag_name }}.exe",
+                "fileName": "cindy-windows-${{ github.event.release.tag_name }}.exe",
+                "fileSize": "Unknown",
+                "checksum": "Unknown"
+              },
+              "linux": {
+                "url": "/downloads/cindy-linux-${{ github.event.release.tag_name }}.AppImage",
+                "fileName": "cindy-linux-${{ github.event.release.tag_name }}.AppImage",
+                "fileSize": "Unknown",
+                "checksum": "Unknown"
+              }
+            }
+          }
+          EOF
+
+      - name: Upload release assets
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: release/*
+          asset_name: ${{ github.event.release.tag_name }}-${{ matrix.os }}-${{ matrix.arch }}
+          overwrite: true
+
+      - name: Deploy website
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./website

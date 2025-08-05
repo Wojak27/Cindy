@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://cindy-ai.com/sitemap.txt
+
+# Disallow crawling of admin pages
+Disallow: /admin/
+Disallow: /cgi-bin/

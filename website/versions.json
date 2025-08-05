@@ -1,0 +1,30 @@
+{
+    "version": "1.2.0",
+    "releaseDate": "2025-08-05",
+    "changelog": [
+        "Improved speech recognition accuracy",
+        "Enhanced memory management",
+        "Fixed wake word detection issues",
+        "Updated security protocols"
+    ],
+    "downloads": {
+        "macos": {
+            "url": "/downloads/cindy-macos-1.2.0.dmg",
+            "fileName": "cindy-macos-1.2.0.dmg",
+            "fileSize": "85.4 MB",
+            "checksum": "sha256:1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p7q8r9s0t1u2v3w4x5y6z7a8b9c0d1e2f3"
+        },
+        "windows": {
+            "url": "/downloads/cindy-windows-1.2.0.exe",
+            "fileName": "cindy-windows-1.2.0.exe",
+            "fileSize": "78.2 MB",
+            "checksum": "sha256:2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p7q8r9s0t1u2v3w4x5y6z7a8b9c0d1e2f3a4b5"
+        },
+        "linux": {
+            "url": "/downloads/cindy-linux-1.2.0.AppImage",
+            "fileName": "cindy-linux-1.2.0.AppImage",
+            "fileSize": "82.7 MB",
+            "checksum": "sha256:3c4d5e6f7g8h9i0j1k2l3m4n5o6p7q8r9s0t1u2v3w4x5y6z7a8b9c0d1e2f3a4b5c6d7"
+        }
+    }
+}

@@ -6,6 +6,7 @@
     "main": "./src/main/index.ts",
     "scripts": {
         "build": "concurrently \"npm run build:main\" \"npm run build:renderer\"",
+        "update-versions": "node scripts/update-versions.js",
         "build:main": "cross-env NODE_ENV=production webpack --config ./.webpack/main.js",
         "build:renderer": "cross-env NODE_ENV=production webpack --config ./.webpack/renderer.js",
         "dev": "concurrently \"npm run dev:main\" \"npm run dev:renderer\"",

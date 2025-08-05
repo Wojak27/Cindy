@@ -1,10 +1,14 @@
-import { app, BrowserWindow, Menu, nativeImage, NativeImage } from 'electron';
+import { app, BrowserWindow, Menu, nativeImage, NativeImage, ipcMain } from 'electron';
 import * as path from 'path';
 import { CindyMenu } from './menu';
 import { SettingsService } from './services/SettingsService';
 import { TrayService } from './services/TrayService';
 import OllamaProvider from './services/OllamaProvider';
 import axios from 'axios';
+import { LLMRouterService } from './services/LLMRouterService';
+import { AudioCaptureService } from './services/AudioCaptureService';
+import { SpeechToTextService } from './services/SpeechToTextService';
+import { AgentService } from './services/AgentService';
 
 async function waitForDevServer(maxRetries = 10, delay = 1000): Promise<boolean> {
     for (let i = 0; i < maxRetries; i++) {
@@ -29,6 +33,10 @@ if (process.platform === 'win32') {
 let mainWindow: BrowserWindow | null = null;
 let trayService: TrayService | null = null;
 let settingsService: SettingsService | null = null;
+let llmRouterService: LLMRouterService | null = null;
+let audioCaptureService: AudioCaptureService | null = null;
+let speechToTextService: SpeechToTextService | null = null;
+let agentService: AgentService | null = null;
 
 const createWindow = async (): Promise<void> => {
     // Initialize settings service
@@ -185,6 +193,152 @@ app.on('ready', async () => {
         }, 30000);
     };
     startConnectionMonitor();
+
+    // Initialize LLMRouterService
+    const llmConfig = await settingsService?.get('llm');
+    if (llmConfig) {
+        // Add default values for required LLMConfig properties
+        const completeLlmConfig = {
+            ...llmConfig,
+            streaming: true,
+            timeout: 30000,
+            // Ensure openai.apiKey is always present (empty string if not set)
+            openai: {
+                ...llmConfig.openai,
+                apiKey: llmConfig.openai.apiKey || ''
+            }
+        };
+
+        llmRouterService = new LLMRouterService(completeLlmConfig);
+        await llmRouterService.initialize();
+
+        // Initialize AgentService
+        agentService = new AgentService(
+            {
+                maxIterations: 10,
+                timeout: 30000,
+                memorySize: 100,
+                enableStreaming: true
+            },
+            llmRouterService
+        );
+    }
+
+    // Initialize audio services
+    // Get STT settings from voice section
+    const voiceSettings = await settingsService?.get('voice');
+    if (voiceSettings) {
+        // Create default STT config based on voice settings
+        const sttConfig = {
+            provider: voiceSettings.sttProvider,
+            language: 'en-US',
+            autoPunctuation: true,
+            profanityFilter: false,
+            offlineModel: 'base' as const,
+            whisperBaseUrl: 'http://localhost:5000'
+        };
+
+        audioCaptureService = new AudioCaptureService();
+        speechToTextService = new SpeechToTextService(sttConfig, audioCaptureService);
+    }
+
+    // Set up IPC handlers for audio recording
+    ipcMain.handle('start-recording', async () => {
+        if (!speechToTextService) {
+            throw new Error('SpeechToTextService not initialized');
+        }
+        return await speechToTextService.startRecording();
+    });
+
+    ipcMain.handle('stop-recording', async () => {
+        if (!speechToTextService) {
+            throw new Error('SpeechToTextService not initialized');
+        }
+        // Get the audio data from the capture service
+        const audioData = audioCaptureService?.getAudioData();
+        // Stop the recording
+        await speechToTextService.stopRecording();
+        return audioData;
+    });
+
+    ipcMain.handle('transcribe-audio', async (event, audioData: ArrayBuffer) => {
+        if (!speechToTextService) {
+            throw new Error('SpeechToTextService not initialized');
+        }
+        return await speechToTextService.transcribe(audioData);
+    });
+
+    // Set up IPC handlers for LLM service
+    ipcMain.handle('llm:get-available-models', async () => {
+        if (!llmRouterService) {
+            return {
+                openai: ['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo'],
+                ollama: ['llama2', 'mistral', 'codellama']
+            };
+        }
+
+        try {
+            return await llmRouterService.getAvailableModels();
+        } catch (error) {
+            console.error('Failed to get available models:', error);
+            return {
+                openai: ['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo'],
+                ollama: ['llama2', 'mistral', 'codellama']
+            };
+        }
+    });
+
+    // Set up IPC handler for message processing
+    ipcMain.handle('process-message', async (event, message: string) => {
+        if (!agentService) {
+            throw new Error('AgentService not initialized');
+        }
+
+        try {
+            const response = await agentService.execute(message);
+            return response;
+        } catch (error) {
+            console.error('Error processing message:', error);
+            throw error;
+        }
+    });
+
+    // Set up IPC handler for testing LLM connections
+    ipcMain.handle('llm:test-connection', async (event, provider: string) => {
+        if (!llmRouterService) {
+            return false;
+        }
+
+        try {
+            if (provider === 'openai') {
+                // Use the getConfig method to access provider config
+                const config = llmRouterService.getConfig();
+                if (!config.openai.apiKey) {
+                    return false;
+                }
+                // Test connection through the router service
+                return await llmRouterService.chat(
+                    [{ role: 'user', content: 'test' }],
+                    { streaming: false }
+                ).then(() => true).catch(() => false);
+            } else if (provider === 'ollama') {
+                // Use the getConfig method to access provider config
+                const config = llmRouterService.getConfig();
+                if (!config.ollama.baseUrl) {
+                    return false;
+                }
+                // Test connection through the router service
+                return await llmRouterService.chat(
+                    [{ role: 'user', content: 'test' }],
+                    { streaming: false }
+                ).then(() => true).catch(() => false);
+            }
+            return false;
+        } catch (error) {
+            console.error(`Connection test failed for ${provider}:`, error);
+            return false;
+        }
+    });
 
     // Set application menu
     const menu = CindyMenu.createMenu({

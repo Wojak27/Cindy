@@ -12,6 +12,11 @@ export const addMessage = (message: any) => ({
     payload: message
 });
 
+export const sendMessage = (text: string) => ({
+    type: 'SEND_MESSAGE',
+    payload: text
+});
+
 export const toggleSettings = () => ({
     type: 'TOGGLE_SETTINGS'
 });

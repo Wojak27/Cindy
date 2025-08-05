@@ -75,7 +75,19 @@ class TrayService {
         const iconPath = connected
             ? path.join(__dirname, '../../assets/icons/tray-icon-connected.png')
             : path.join(__dirname, '../../assets/icons/tray-icon-disconnected.png');
-        this.tray?.setImage(nativeImage.createFromPath(iconPath));
+
+        // Create image with proper template settings for macOS
+        const image = nativeImage.createFromPath(iconPath);
+
+        // Set template image for macOS to ensure proper appearance in menu bar
+        if (process.platform === 'darwin') {
+            image.setTemplateImage(true);
+            // Resize to 16x16 for proper macOS menu bar display
+            const resizedImage = image.resize({ width: 16, height: 16 });
+            this.tray?.setImage(resizedImage);
+        } else {
+            this.tray?.setImage(image);
+        }
     }
 
     async close(): Promise<void> {
