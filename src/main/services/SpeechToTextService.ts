@@ -3,16 +3,18 @@ import { SpeechConfig, AudioConfig, SpeechRecognizer, ResultReason } from 'micro
 import { AudioCaptureService } from './AudioCaptureService';
 
 interface STTConfig {
-    provider: 'online' | 'offline' | 'auto';
+    provider: 'online' | 'offline' | 'auto' | 'whisper';
     language: string;
     autoPunctuation: boolean;
     profanityFilter: boolean;
     offlineModel: 'tiny' | 'base' | 'small' | 'medium';
+    whisperBaseUrl?: string;
 }
 
 class SpeechToTextService extends EventEmitter {
     private onlineEngine: OnlineSTTEngine;
     private offlineEngine: OfflineSTTEngine;
+    private whisperEngine: WhisperSTTEngine;
     private audioCaptureService: AudioCaptureService;
     private config: STTConfig;
     private isRecording: boolean = false;
@@ -23,6 +25,7 @@ class SpeechToTextService extends EventEmitter {
         this.audioCaptureService = audioCaptureService;
         this.onlineEngine = new OnlineSTTEngine(config);
         this.offlineEngine = new OfflineSTTEngine(config);
+        this.whisperEngine = new WhisperSTTEngine(config);
     }
 
     async startRecording(): Promise<void> {
@@ -53,8 +56,11 @@ class SpeechToTextService extends EventEmitter {
 
     async transcribe(audioData: ArrayBuffer): Promise<string> {
         try {
-            // Try online engine first if configured
-            if (this.config.provider === 'online' || this.config.provider === 'auto') {
+            if (this.config.provider === 'whisper') {
+                const result = await this.whisperEngine.transcribe(audioData);
+                this.emit('transcriptionSuccess', { source: 'whisper', text: result });
+                return result;
+            } else if (this.config.provider === 'online' || this.config.provider === 'auto') {
                 try {
                     const result = await this.onlineEngine.transcribe(audioData);
                     this.emit('transcriptionSuccess', { source: 'online', text: result });
@@ -222,6 +228,36 @@ class OfflineSTTEngine {
             this.isInitialized = false;
             await this.initialize();
         }
+    }
+}
+
+class WhisperSTTEngine {
+    private baseUrl: string;
+
+    constructor(config: STTConfig) {
+        this.baseUrl = config.whisperBaseUrl || 'http://localhost:5000';
+    }
+
+    async transcribe(audioData: ArrayBuffer): Promise<string> {
+        const formData = new FormData();
+        const buffer = Buffer.from(audioData);
+        formData.append('file', buffer as any, {
+            filename: 'audio.wav',
+            contentType: 'audio/wav'
+        } as any);
+
+        const response = await fetch(`${this.baseUrl}/transcribe`, {
+            method: 'POST',
+            body: formData,
+            headers: (formData as any).getHeaders()
+        });
+
+        if (!response.ok) {
+            throw new Error(`Whisper API error: ${response.status}`);
+        }
+
+        const result = await response.json();
+        return result.text;
     }
 }
 

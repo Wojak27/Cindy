@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import { ChatStorageService } from './ChatStorageService';
 
 interface MemoryEntry {
     id: string;
@@ -12,10 +13,13 @@ interface MemoryEntry {
 class MemoryService extends EventEmitter {
     private store: any;
     private memoryCache: Map<string, MemoryEntry> = new Map();
+    private chatStorage: ChatStorageService;
 
     constructor(store: any) {
         super();
         this.store = store;
+        this.chatStorage = new ChatStorageService();
+        this.chatStorage.initialize().catch(console.error);
     }
 
     async addMessage(message: {
@@ -31,15 +35,40 @@ class MemoryService extends EventEmitter {
             payload: message
         });
 
-        // Also store in persistent memory
+        // Store in memory cache
         await this.set(`conversation:${message.conversationId}:messages`, [
             ...(await this.get(`conversation:${message.conversationId}:messages`, [])),
             message
         ]);
+
+        // Save to SQLite database
+        try {
+            await this.chatStorage.saveMessage({
+                conversationId: message.conversationId,
+                role: message.role as 'user' | 'assistant' | 'system',
+                content: message.content,
+                timestamp: message.timestamp.getTime()
+            });
+        } catch (error) {
+            console.error('Failed to save message to chat storage:', error);
+        }
     }
 
     async getConversationHistory(conversationId: string, limit?: number): Promise<any[]> {
-        const messages = await this.get(`conversation:${conversationId}:messages`, []);
+        let messages = await this.get(`conversation:${conversationId}:messages`, []);
+
+        // Load from database if cache is empty
+        if (messages.length === 0) {
+            const chatMessages = await this.chatStorage.getConversationHistory(conversationId);
+            messages = chatMessages.map(m => ({
+                conversationId: m.conversationId,
+                role: m.role,
+                content: m.content,
+                timestamp: new Date(m.timestamp)
+            }));
+            // Store in memory cache
+            await this.set(`conversation:${conversationId}:messages`, messages);
+        }
 
         if (limit) {
             return messages.slice(-limit);

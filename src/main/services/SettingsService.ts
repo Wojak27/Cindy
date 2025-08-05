@@ -195,7 +195,7 @@ class SettingsService extends EventEmitter {
             },
 
             voice: {
-                activationPhrase: 'Hey Cindy',
+                activationPhrase: 'Hi Cindy!',
                 wakeWordSensitivity: 0.5,
                 voiceSpeed: 1.0,
                 voicePitch: 1.0,

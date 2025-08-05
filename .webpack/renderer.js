@@ -33,9 +33,19 @@ module.exports = {
         static: {
             directory: path.join(__dirname, '../dist/renderer'),
         },
+        host: 'localhost',
         compress: true,
         port: 3004,
+        allowedHosts: 'all',
+        client: {
+            webSocketURL: 'ws://localhost:3004/ws'
+        },
         historyApiFallback: true,
+        headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
+            "Access-Control-Allow-Headers": "X-Requested-With, content-type, Authorization"
+        },
     },
     plugins: [
         new HtmlWebpackPlugin({

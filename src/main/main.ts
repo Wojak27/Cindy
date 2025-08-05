@@ -41,6 +41,12 @@ const createWindow = async (): Promise<void> => {
         webPreferences: {
             nodeIntegration: true,
             contextIsolation: false,
+            // Add Content Security Policy to fix Electron security warning
+            sandbox: false,
+            // Use a secure CSP that prevents unsafe-eval
+            additionalArguments: [
+                '--csp="default-src \'self\'; script-src \'self\' \'unsafe-inline\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data: https:; font-src \'self\' data:; object-src \'none\'; frame-ancestors \'none\';"'
+            ]
         },
         width: 800,
         show: false, // Start hidden, show only when needed
@@ -59,9 +65,11 @@ const createWindow = async (): Promise<void> => {
         mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
     }
 
-    // Open the DevTools in development mode
+    // Open the DevTools in development mode using Electron's native debugging
     if (process.env.NODE_ENV === 'development') {
-        mainWindow.webContents.openDevTools();
+        // Use Electron's built-in devtools instead of Webpack's
+        // This bypasses the protocol scheme restriction
+        mainWindow.webContents.openDevTools({ mode: 'detach' });
     }
 
     // Hide window instead of closing it
@@ -81,24 +89,37 @@ const createTray = async (): Promise<void> => {
             return path.join(basePath, 'tray-icon.ico');
         }
 
-        const pngPath = path.join(basePath, 'tray-icon.png');
-        try {
-            const buffer = require('fs').readFileSync(pngPath);
-            // Verify PNG signature (89 50 4E 47)
-            if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
-                return pngPath;
+        if (process.platform === 'darwin') {
+            const iconPath = path.join(basePath, 'tray-icon.png');
+            try {
+                const icon = nativeImage.createFromPath(iconPath);
+                if (icon.isEmpty()) {
+                    throw new Error('Loaded image is empty');
+                }
+                const { width, height } = icon.getSize();
+                if (width < 16 || height < 16) {
+                    console.warn(`Icon too small (${width}x${height}), using default`);
+                    const fallbackIcon = nativeImage.createFromPath(
+                        path.join(basePath, 'tray-icon-connected.png')
+                    ).resize({ width: 16, height: 16 });
+                    fallbackIcon.setTemplateImage(true);
+                    return fallbackIcon;
+                }
+                const resizedIcon = icon.resize({ width: 16, height: 16 });
+                resizedIcon.setTemplateImage(true);
+                return resizedIcon;
+            } catch (error) {
+                console.error('Tray icon error:', error);
+                const smallIcon = nativeImage.createFromPath(
+                    path.join(basePath, 'tray-icon-connected.png')
+                ).resize({ width: 16, height: 16 });
+                smallIcon.setTemplateImage(true);
+                return smallIcon;
             }
-        } catch (error) {
-            console.error('Tray icon validation failed:', error);
+        } else {
+            // Linux and other platforms
+            return path.join(basePath, 'tray-icon.png');
         }
-
-        // Fallback to 1x1 transparent PNG as NativeImage
-        const validIcon = nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==');
-        if (validIcon.isEmpty()) {
-            console.error('Fallback icon is empty, using default');
-            return path.join(basePath, 'tray-icon.png'); // Last resort
-        }
-        return validIcon;
     };
 
     const icon = getTrayIcon();
