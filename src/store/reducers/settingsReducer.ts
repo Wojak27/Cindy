@@ -1,0 +1,37 @@
+// src/store/reducers/settingsReducer.ts
+// Removed unused import
+
+const initialState = {
+    theme: 'light',
+    voice: 'female',
+    wakeWord: 'cindy',
+    autoStart: false,
+    notifications: true,
+    llm: {
+        provider: 'ollama',
+        ollama: {
+            model: 'llama2',
+            baseUrl: 'http://127.0.0.1:11434',
+            temperature: 0.7
+        },
+        openai: {
+            model: 'gpt-3.5-turbo',
+            apiKey: '',
+            temperature: 0.7
+        }
+    }
+};
+
+const settingsReducer = (state = initialState, action: any) => {
+    switch (action.type) {
+        case 'UPDATE_SETTINGS':
+            return {
+                ...state,
+                ...action.payload
+            };
+        default:
+            return state;
+    }
+};
+
+export { settingsReducer };
