@@ -34,6 +34,8 @@
     <link rel="icon" href="assets/favicon.ico" type="image/x-icon">
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="node_modules/cookieconsent/build/cookieconsent.min.css" />
+    <script src="node_modules/cookieconsent/build/cookieconsent.min.js"></script>
     <script src="js/main.js" defer></script>
 </head>
 
@@ -219,79 +221,7 @@
                 <p>&copy; 2025 Cindy Voice Assistant. All rights reserved.</p>
             </div>
         </div>
-        <!-- Cookie Consent Banner -->
-        <div id="cookie-consent" class="cookie-consent hidden">
-            <div class="cookie-consent-content">
-                <div class="cookie-consent-text">
-                    <h3>We value your privacy</h3>
-                    <p>We use cookies to enhance your experience, analyze site usage, and integrate with social media.
-                        By clicking "Accept All", you consent to our use of cookies as described in our <a
-                            href="privacy.html" target="_blank">Privacy Policy</a>.</p>
-                </div>
-                <div class="cookie-consent-buttons">
-                    <button id="cookie-settings" class="btn btn-outline">Cookie Settings</button>
-                    <button id="cookie-accept" class="btn btn-primary">Accept All</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Cookie Settings Modal -->
-        <div id="cookie-modal" class="cookie-modal hidden">
-            <div class="cookie-modal-content">
-                <div class="cookie-modal-header">
-                    <h2>Cookie Settings</h2>
-                    <button id="close-modal" class="close-button">&times;</button>
-                </div>
-                <div class="cookie-modal-body">
-                    <p>We use cookies to make your experience better. You can manage your cookie preferences here.</p>
-
-                    <div class="cookie-category">
-                        <div class="cookie-toggle">
-                            <label class="switch">
-                                <input type="checkbox" id="necessary-cookies" checked disabled>
-                                <span class="slider round"></span>
-                            </label>
-                            <div class="cookie-info">
-                                <h3>Essential Cookies</h3>
-                                <p>These cookies are necessary for the website to function and cannot be switched off.
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="cookie-category">
-                        <div class="cookie-toggle">
-                            <label class="switch">
-                                <input type="checkbox" id="analytics-cookies">
-                                <span class="slider round"></span>
-                            </label>
-                            <div class="cookie-info">
-                                <h3>Analytics Cookies</h3>
-                                <p>These cookies help us understand how visitors interact with our website by collecting
-                                    and reporting information anonymously.</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="cookie-category">
-                        <div class="cookie-toggle">
-                            <label class="switch">
-                                <input type="checkbox" id="marketing-cookies">
-                                <span class="slider round"></span>
-                            </label>
-                            <div class="cookie-info">
-                                <h3>Marketing Cookies</h3>
-                                <p>These cookies are used to deliver advertisements that are relevant to you and your
-                                    interests.</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="cookie-modal-footer">
-                    <button id="save-preferences" class="btn btn-primary">Save Preferences</button>
-                </div>
-            </div>
-        </div>
+        <!-- Cookie Consent Banner will be handled by cookieconsent library -->
     </footer>
 </body>
 

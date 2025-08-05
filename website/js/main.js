@@ -122,6 +122,31 @@ document.addEventListener('DOMContentLoaded', function () {
     setupReadMore();
 });
 
+// Function to highlight the current page in navigation
+function highlightCurrentPage() {
+    const currentPage = window.location.pathname.split('/').pop();
+    const navLinks = document.querySelectorAll('.main-nav .nav-links a');
+
+    navLinks.forEach(link => {
+        const href = link.getAttribute('href');
+        // Handle index.html as the default page
+        const page = href === '' || href === 'index.html' ? 'index.html' : href;
+
+        if (currentPage === page) {
+            link.classList.add('active');
+            link.setAttribute('aria-current', 'page');
+        } else {
+            link.classList.remove('active');
+            link.removeAttribute('aria-current');
+        }
+    });
+}
+
+// Initialize navigation highlighting
+if (document.querySelector('.main-nav')) {
+    highlightCurrentPage();
+}
+
 // Export functions for testing
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
@@ -129,181 +154,7 @@ if (typeof module !== 'undefined' && module.exports) {
         setupDownloadAnalytics
     };
 }
-// Cookie Consent Functionality
-class CookieConsent {
-    constructor() {
-        this.cookieBanner = document.getElementById('cookie-consent');
-        this.cookieModal = document.getElementById('cookie-modal');
-        this.acceptButton = document.getElementById('cookie-accept');
-        this.settingsButton = document.getElementById('cookie-settings');
-        this.closeModalButton = document.getElementById('close-modal');
-        this.savePreferencesButton = document.getElementById('save-preferences');
-        this.analyticsCheckbox = document.getElementById('analytics-cookies');
-        this.marketingCheckbox = document.getElementById('marketing-cookies');
-
-        this.init();
-    }
-
-    init() {
-        // Check if user has already made a choice
-        if (this.hasConsent()) {
-            this.hideBanner();
-            this.loadPreferences();
-        } else {
-            this.showBanner();
-        }
-
-        // Set up event listeners
-        this.acceptButton.addEventListener('click', () => this.acceptAll());
-        this.settingsButton.addEventListener('click', () => this.openModal());
-        this.closeModalButton.addEventListener('click', () => this.closeModal());
-        this.savePreferencesButton.addEventListener('click', () => this.savePreferences());
-
-        // Close modal when clicking outside
-        this.cookieModal.addEventListener('click', (e) => {
-            if (e.target === this.cookieModal) {
-                this.closeModal();
-            }
-        });
-    }
-
-    hasConsent() {
-        return localStorage.getItem('cookie-consent') !== null;
-    }
-
-    showBanner() {
-        if (this.cookieBanner) {
-            this.cookieBanner.classList.remove('hidden');
-        }
-    }
-
-    hideBanner() {
-        if (this.cookieBanner) {
-            this.cookieBanner.classList.add('hidden');
-        }
-    }
-
-    openModal() {
-        if (this.cookieModal) {
-            this.cookieModal.classList.add('active');
-            // Prevent body scrolling when modal is open
-            document.body.style.overflow = 'hidden';
-        }
-    }
-
-    closeModal() {
-        if (this.cookieModal) {
-            this.cookieModal.classList.remove('active');
-            // Restore body scrolling
-            document.body.style.overflow = '';
-        }
-    }
-
-    acceptAll() {
-        // Set all preferences to true
-        const preferences = {
-            necessary: true,
-            analytics: true,
-            marketing: true,
-            timestamp: new Date().toISOString()
-        };
-
-        // Save to localStorage
-        localStorage.setItem('cookie-consent', JSON.stringify(preferences));
-
-        // Hide banner
-        this.hideBanner();
-
-        // Load tracking scripts if accepted
-        this.loadTrackingScripts(preferences);
-
-        // Dispatch event for other scripts to listen to
-        document.dispatchEvent(new CustomEvent('cookie-consent-changed', { detail: preferences }));
-    }
-
-    savePreferences() {
-        const preferences = {
-            necessary: true,
-            analytics: this.analyticsCheckbox.checked,
-            marketing: this.marketingCheckbox.checked,
-            timestamp: new Date().toISOString()
-        };
-
-        // Save to localStorage
-        localStorage.setItem('cookie-consent', JSON.stringify(preferences));
-
-        // Hide banner and modal
-        this.hideBanner();
-        this.closeModal();
-
-        // Load tracking scripts based on preferences
-        this.loadTrackingScripts(preferences);
-
-        // Dispatch event for other scripts to listen to
-        document.dispatchEvent(new CustomEvent('cookie-consent-changed', { detail: preferences }));
-    }
-
-    loadPreferences() {
-        try {
-            const saved = localStorage.getItem('cookie-consent');
-            if (saved) {
-                const preferences = JSON.parse(saved);
-
-                // Set checkbox states
-                if (this.analyticsCheckbox) {
-                    this.analyticsCheckbox.checked = preferences.analytics;
-                }
-                if (this.marketingCheckbox) {
-                    this.marketingCheckbox.checked = preferences.marketing;
-                }
-
-                // Load tracking scripts based on saved preferences
-                this.loadTrackingScripts(preferences);
-            }
-        } catch (e) {
-            console.error('Error loading cookie preferences:', e);
-        }
-    }
-
-    loadTrackingScripts(preferences) {
-        // This is where you would load your tracking scripts based on user preferences
-        // For example:
-
-        if (preferences.analytics) {
-            // Load Google Analytics or other analytics tools
-            this.loadGoogleAnalytics();
-        }
-
-        if (preferences.marketing) {
-            // Load Facebook Pixel, Google Ads, etc.
-            this.loadMarketingScripts();
-        }
-    }
-
-    loadGoogleAnalytics() {
-        // Example of loading Google Analytics only when user consents
-        if (!window.gtag) {
-            // Create script element for Google Analytics
-            const script = document.createElement('script');
-            script.async = true;
-            script.src = 'https://www.googletagmanager.com/gtag/js?id=GA_MEASUREMENT_ID';
-            document.head.appendChild(script);
-
-            // Initialize gtag
-            window.dataLayer = window.dataLayer || [];
-            function gtag() { dataLayer.push(arguments); }
-            window.gtag = gtag;
-            gtag('js', new Date());
-            gtag('config', 'GA_MEASUREMENT_ID');
-        }
-    }
-
-    loadMarketingScripts() {
-        // Placeholder for marketing scripts
-        // This would include Facebook Pixel, LinkedIn Insight, etc.
-        console.log('Loading marketing scripts based on user consent');
-    }
-}
+// Cookie Consent Functionality has been replaced with cookieconsent library
 
 // Initialize cookie consent when DOM is loaded
 document.addEventListener('DOMContentLoaded', function () {
@@ -320,3 +171,112 @@ document.addEventListener('DOMContentLoaded', function () {
         window.cookieConsent = new CookieConsent();
     }
 });
+// Initialize cookie consent with Osano's cookieconsent library
+if (typeof cookieconsent !== 'undefined') {
+    cookieconsent.initialise({
+        palette: {
+            popup: {
+                background: '#1a1a1a',
+                text: '#ffffff'
+            },
+            button: {
+                background: '#7c3aed',
+                text: '#ffffff'
+            },
+            highlight: {
+                background: '#0066cc',
+                text: '#ffffff'
+            }
+        },
+        theme: 'classic',
+        theme: 'classic',
+        type: 'opt-in',
+        content: {
+            header: 'Cookies used on the website!',
+            message: 'We use cookies to enhance your experience, analyze site usage, and integrate with social media. By clicking "Allow", you consent to our use of cookies as described in our <a href="privacy.html" target="_blank">Privacy Policy</a>.',
+            allow: 'Allow',
+            deny: 'Decline',
+            link: 'Learn more',
+            href: 'privacy.html'
+        },
+        position: 'bottom',
+        static: false,
+        dismissOnScroll: false,
+        dismissOnTimeout: false,
+        dismissOnWindowClick: false,
+        content: {
+            header: 'Cookies used on the website!',
+            message: 'We use cookies to enhance your experience, analyze site usage, and integrate with social media. By clicking "Allow", you consent to our use of cookies as described in our <a href="privacy.html" target="_blank">Privacy Policy</a>.',
+            allow: 'Allow',
+            deny: 'Decline',
+            link: 'Learn more',
+            href: 'privacy.html'
+        },
+        onInitialise: function (status) {
+            var type = this.options.type;
+            var didConsent = this.hasConsent();
+            if (type == 'opt-in' && didConsent) {
+                // Load cookies since user has consented
+                loadCookies();
+            }
+            if (type == 'opt-out' && !didConsent) {
+                // Disable cookies since user has opted out
+                disableCookies();
+            }
+        },
+        onStatusChange: function (status, chosenBefore) {
+            var type = this.options.type;
+            var didConsent = this.hasConsent();
+            if (type == 'opt-in' && didConsent) {
+                // Load cookies since user has consented
+                loadCookies();
+            }
+            if (type == 'opt-out' && !didConsent) {
+                // Disable cookies since user has opted out
+                disableCookies();
+            }
+        },
+        onRevokeChoice: function () {
+            // User has revoked their choice, disable cookies
+            disableCookies();
+        }
+    });
+}
+
+// Function to load cookies based on user consent
+function loadCookies() {
+    // Load Google Analytics
+    if (!window.gtag) {
+        var script = document.createElement('script');
+        script.async = true;
+        script.src = 'https://www.googletagmanager.com/gtag/js?id=GA_MEASUREMENT_ID';
+        document.head.appendChild(script);
+
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { dataLayer.push(arguments); }
+        window.gtag = gtag;
+        gtag('js', new Date());
+        gtag('config', 'GA_MEASUREMENT_ID');
+    }
+
+    // Load marketing scripts
+    console.log('Loading marketing scripts based on user consent');
+}
+
+// Function to disable cookies
+function disableCookies() {
+    // Remove any tracking scripts
+    var scripts = document.querySelectorAll('script[src*="googletagmanager"], script[src*="facebook"], script[src*="google-analytics"]');
+    scripts.forEach(function (script) {
+        script.remove();
+    });
+
+    // Clear any tracking cookies
+    var cookies = document.cookie.split(";");
+    for (var i = 0; i < cookies.length; i++) {
+        var cookie = cookies[i];
+        var eqPos = cookie.indexOf("=");
+        var name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
+        document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+    }
+}
