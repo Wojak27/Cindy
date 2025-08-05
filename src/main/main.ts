@@ -36,6 +36,7 @@ let settingsService: SettingsService | null = null;
 let llmRouterService: LLMRouterService | null = null;
 let speechToTextService: SpeechToTextService | null = null;
 let agentService: AgentService | null = null;
+let chatStorage: ChatStorageService | null = null;
 
 const createWindow = async (): Promise<void> => {
     // Initialize settings service
@@ -174,6 +175,8 @@ const createTray = async (): Promise<void> => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', async () => {
+    // Add 2-second timeout at startup
+    await new Promise(resolve => setTimeout(resolve, 2000));
     await createWindow();
     await createTray();
 
@@ -236,9 +239,16 @@ app.on('ready', async () => {
             },
             llmRouterService
         );
+
+        // Initialize the agent service
+        await agentService.initialize();
     } else {
         console.warn('LLM configuration not found. AgentService will be initialized on first message.');
     }
+
+    // Initialize chat storage service
+    chatStorage = new ChatStorageService();
+    await chatStorage.initialize();
 
     // Initialize audio services
     // Get STT settings from voice section
@@ -327,7 +337,7 @@ app.on('ready', async () => {
     });
 
     // Set up IPC handler for message processing
-    ipcMain.handle('process-message', async (event, message: string) => {
+    ipcMain.handle('process-message', async (event, message: string, conversationId: string) => {
         // Ensure agentService is initialized
         if (!agentService) {
             // Try to initialize agentService if not already done
@@ -364,6 +374,16 @@ app.on('ready', async () => {
         }
 
         try {
+            // Save user message to chat storage
+            if (chatStorage && conversationId) {
+                await chatStorage.saveMessage({
+                    conversationId,
+                    role: 'user',
+                    content: message,
+                    timestamp: Date.now()
+                });
+            }
+
             const response = await agentService.execute(message);
 
             // Handle both string and AsyncGenerator responses
@@ -382,7 +402,16 @@ app.on('ready', async () => {
                 responseText = String(response);
             }
 
-            // Ensure the response is serializable
+            // Save assistant response to chat storage
+            if (chatStorage && conversationId) {
+                await chatStorage.saveMessage({
+                    conversationId,
+                    role: 'assistant',
+                    content: responseText,
+                    timestamp: Date.now()
+                });
+            }
+
             return responseText;
         } catch (error) {
             console.error('Error processing message:', error);
@@ -434,8 +463,10 @@ app.on('ready', async () => {
                 throw new Error('SettingsService not initialized');
             }
 
-            const chatStorage = new ChatStorageService();
-            await chatStorage.initialize();
+            if (!chatStorage) {
+                chatStorage = new ChatStorageService();
+                await chatStorage.initialize();
+            }
 
             const conversations = await chatStorage.getConversations();
             return conversations;
@@ -445,27 +476,39 @@ app.on('ready', async () => {
         }
     });
 
+    // Set up IPC handler for creating new conversation
+    ipcMain.handle('create-conversation', async () => {
+        try {
+            if (!chatStorage) {
+                chatStorage = new ChatStorageService();
+                await chatStorage.initialize();
+            }
+
+            const conversationId = await chatStorage.createConversation();
+            return conversationId;
+        } catch (error) {
+            console.error('Failed to create conversation:', error);
+            throw error;
+        }
+    });
+
     // Set up IPC handler for loading conversation history
     ipcMain.handle('load-conversation', async (event, conversationId: string) => {
+        console.log('load-conversation IPC handler called with conversationId:', conversationId);
         try {
-            // In a real implementation, this would use the ChatStorageService
-            // For now, we'll return a mock response
-            return [
-                {
-                    id: 1,
-                    conversationId: conversationId,
-                    role: 'user',
-                    content: 'Hello, how are you?',
-                    timestamp: Date.now() - 3600000
-                },
-                {
-                    id: 2,
-                    conversationId: conversationId,
-                    role: 'assistant',
-                    content: "I'm doing well, thank you for asking!",
-                    timestamp: Date.now() - 3500000
-                }
-            ];
+            if (!settingsService) {
+                console.error('SettingsService not initialized');
+                throw new Error('SettingsService not initialized');
+            }
+
+            if (!chatStorage) {
+                chatStorage = new ChatStorageService();
+                await chatStorage.initialize();
+            }
+
+            const messages = await chatStorage.getConversationHistory(conversationId);
+            console.log('Successfully loaded messages for conversation:', conversationId, 'Count:', messages.length);
+            return messages;
         } catch (error) {
             console.error('Failed to load conversation:', error);
             return [];

@@ -19,7 +19,10 @@ class MemoryService extends EventEmitter {
         super();
         this.store = store;
         this.chatStorage = new ChatStorageService();
-        this.chatStorage.initialize().catch(console.error);
+    }
+
+    async initialize(): Promise<void> {
+        await this.chatStorage.initialize();
     }
 
     async addMessage(message: {

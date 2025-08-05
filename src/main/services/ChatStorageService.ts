@@ -12,10 +12,15 @@ export interface ChatMessage {
 
 export class ChatStorageService {
     private db: any | null = null; // eslint-disable-line @typescript-eslint/no-explicit-any
-    private readonly DB_PATH = path.join(app.getPath('userData'), 'chat-history.db');
+    private DB_PATH: string;
 
     async initialize(): Promise<void> {
         if (this.db) return;
+
+        // Initialize DB_PATH only when needed
+        if (!this.DB_PATH) {
+            this.DB_PATH = path.join(app.getPath('userData'), 'chat-history.db');
+        }
 
         this.db = await open({
             filename: this.DB_PATH,
@@ -123,5 +128,25 @@ export class ChatStorageService {
         );
 
         return row ? row.content : null;
+    }
+    /**
+     * Creates a new conversation by saving a system message
+     * This ensures the conversation appears in getConversations()
+     */
+    async createConversation(): Promise<string> {
+        if (!this.db) await this.initialize();
+        
+        // Generate a unique conversation ID
+        const conversationId = Date.now().toString();
+        
+        // Save a system message to establish the conversation
+        await this.saveMessage({
+            conversationId,
+            role: 'system',
+            content: 'New conversation created',
+            timestamp: Date.now()
+        });
+        
+        return conversationId;
     }
 }

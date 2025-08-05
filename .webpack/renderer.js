@@ -9,11 +9,20 @@ module.exports = {
         path: path.join(__dirname, '../dist/renderer'),
         filename: 'renderer.js',
     },
-    resolve: {
-        extensions: ['.ts', '.tsx', '.js', '.jsx'],
+    externals: {
+        keytar: 'commonjs keytar',
+        'keytar/build/Release/keytar.node': 'commonjs keytar/build/Release/keytar.node'
+    },
+    node: {
+        __dirname: false,
+        __filename: false
     },
     module: {
         rules: [
+            {
+                test: /\.node$/,
+                use: 'node-loader',
+            },
             {
                 test: /\.tsx?$/,
                 use: 'ts-loader',
@@ -26,8 +35,11 @@ module.exports = {
             {
                 test: /\.css$/,
                 use: ['style-loader', 'css-loader'],
-            },
+            }
         ],
+    },
+    resolve: {
+        extensions: ['.ts', '.tsx', '.js', '.jsx'],
     },
     devServer: {
         static: {

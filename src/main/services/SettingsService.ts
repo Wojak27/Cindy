@@ -71,6 +71,13 @@ interface Settings {
         logLevel: 'error' | 'warn' | 'info' | 'debug';
         autoUpdate: boolean;
     };
+
+    // User profile settings
+    profile: {
+        name: string;
+        surname: string;
+        hasCompletedSetup: boolean;
+    };
 }
 
 class SettingsService extends EventEmitter {
@@ -245,6 +252,12 @@ class SettingsService extends EventEmitter {
                 maxMemoryUsage: 1024, // 1GB
                 logLevel: 'info',
                 autoUpdate: true
+            },
+
+            profile: {
+                name: '',
+                surname: '',
+                hasCompletedSetup: false
             }
         };
     }

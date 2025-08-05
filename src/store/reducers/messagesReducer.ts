@@ -7,6 +7,8 @@ const messagesReducer = (state = initialState, action: any) => {
   switch (action.type) {
     case 'ADD_MESSAGE':
       return [...state, action.payload];
+    case 'CLEAR_MESSAGES':
+      return [];
     default:
       return state;
   }

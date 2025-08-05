@@ -41,11 +41,11 @@ const ChatList: React.FC<{
         }
     };
 
-    const handleNewChat = () => {
-        onCreateNewChat();
-        // Refresh conversations list after creating new chat
-        loadConversations();
-    };
+    // const handleNewChat = () => {
+    //     onCreateNewChat();
+    //     // Refresh conversations list after creating new chat
+    //     loadConversations();
+    // };
 
     const formatTimeAgo = (timestamp: number) => {
         const now = Date.now();
@@ -72,16 +72,6 @@ const ChatList: React.FC<{
 
     return (
         <div className="chat-list">
-            <div className="chat-list-header">
-                <h2>Chats</h2>
-                <button
-                    className="new-chat-button"
-                    onClick={handleNewChat}
-                    aria-label="New chat"
-                >
-                    +
-                </button>
-            </div>
 
             <div className="chat-list-body" style={{ position: 'relative' }}>
                 {isLoading ? (
@@ -95,7 +85,11 @@ const ChatList: React.FC<{
                         <div
                             key={conversation.id}
                             className={`chat-item ${conversation.id === currentConversationId ? 'active' : ''}`}
-                            onClick={() => onSelectConversation(conversation.id)}
+                             onClick={() => {
+                                 console.log('Chat item clicked:', conversation.id);
+                                 console.log('Current conversation ID:', currentConversationId);
+                                 onSelectConversation(conversation.id);
+                             }}
                             role="button"
                             tabIndex={0}
                             aria-label={`Conversation: ${getConversationTitle(conversation)}`}

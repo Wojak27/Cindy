@@ -30,3 +30,12 @@ export const setListening = (isListening: boolean) => ({
     type: 'SET_LISTENING',
     payload: isListening
 });
+
+export const startThinking = () => ({
+    type: 'START_THINKING',
+    payload: Date.now()
+});
+
+export const stopThinking = () => ({
+    type: 'STOP_THINKING'
+});

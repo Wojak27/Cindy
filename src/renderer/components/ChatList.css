@@ -3,7 +3,7 @@
     border-right: 1px solid #e0e0e0;
     display: flex;
     flex-direction: column;
-    background-color: #f8f9fa;
+    background-color: white;
     box-shadow: -2px 0 5px rgba(0, 0, 0, 0.1);
 }
 
@@ -72,7 +72,7 @@
 }
 
 .chat-item:hover {
-    background-color: #e9ecef;
+    background-color: #f7f7f8;
 }
 
 .chat-item.active {

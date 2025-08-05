@@ -53,6 +53,10 @@ export class AgentService extends EventEmitter {
         });
     }
 
+    async initialize(): Promise<void> {
+        await this.memoryService.initialize();
+    }
+
     async execute(input: string): Promise<string | AsyncGenerator<string>> {
         return this.agent.process(input);
     }

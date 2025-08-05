@@ -3,7 +3,7 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica,
         Arial, sans-serif;
     margin: 0;
-    background: linear-gradient(135deg, #f5f7fa 0%, #e4edf5 100%);
+    background: #f7f7f8;
     height: 100vh;
     overflow: hidden;
 }
@@ -94,18 +94,21 @@ body {
     width: 60px;
     margin-top: 10px;
     background: white;
-    border-right: 1px solid #e0e0e0;
     display: flex;
     flex-direction: column;
-    transition: width 0.3s ease;
+    transition: all 0.3s ease;
     overflow: hidden;
+    z-index: 100;
+    opacity: 0;
 
-    .chat-list {
-        .chat-list-body {
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
+    &:hover,
+    &.open {
+        width: 300px;
+        border-right: 1px solid #e0e0e0;
+        opacity: 1;
     }
+
+
 }
 
 .close-settings {
@@ -119,15 +122,6 @@ body {
     cursor: pointer;
 }
 
-.sidebar:hover {
-    width: 300px;
-
-    .chat-list {
-        .chat-list-body {
-            opacity: 1;
-        }
-    }
-}
 
 .main-content {
     flex: 1;
@@ -142,6 +136,27 @@ body {
     height: 100%;
     width: 100%;
     justify-content: right;
+    position: relative;
+}
+
+.window-controls {
+    top: 20px;
+    padding-top: 5px;
+    display: flex;
+    gap: 8px;
+    z-index: 1000;
+}
+
+.window-controls .MuiIconButton-root {
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(10px);
+    border-radius: 8px;
+    width: 32px;
+    height: 32px;
+}
+
+.window-controls .MuiIconButton-root:hover {
+    background: rgba(255, 255, 255, 0.9);
 }
 
 /* Message styling - ChatGPT style */
@@ -151,8 +166,7 @@ body {
     margin-bottom: 16px;
     padding: 16px;
     border-radius: 8px;
-    background: white;
-    border: 1px solid #e5e5e5;
+    background: transparent;
     transition: all 0.2s ease;
     animation: fadeIn 0.3s ease;
     max-width: 800px;
@@ -215,7 +229,11 @@ body {
 }
 
 .message.speaking {
-    animation: pulse 1.5s ease-in-out infinite;
+    float: left;
+}
+
+.message.listening {
+    animation: micListening 1.5s ease-in-out infinite;
 }
 
 .avatar {
@@ -240,22 +258,22 @@ body {
     background: rgba(46, 204, 113, 0.3);
 }
 
-/* Mic button animations */
+/* Remove bouncing animations */
 .mic-button {
-    transition: all 0.3s ease;
+    transition: none;
 }
 
 .mic-button:hover {
-    transform: scale(1.1);
+    transform: none;
 }
 
 .mic-button:active {
-    animation: micPulse 0.6s ease-in-out;
+    animation: none;
 }
 
 .mic-button.is-listening {
-    animation: micListening 1.5s ease-in-out infinite;
-    transform: scale(1.2);
+    animation: none;
+    transform: none;
     background-color: #e74c3c !important;
     color: white !important;
 }
@@ -267,62 +285,15 @@ body {
     word-break: break-word;
 }
 
-/* Animations */
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+/* Remove all animations */
+.message {
+    animation: none;
+    transition: background 0.2s ease;
 }
 
-@keyframes pulse {
-    0% {
-        box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.7);
-    }
-
-    70% {
-        box-shadow: 0 0 0 10px rgba(46, 204, 113, 0);
-    }
-
-    100% {
-        box-shadow: 0 0 0 0 rgba(46, 204, 113, 0);
-    }
-}
-
-@keyframes micPulse {
-    0% {
-        transform: scale(1);
-        opacity: 0.8;
-    }
-
-    50% {
-        transform: scale(1.1);
-        opacity: 1;
-    }
-
-    100% {
-        transform: scale(1);
-        opacity: 0.8;
-    }
-}
-
-@keyframes micListening {
-    0% {
-        box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.7);
-    }
-
-    70% {
-        box-shadow: 0 0 0 10px rgba(231, 76, 60, 0);
-    }
-
-    100% {
-        box-shadow: 0 0 0 0 rgba(231, 76, 60, 0);
-    }
+.message:hover {
+    background: #f7f7f8;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 }
 
 .chat-container {
@@ -348,6 +319,38 @@ body {
     border-top: 1px solid #e5e5e5;
     border-radius: 8px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.button-group {
+    display: flex;
+    align-items: center;
+    gap: -2px;
+}
+
+.button-group .mic-button,
+.button-group .send-button {
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    margin-left: -8px;
+    transition: all 0.2s ease;
+    background-color: #f0f0f0;
+    border: 1px solid #ddd;
+}
+
+.button-group .mic-button:hover,
+.button-group .send-button:hover {
+    background-color: #e0e0e0;
+    transform: translateY(-1px);
+}
+
+.button-group .mic-button.is-listening {
+    background-color: #e74c3c;
+    color: white;
+}
+
+.button-group .mic-button.is-listening:hover {
+    background-color: #c0392b;
 }
 
 .settings-floating-window {
@@ -447,8 +450,8 @@ body {
     -webkit-app-region: drag;
     height: 32px;
     width: 100%;
-    position: fixed;
     top: 0;
+    background-color: transparent;
     left: 0;
     z-index: 9999;
     cursor: move;
@@ -457,4 +460,144 @@ body {
 /* Prevent text selection in draggable area */
 .window-draggable-area * {
     -webkit-app-region: no-drag;
+}
+
+/* Thinking section styles */
+.thinking-block {
+    margin: 12px 0;
+    border-left: 3px solid #e5e5e5;
+    padding-left: 12px;
+}
+
+.thinking-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    color: #666;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    font-family: inherit;
+}
+
+.thinking-toggle:hover {
+    background-color: #f0f0f0;
+}
+
+.thinking-text {
+    font-weight: 500;
+    display: inline-block;
+    animation: thinking-bounce 1.4s ease-in-out infinite;
+}
+
+@keyframes thinking-bounce {
+
+    0%,
+    80%,
+    100% {
+        transform: translateY(0);
+    }
+
+    40% {
+        transform: translateY(-5px);
+    }
+}
+
+.thinking-dots {
+    display: inline-block;
+    width: 30px;
+    height: 1em;
+    vertical-align: bottom;
+    overflow: hidden;
+}
+
+.thinking-dots-animation {
+    display: inline-block;
+    position: relative;
+    width: 30px;
+    height: 1em;
+}
+
+.thinking-dots-animation .dot {
+    position: absolute;
+    bottom: 0;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background-color: #666;
+    animation: thinking-dots-animation 1.5s infinite ease-in-out;
+}
+
+.thinking-dots-animation .dot:nth-child(1) {
+    left: 0;
+    animation-delay: 0s;
+}
+
+.thinking-dots-animation .dot:nth-child(2) {
+    left: 10px;
+    animation-delay: 0.2s;
+}
+
+.thinking-dots-animation .dot:nth-child(3) {
+    left: 20px;
+    animation-delay: 0.4s;
+}
+
+@keyframes thinking-dots-animation {
+
+    0%,
+    80%,
+    100% {
+        transform: translateY(0);
+    }
+
+    40% {
+        transform: translateY(-5px);
+    }
+}
+
+.thinking-timer {
+    font-size: 0.9em;
+    color: #999;
+    margin-left: 8px;
+}
+
+.thinking-content {
+    padding: 12px;
+    background-color: #f8f8f8;
+    border: 1px solid #e5e5e5;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.4;
+    overflow: auto;
+}
+
+/* Welcome message styles */
+.welcome-message {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    color: #666;
+    opacity: 0.8;
+    z-index: 10;
+}
+
+.welcome-message h2 {
+    margin: 0 0 8px 0;
+    font-size: 24px;
+    font-weight: 500;
+    color: #333;
+}
+
+.welcome-message p {
+    margin: 0;
+    font-size: 16px;
+    color: #666;
 }

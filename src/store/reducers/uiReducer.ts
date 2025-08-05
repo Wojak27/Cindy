@@ -4,7 +4,8 @@
 const initialState = {
   showSettings: false,
   isSpeaking: false,
-  isListening: false
+  isListening: false,
+  thinkingStartTime: null
 };
 
 const uiReducer = (state = initialState, action: any) => {
@@ -23,6 +24,16 @@ const uiReducer = (state = initialState, action: any) => {
       return {
         ...state,
         isListening: action.payload
+      };
+    case 'START_THINKING':
+      return {
+        ...state,
+        thinkingStartTime: action.payload
+      };
+    case 'STOP_THINKING':
+      return {
+        ...state,
+        thinkingStartTime: null
       };
     default:
       return state;

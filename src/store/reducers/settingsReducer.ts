@@ -1,5 +1,5 @@
 // src/store/reducers/settingsReducer.ts
-// Removed unused import
+// Updated to align with Settings interface from SettingsService
 
 const initialState = {
     theme: 'light',
