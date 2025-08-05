@@ -21,21 +21,22 @@ import CloseIcon from '@mui/icons-material/Close';
 const SettingsPanel: React.FC = () => {
     const dispatch = useDispatch();
     const settings = useSelector((state: any) => state.settings);
-    const [activationPhrase, setActivationPhrase] = useState(settings.voice.activationPhrase);
-    const [sttProvider, setSttProvider] = useState(settings.voice.sttProvider);
+    // Initialize state with defaults to prevent uncontrolled to controlled input warning
+    const [activationPhrase, setActivationPhrase] = useState(settings?.voice?.activationPhrase || 'cindy');
+    const [sttProvider, setSttProvider] = useState(settings?.voice?.sttProvider || 'auto');
 
     // LLM settings state
-    const [llmProvider, setLlmProvider] = useState(settings.llm.provider);
-    const [openaiModel, setOpenaiModel] = useState(settings.llm.openai.model);
-    const [ollamaModel, setOllamaModel] = useState(settings.llm.ollama.model);
-    const [openaiApiKey, setOpenaiApiKey] = useState('');
-    const [ollamaBaseUrl, setOllamaBaseUrl] = useState(settings.llm.ollama.baseUrl);
-    const [temperature, setTemperature] = useState(settings.llm.openai.temperature);
-    const [maxTokens, setMaxTokens] = useState(settings.llm.openai.maxTokens);
+    const [llmProvider, setLlmProvider] = useState(settings?.llm?.provider || 'ollama');
+    const [openaiModel, setOpenaiModel] = useState(settings?.llm?.openai?.model || 'gpt-3.5-turbo');
+    const [ollamaModel, setOllamaModel] = useState(settings?.llm?.ollama?.model || 'qwen3:8b');
+    const [openaiApiKey, setOpenaiApiKey] = useState(settings?.llm?.openai?.apiKey || '');
+    const [ollamaBaseUrl, setOllamaBaseUrl] = useState(settings?.llm?.ollama?.baseUrl || 'http://127.0.0.1:11434');
+    const [temperature, setTemperature] = useState(settings?.llm?.openai?.temperature || 0.7);
+    const [maxTokens, setMaxTokens] = useState(settings?.llm?.openai?.maxTokens || 4096);
 
     // Profile settings state
-    const [name, setName] = useState(settings.profile?.name || '');
-    const [surname, setSurname] = useState(settings.profile?.surname || '');
+    const [name, setName] = useState(settings?.profile?.name || '');
+    const [surname, setSurname] = useState(settings?.profile?.surname || '');
 
     useEffect(() => {
         dispatch(getSettings());

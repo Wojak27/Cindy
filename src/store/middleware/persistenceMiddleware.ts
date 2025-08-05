@@ -1,10 +1,14 @@
-import { SettingsService } from '../../main/services/SettingsService';
+// SettingsService is imported but not used directly
+// It's used through the settingsService variable
 
-// Create a single instance of SettingsService
-const settingsService = new SettingsService();
+// SettingsService will be initialized in main.ts
+// This file will use the instance created there
+let settingsService: any = null;
 
-// Initialize the settings service
-settingsService.initialize().catch(console.error);
+// Function to set the settings service instance
+export const setSettingsService = (service: any) => {
+    settingsService = service;
+};
 
 /**
  * Middleware to persist Redux store changes to disk
@@ -20,14 +24,28 @@ export const persistenceMiddleware = () => (next: any) => async (action: any) =>
             // Extract settings sections from the action payload
             const { llm, ...generalSettings } = action.payload;
 
+            // Check if settingsService is available
+            if (!settingsService) {
+                console.error('Settings service not available for persistence');
+                return result;
+            }
+
             // Update general settings
             if (Object.keys(generalSettings).length > 0) {
-                await settingsService.set('general', generalSettings);
+                try {
+                    await settingsService.set('general', generalSettings);
+                } catch (error) {
+                    console.error('Failed to persist general settings:', error);
+                }
             }
 
             // Update LLM settings
             if (llm) {
-                await settingsService.set('llm', llm);
+                try {
+                    await settingsService.set('llm', llm);
+                } catch (error) {
+                    console.error('Failed to persist LLM settings:', error);
+                }
             }
         } catch (error) {
             console.error('Failed to persist settings:', error);
@@ -42,6 +60,11 @@ export const persistenceMiddleware = () => (next: any) => async (action: any) =>
  */
 export const loadInitialSettings = async () => {
     try {
+        // Wait for settingsService to be set
+        while (!settingsService) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
         const settings = await settingsService.getAll();
 
         // Transform Settings interface to match Redux store structure
@@ -63,10 +86,39 @@ export const loadInitialSettings = async () => {
                     apiKey: settings.llm.openai?.apiKey || '',
                     temperature: settings.llm.openai?.temperature || 0.7
                 }
+            },
+            // Include other settings sections that might be needed
+            general: {
+                ...settings.general
+            },
+            privacy: {
+                ...settings.privacy
+            },
+            system: {
+                ...settings.system
             }
         };
     } catch (error) {
         console.error('Failed to load initial settings:', error);
-        return {};
+        return {
+            theme: 'light',
+            voice: 'cindy',
+            wakeWord: 'cindy',
+            autoStart: false,
+            notifications: true,
+            llm: {
+                provider: 'ollama',
+                ollama: {
+                    model: 'qwen3:8b',
+                    baseUrl: 'http://127.0.0.1:11434',
+                    temperature: 0.7
+                },
+                openai: {
+                    model: 'gpt-3.5-turbo',
+                    apiKey: '',
+                    temperature: 0.7
+                }
+            }
+        };
     }
 };

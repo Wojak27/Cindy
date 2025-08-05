@@ -39,9 +39,11 @@ let agentService: AgentService | null = null;
 let chatStorage: ChatStorageService | null = null;
 
 const createWindow = async (): Promise<void> => {
-    // Initialize settings service
-    settingsService = new SettingsService();
-    await settingsService.initialize();
+    // Ensure settings service is initialized
+    if (!settingsService) {
+        settingsService = new SettingsService();
+        await settingsService.initialize();
+    }
 
     // Create the browser window.
     mainWindow = new BrowserWindow({
@@ -180,9 +182,14 @@ app.on('ready', async () => {
     await createWindow();
     await createTray();
 
-    // Ensure settings service is fully initialized
+    // Set the settings service instance in the persistence middleware
     if (settingsService) {
-        await settingsService.initialize();
+        const rendererStore = require('../renderer/store/index');
+        if (rendererStore && typeof rendererStore.setSettingsService === 'function') {
+            rendererStore.setSettingsService(settingsService);
+        } else {
+            console.error('Failed to set settings service: setSettingsService is not a function');
+        }
     }
 
     // Initialize OllamaProvider for connection monitoring
