@@ -107,10 +107,30 @@ const App: React.FC = () => {
         if (isRecording) {
             // Stop recording
             try {
-                const audioData = await ipcRenderer.invoke('stop-recording');
+                // Stop recording - this will trigger audio data to be sent
+                await ipcRenderer.invoke('stop-recording');
+                // Wait for audio data from the AudioCaptureService
+                const audioData = await new Promise<Int16Array[]>((resolve) => {
+                    const handler = (event: any, data: Int16Array[]) => {
+                        resolve(data);
+                    };
+                    ipcRenderer.once('audio-data', handler);
+                });
+
                 if (audioData) {
+                    // Convert Int16Array[] to ArrayBuffer for transcription
+                    const audioBuffer = new ArrayBuffer(audioData.length * audioData[0].length * 2);
+                    const view = new DataView(audioBuffer);
+                    let offset = 0;
+                    for (const chunk of audioData) {
+                        for (const sample of chunk) {
+                            view.setInt16(offset, sample, true);
+                            offset += 2;
+                        }
+                    }
+
                     // Send audio data to Whisper for transcription
-                    const transcript = await ipcRenderer.invoke('transcribe-audio', audioData);
+                    const transcript = await ipcRenderer.invoke('transcribe-audio', audioBuffer);
                     if (transcript) {
                         // Handle the transcribed text (e.g., send as message)
                         console.log('Transcription:', transcript);

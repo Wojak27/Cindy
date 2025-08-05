@@ -1,6 +1,5 @@
 import { EventEmitter } from 'events';
 import { SpeechConfig, AudioConfig, SpeechRecognizer, ResultReason } from 'microsoft-cognitiveservices-speech-sdk';
-import { AudioCaptureService } from './AudioCaptureService';
 
 interface STTConfig {
     provider: 'online' | 'offline' | 'auto' | 'whisper';
@@ -15,14 +14,12 @@ class SpeechToTextService extends EventEmitter {
     private onlineEngine: OnlineSTTEngine;
     private offlineEngine: OfflineSTTEngine;
     private whisperEngine: WhisperSTTEngine;
-    private audioCaptureService: AudioCaptureService;
     private config: STTConfig;
     private isRecording: boolean = false;
 
-    constructor(config: STTConfig, audioCaptureService: AudioCaptureService) {
+    constructor(config: STTConfig) {
         super();
         this.config = config;
-        this.audioCaptureService = audioCaptureService;
         this.onlineEngine = new OnlineSTTEngine(config);
         this.offlineEngine = new OfflineSTTEngine(config);
         this.whisperEngine = new WhisperSTTEngine(config);
@@ -32,7 +29,6 @@ class SpeechToTextService extends EventEmitter {
         if (this.isRecording) return;
 
         try {
-            await this.audioCaptureService.startCapture();
             this.isRecording = true;
             this.emit('recordingStarted');
         } catch (error) {
@@ -45,7 +41,6 @@ class SpeechToTextService extends EventEmitter {
         if (!this.isRecording) return;
 
         try {
-            await this.audioCaptureService.stopCapture();
             this.isRecording = false;
             this.emit('recordingStopped');
         } catch (error) {
@@ -54,15 +49,33 @@ class SpeechToTextService extends EventEmitter {
         }
     }
 
-    async transcribe(audioData: ArrayBuffer): Promise<string> {
+    async transcribe(audioData: ArrayBuffer | Int16Array[]): Promise<string> {
         try {
+            // Convert Int16Array[] to ArrayBuffer if needed
+            let buffer: ArrayBuffer;
+            if (Array.isArray(audioData)) {
+                // Convert Int16Array[] to ArrayBuffer
+                const totalLength = audioData.reduce((sum, arr) => sum + arr.length, 0);
+                buffer = new ArrayBuffer(totalLength * 2);
+                const view = new DataView(buffer);
+                let offset = 0;
+                for (const chunk of audioData) {
+                    for (const sample of chunk) {
+                        view.setInt16(offset, sample, true);
+                        offset += 2;
+                    }
+                }
+            } else {
+                buffer = audioData;
+            }
+
             if (this.config.provider === 'whisper') {
-                const result = await this.whisperEngine.transcribe(audioData);
+                const result = await this.whisperEngine.transcribe(buffer);
                 this.emit('transcriptionSuccess', { source: 'whisper', text: result });
                 return result;
             } else if (this.config.provider === 'online' || this.config.provider === 'auto') {
                 try {
-                    const result = await this.onlineEngine.transcribe(audioData);
+                    const result = await this.onlineEngine.transcribe(buffer);
                     this.emit('transcriptionSuccess', { source: 'online', text: result });
                     return result;
                 } catch (onlineError) {
@@ -70,7 +83,7 @@ class SpeechToTextService extends EventEmitter {
 
                     // Fallback to offline if auto mode
                     if (this.config.provider === 'auto') {
-                        const result = await this.offlineEngine.transcribe(audioData);
+                        const result = await this.offlineEngine.transcribe(buffer);
                         this.emit('transcriptionSuccess', { source: 'offline', text: result });
                         return result;
                     }
@@ -79,7 +92,7 @@ class SpeechToTextService extends EventEmitter {
                 }
             } else {
                 // Use offline engine directly
-                const result = await this.offlineEngine.transcribe(audioData);
+                const result = await this.offlineEngine.transcribe(buffer);
                 this.emit('transcriptionSuccess', { source: 'offline', text: result });
                 return result;
             }

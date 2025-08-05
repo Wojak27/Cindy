@@ -6,7 +6,6 @@ import { TrayService } from './services/TrayService';
 import OllamaProvider from './services/OllamaProvider';
 import axios from 'axios';
 import { LLMRouterService } from './services/LLMRouterService';
-import { AudioCaptureService } from './services/AudioCaptureService';
 import { SpeechToTextService } from './services/SpeechToTextService';
 import { AgentService } from './services/AgentService';
 import { ChatStorageService } from './services/ChatStorageService';
@@ -35,7 +34,6 @@ let mainWindow: BrowserWindow | null = null;
 let trayService: TrayService | null = null;
 let settingsService: SettingsService | null = null;
 let llmRouterService: LLMRouterService | null = null;
-let audioCaptureService: AudioCaptureService | null = null;
 let speechToTextService: SpeechToTextService | null = null;
 let agentService: AgentService | null = null;
 
@@ -249,27 +247,49 @@ app.on('ready', async () => {
             whisperBaseUrl: 'http://localhost:5000'
         };
 
-        audioCaptureService = new AudioCaptureService();
-        speechToTextService = new SpeechToTextService(sttConfig, audioCaptureService);
+        speechToTextService = new SpeechToTextService(sttConfig);
     }
 
     // Set up IPC handlers for audio recording
+    // Renderer will handle audio capture and send data to main process
     ipcMain.handle('start-recording', async () => {
         if (!speechToTextService) {
             throw new Error('SpeechToTextService not initialized');
         }
-        return await speechToTextService.startRecording();
+        // Just acknowledge the start request - audio capture happens in renderer
+        return true;
     });
 
-    ipcMain.handle('stop-recording', async () => {
+    ipcMain.handle('stop-recording', async (event) => {
         if (!speechToTextService) {
             throw new Error('SpeechToTextService not initialized');
         }
-        // Get the audio data from the capture service
-        const audioData = audioCaptureService?.getAudioData();
-        // Stop the recording
-        await speechToTextService.stopRecording();
-        return audioData;
+        // Wait for audio data from renderer
+        return new Promise((resolve) => {
+            const timeout = setTimeout(() => {
+                console.error('Timeout waiting for audio data from renderer');
+                resolve(null);
+            }, 5000);
+
+            // Listen for audio data from renderer
+            const handler = (event: any, audioData: Int16Array[]) => {
+                clearTimeout(timeout);
+                resolve(audioData);
+            };
+
+            // Listen for audio data from renderer
+            const audioDataListener = (event: any, audioData: Int16Array[]) => {
+                // Remove listener after receiving data
+                ipcMain.removeListener('audio-data', audioDataListener);
+                // Forward to the handler
+                handler(event, audioData);
+            };
+
+            ipcMain.on('audio-data', audioDataListener);
+
+            // Request audio data from renderer
+            event.sender.send('get-audio-data');
+        });
     });
 
     ipcMain.handle('transcribe-audio', async (event, audioData: ArrayBuffer) => {
@@ -338,7 +358,8 @@ app.on('ready', async () => {
 
         try {
             const response = await agentService.execute(message);
-            return response;
+            // Ensure the response is serializable by converting to a plain object
+            return JSON.parse(JSON.stringify(response));
         } catch (error) {
             console.error('Error processing message:', error);
             throw error;
