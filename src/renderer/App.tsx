@@ -7,13 +7,9 @@ import './styles/main.css';
 import { ipcRenderer } from 'electron';
 import ChatList from './components/ChatList';
 import {
-    AppBar,
-    Toolbar,
-    Typography,
     IconButton
 } from '@mui/material';
 import {
-    Settings as SettingsIcon,
     Mic as MicIcon,
     Send as SendIcon,
     Person as PersonIcon,
@@ -204,22 +200,65 @@ const App: React.FC = () => {
                 />
             </div>
             <div className="main-content">
-                <AppBar position="static" color="primary" elevation={0} sx={{ mb: 2, borderRadius: 1 }}>
-                    <Toolbar>
-                        <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-                            Cindy - Voice Research Assistant
-                        </Typography>
+                <div className="chat-container">
+                    <div className="chat-messages-container">
+                        <div className="chat-messages">
+                            {messages.map((msg: any, index: number) => {
+                                const messageClass = `message ${msg.role} ${isSpeaking && msg.role === 'assistant' ? 'speaking' : ''}`;
+                                return (
+                                    <div
+                                        key={index}
+                                        className={messageClass}
+                                    >
+                                        <div className="avatar">
+                                            {msg.role === 'user' ? <PersonIcon /> : <SmartToyIcon />}
+                                        </div>
+                                        <div className="message-content">
+                                            {msg.content}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    <div className="input-area">
                         <IconButton
-                            edge="end"
-                            color="inherit"
-                            onClick={() => dispatch(toggleSettings())}
-                            aria-label="Open settings"
-                            size="large"
+                            className={`mic-button ${isRecording ? 'is-listening' : ''}`}
+                            onClick={handleMicClick}
+                            aria-label="Activate voice assistant"
+                            color={isRecording ? "error" : "primary"}
+                            size="small"
                         >
-                            <SettingsIcon />
+                            <MicIcon fontSize="small" />
                         </IconButton>
-                    </Toolbar>
-                </AppBar>
+                        <input
+                            type="text"
+                            placeholder="Type your message..."
+                            className="message-input"
+                            value={inputValue}
+                            style={{
+                                flex: 1,
+                                padding: '12px 16px',
+                                borderRadius: '8px',
+                                border: '1px solid #e5e5e5',
+                                fontSize: '14px',
+                                outline: 'none'
+                            }}
+                            onChange={handleInputChange}
+                            onKeyPress={handleKeyPress}
+                        />
+                        <IconButton
+                            className="send-button"
+                            onClick={handleSendClick}
+                            aria-label="Send message"
+                            color="primary"
+                            size="small"
+                        >
+                            <SendIcon fontSize="small" />
+                        </IconButton>
+                    </div>
+                </div>
 
                 {showSettings && (
                     <div className="settings-floating-window">
@@ -233,63 +272,6 @@ const App: React.FC = () => {
                         </button>
                     </div>
                 )}
-
-                <div className="chat-container">
-                    <div className="chat-messages">
-                        {messages.map((msg: any, index: number) => {
-                            const messageClass = `message ${msg.role} ${isSpeaking && msg.role === 'assistant' ? 'speaking' : ''}`;
-                            return (
-                                <div
-                                    key={index}
-                                    className={messageClass}
-                                >
-                                    <div className="avatar">
-                                        {msg.role === 'user' ? <PersonIcon /> : <SmartToyIcon />}
-                                    </div>
-                                    <div className="message-content">
-                                        {msg.content}
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-
-                    <div className="input-area">
-                        <IconButton
-                            className={`mic-button ${isRecording ? 'is-listening' : ''}`}
-                            onClick={handleMicClick}
-                            aria-label="Activate voice assistant"
-                            color={isRecording ? "error" : "primary"}
-                            size="large"
-                        >
-                            <MicIcon />
-                        </IconButton>
-                        <input
-                            type="text"
-                            placeholder="Type your message..."
-                            className="message-input"
-                            value={inputValue}
-                            style={{
-                                width: '100%',
-                                padding: '1rem',
-                                borderRadius: '1rem',
-                                border: '1px solid #ccc',
-                                fontSize: '16px'
-                            }}
-                            onChange={handleInputChange}
-                            onKeyPress={handleKeyPress}
-                        />
-                        <IconButton
-                            className="send-button"
-                            onClick={handleSendClick}
-                            aria-label="Send message"
-                            color="primary"
-                            size="large"
-                        >
-                            <SendIcon />
-                        </IconButton>
-                    </div>
-                </div>
             </div>
         </div>
     );

@@ -24,6 +24,15 @@ const ChatList: React.FC<{
         try {
             setIsLoading(true);
             const convos = await ipcRenderer.invoke('get-conversations');
+            // Log the raw conversation data for debugging
+            console.log('Raw conversations data:', convos);
+            if (Array.isArray(convos)) {
+                convos.forEach((convo, index) => {
+                    if (typeof convo.title === 'object' && convo.title !== null) {
+                        console.error(`Conversation at index ${index} has title as object:`, convo.title);
+                    }
+                });
+            }
             setConversations(convos);
         } catch (error) {
             console.error('Failed to load conversations:', error);
@@ -53,6 +62,11 @@ const ChatList: React.FC<{
 
     const getConversationTitle = (conversation: Conversation) => {
         // Use the first message content or fallback to timestamp
+        // Add type checking and logging for debugging
+        if (typeof conversation.title === 'object' && conversation.title !== null) {
+            console.error('Conversation title is an object, expected string:', conversation.title);
+            return `Conversation ${new Date(conversation.lastMessageAt).toLocaleDateString()}`;
+        }
         return conversation.title || `Conversation ${new Date(conversation.lastMessageAt).toLocaleDateString()}`;
     };
 
@@ -69,11 +83,11 @@ const ChatList: React.FC<{
                 </button>
             </div>
 
-            <div className="chat-list-body">
+            <div className="chat-list-body" style={{ position: 'relative' }}>
                 {isLoading ? (
                     <div className="loading">Loading...</div>
                 ) : conversations.length === 0 ? (
-                    <div className="empty-state">
+                    <div className="empty-state" style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textWrap: 'nowrap' }}>
                         No conversations yet
                     </div>
                 ) : (
@@ -98,7 +112,7 @@ const ChatList: React.FC<{
                     ))
                 )}
             </div>
-        </div>
+        </div >
     );
 };
 

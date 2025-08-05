@@ -47,6 +47,13 @@ const createWindow = async (): Promise<void> => {
         height: 600,
         minWidth: 800,
         maxWidth: 1200,
+        titleBarStyle: 'hidden',
+        titleBarOverlay: {
+            color: '#f5f7fa',
+            symbolColor: '#2c3e50',
+            height: 32
+        },
+        frame: false,
 
         webPreferences: {
             nodeIntegration: true,
@@ -358,8 +365,25 @@ app.on('ready', async () => {
 
         try {
             const response = await agentService.execute(message);
-            // Ensure the response is serializable by converting to a plain object
-            return JSON.parse(JSON.stringify(response));
+
+            // Handle both string and AsyncGenerator responses
+            let responseText: string;
+
+            if (typeof response === 'string') {
+                responseText = response;
+            } else if (response && typeof response[Symbol.asyncIterator] === 'function') {
+                // Handle AsyncGenerator response
+                responseText = '';
+                for await (const chunk of response) {
+                    responseText += chunk;
+                }
+            } else {
+                // Fallback for any other type
+                responseText = String(response);
+            }
+
+            // Ensure the response is serializable
+            return responseText;
         } catch (error) {
             console.error('Error processing message:', error);
             throw error;
