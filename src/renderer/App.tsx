@@ -2,24 +2,38 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import SettingsPanel from './components/SettingsPanel';
 import { getSettings } from '../store/actions';
+import { toggleSettings } from '../store/actions';
 import './styles/main.css';
 import { ipcRenderer } from 'electron';
+import ChatList from './components/ChatList';
+import {
+    AppBar,
+    Toolbar,
+    Typography,
+    IconButton
+} from '@mui/material';
+import {
+    Settings as SettingsIcon,
+    Mic as MicIcon,
+    Send as SendIcon,
+    Person as PersonIcon,
+    SmartToy as SmartToyIcon
+} from '@mui/icons-material';
 
 const App: React.FC = () => {
-    const [showSettings, setShowSettings] = useState(false);
+    const dispatch = useDispatch();
+    const showSettings = useSelector((state: any) => state.ui.showSettings);
     const [isSpeaking, setIsSpeaking] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
     const [inputValue, setInputValue] = useState('');
-    const soundEnabled = true;
-    const dispatch = useDispatch();
     const messages = useSelector((state: any) => state.messages || []);
+    const [currentConversationId, setCurrentConversationId] = useState<string>(Date.now().toString());
     const audioContext = useRef<AudioContext | null>(null);
     const sounds = useRef<Record<string, AudioBuffer>>({});
 
     useEffect(() => {
         dispatch(getSettings());
     }, [dispatch]);
-
 
     // Initialize audio context and load sounds
     useEffect(() => {
@@ -62,7 +76,7 @@ const App: React.FC = () => {
 
     // Play sound effect
     const playSound = (soundName: string) => {
-        if (!soundEnabled || !audioContext.current || !sounds.current[soundName]) return;
+        if (!audioContext.current || !sounds.current[soundName]) return;
 
         try {
             const source = audioContext.current.createBufferSource();
@@ -159,58 +173,102 @@ const App: React.FC = () => {
 
     return (
         <div className="app-container">
-            <header className="app-header">
-                <h1>Cindy - Voice Research Assistant</h1>
-                <button
-                    className="settings-toggle"
-                    onClick={() => setShowSettings(!showSettings)}
-                >
-                    ⚙️ Settings
-                </button>
-            </header>
-
-            {showSettings && <SettingsPanel />}
-
-            <div className="chat-container">
-                <div className="chat-messages">
-                    {messages.map((msg: any, index: number) => (
-                        <div
-                            key={index}
-                            className={`message ${msg.role} ${isSpeaking && msg.role === 'assistant' ? 'speaking' : ''}`}
+            <div className="sidebar">
+                <ChatList
+                    onSelectConversation={setCurrentConversationId}
+                    onCreateNewChat={() => {
+                        const newId = Date.now().toString();
+                        setCurrentConversationId(newId);
+                    }}
+                    currentConversationId={currentConversationId}
+                />
+            </div>
+            <div className="main-content">
+                <AppBar position="static" color="primary" elevation={0} sx={{ mb: 2, borderRadius: 1 }}>
+                    <Toolbar>
+                        <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+                            Cindy - Voice Research Assistant
+                        </Typography>
+                        <IconButton
+                            edge="end"
+                            color="inherit"
+                            onClick={() => dispatch(toggleSettings())}
+                            aria-label="Open settings"
+                            size="large"
                         >
-                            <div className="avatar">
-                                {msg.role === 'user' ? '👤' : '🤖'}
-                            </div>
-                            <div className="message-content">
-                                {msg.content}
-                            </div>
-                        </div>
-                    ))}
-                </div>
+                            <SettingsIcon />
+                        </IconButton>
+                    </Toolbar>
+                </AppBar>
 
-                <div className="input-area">
-                    <button
-                        className="mic-button"
-                        onClick={handleMicClick}
-                        aria-label="Activate voice assistant"
-                    >
-                        🎤
-                    </button>
-                    <input
-                        type="text"
-                        placeholder="Type your message..."
-                        className="message-input"
-                        value={inputValue}
-                        onChange={handleInputChange}
-                        onKeyPress={handleKeyPress}
-                    />
-                    <button
-                        className="send-button"
-                        onClick={handleSendClick}
-                        aria-label="Send message"
-                    >
-                        ➤
-                    </button>
+                {showSettings && (
+                    <div className="settings-floating-window">
+                        <SettingsPanel />
+                        <button
+                            className="close-settings"
+                            onClick={() => dispatch(toggleSettings())}
+                            aria-label="Close settings"
+                        >
+                            ×
+                        </button>
+                    </div>
+                )}
+
+                <div className="chat-container">
+                    <div className="chat-messages">
+                        {messages.map((msg: any, index: number) => {
+                            const messageClass = `message ${msg.role} ${isSpeaking && msg.role === 'assistant' ? 'speaking' : ''}`;
+                            return (
+                                <div
+                                    key={index}
+                                    className={messageClass}
+                                >
+                                    <div className="avatar">
+                                        {msg.role === 'user' ? <PersonIcon /> : <SmartToyIcon />}
+                                    </div>
+                                    <div className="message-content">
+                                        {msg.content}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    <div className="input-area">
+                        <IconButton
+                            className={`mic-button ${isRecording ? 'is-listening' : ''}`}
+                            onClick={handleMicClick}
+                            aria-label="Activate voice assistant"
+                            color={isRecording ? "error" : "primary"}
+                            size="large"
+                        >
+                            <MicIcon />
+                        </IconButton>
+                        <input
+                            type="text"
+                            placeholder="Type your message..."
+                            className="message-input"
+                            value={inputValue}
+                            style={{
+                                width: '100%',
+                                padding: '1rem',
+                                borderRadius: '1rem',
+                                border: '1px solid #ccc',
+                                fontSize: '16px'
+                            }}
+                            onChange={handleInputChange}
+                            onKeyPress={handleKeyPress}
+                        />
+                        <IconButton
+                            className="send-button"
+                            onClick={handleSendClick}
+                            aria-label="Send message"
+                            color="primary"
+                            size="large"
+                        >
+                            <SendIcon />
+                        </IconButton>
+                    </div>
                 </div>
             </div>
         </div>

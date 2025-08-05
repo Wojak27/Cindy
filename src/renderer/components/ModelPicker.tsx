@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { ipcRenderer } from 'electron';
+import {
+    TextField,
+    Autocomplete,
+    CircularProgress,
+} from '@mui/material';
 
 interface ModelPickerProps {
     provider: 'openai' | 'ollama';
@@ -16,7 +21,7 @@ const ModelPicker: React.FC<ModelPickerProps> = ({
 }) => {
     const [models, setModels] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const [inputValue, setInputValue] = useState(selectedModel);
 
     useEffect(() => {
         const loadModels = async () => {
@@ -24,12 +29,10 @@ const ModelPicker: React.FC<ModelPickerProps> = ({
             try {
                 const availableModels = await ipcRenderer.invoke('llm:get-available-models');
                 setModels(availableModels[provider]);
-                setError(null);
             } catch (err) {
-                setError('Failed to load models. Using defaults.');
                 setModels(provider === 'openai'
                     ? ['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo']
-                    : ['llama2', 'mistral', 'codellama']);
+                    : ['qwen3:8b', 'mistral', 'codellama']);
             } finally {
                 setLoading(false);
             }
@@ -38,26 +41,51 @@ const ModelPicker: React.FC<ModelPickerProps> = ({
         loadModels();
     }, [provider]);
 
+    // Update input value when selectedModel changes
+    useEffect(() => {
+        setInputValue(selectedModel);
+    }, [selectedModel]);
+
     return (
-        <div className="model-picker">
-            <select
-                value={selectedModel}
-                onChange={(e) => onModelChange(e.target.value)}
-                disabled={disabled || loading}
-                className="form-control"
-            >
-                {loading ? (
-                    <option>Loading models...</option>
-                ) : (
-                    models.map(model => (
-                        <option key={model} value={model}>
-                            {model}
-                        </option>
-                    ))
-                )}
-            </select>
-            {error && <small className="text-danger">{error}</small>}
-        </div>
+        <Autocomplete
+            options={models}
+            freeSolo
+            value={selectedModel}
+            inputValue={inputValue}
+            onInputChange={(event, newInputValue) => {
+                setInputValue(newInputValue);
+            }}
+            onChange={(event, newValue) => {
+                if (newValue) {
+                    onModelChange(newValue);
+                }
+            }}
+            disabled={disabled || loading}
+            loading={loading}
+            renderInput={(params) => (
+                <TextField
+                    {...params}
+                    label="Model"
+                    variant="outlined"
+                    size="small"
+                    InputProps={{
+                        ...params.InputProps,
+                        endAdornment: (
+                            <>
+                                {loading ? <CircularProgress color="inherit" size={20} /> : null}
+                                {params.InputProps.endAdornment}
+                            </>
+                        ),
+                    }}
+                />
+            )}
+            renderOption={(props, option) => (
+                <li {...props} key={option}>
+                    {option}
+                </li>
+            )}
+            sx={{ width: '100%' }}
+        />
     );
 };
 

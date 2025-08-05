@@ -45,11 +45,11 @@
                     <li><a href="product.html">Product</a></li>
                     <li><a href="download.html">Download</a></li>
                     <li><a href="index.html#features">Features</a></li>
-                    <li><a href="#pricing" class="active">Pricing</a></li>
+                    <li><a href="pricing.html" class="active">Pricing</a></li>
                 </ul>
             </nav>
             <div class="hero-content">
-                <h1>Simple, Transparent Pricing</h1>
+                <h1>Get Cindy</h1>
                 <p>Choose the plan that fits your research needs. All plans include our core voice research
                     capabilities.</p>
             </div>
@@ -63,6 +63,7 @@
                     <div class="platform-icon">🍎</div>
                     <h3>macOS</h3>
                     <p>Version <span id="version-number">1.2.0</span></p>
+                    <div id="release-date"></div>
                     <ul class="features">
                         <li>Optimized for macOS Monterey (12.0) and later</li>
                         <li>Native support for Apple Silicon</li>
@@ -70,13 +71,19 @@
                         <li>500MB available storage</li>
                         <li>Internet connection for initial setup</li>
                     </ul>
-                    <a href="/downloads/cindy-macos-1.2.0.dmg" class="btn btn-primary">Download for macOS</a>
+                    <div class="download-buttons">
+                        <a href="/downloads/cindy-macos-x64-1.2.0.dmg" class="btn btn-primary">Download for Intel
+                            Mac</a>
+                        <a href="/downloads/cindy-macos-arm64-1.2.0.dmg" class="btn btn-primary">Download for Apple
+                            Silicon</a>
+                    </div>
                 </div>
                 <div class="pricing-card recommended">
                     <div class="ribbon">Recommended</div>
                     <div class="platform-icon">🪟</div>
                     <h3>Windows</h3>
                     <p>Version <span id="version-number">1.2.0</span></p>
+                    <div id="release-date"></div>
                     <ul class="features">
                         <li>Compatible with Windows 10 and 11</li>
                         <li>Full support for both 32-bit and 64-bit systems</li>
@@ -84,15 +91,21 @@
                         <li>500MB available storage</li>
                         <li>Internet connection for initial setup</li>
                     </ul>
-                    <a href="/downloads/cindy-windows-1.2.0.exe" class="btn btn-primary">Download for Windows</a>
+                    <div class="download-buttons">
+                        <a href="/downloads/cindy-windows-x64-1.2.0.exe" class="btn btn-primary">Download for Windows
+                            (x64)</a>
+                        <a href="/downloads/cindy-windows-arm64-1.2.0.exe" class="btn btn-primary">Download for Windows
+                            (ARM64)</a>
+                    </div>
                 </div>
                 <div class="pricing-card">
                     <div class="platform-icon">🐧</div>
                     <h3>Linux</h3>
                     <p>Version <span id="version-number">1.2.0</span></p>
+                    <div id="release-date"></div>
                     <ul class="features">
                         <li>Supports Ubuntu, Debian, Fedora, and other major distributions</li>
-                        <li>AppImage format for easy installation</li>
+                        <li>AppImage format for easy installation (x86_64 and ARM64)</li>
                         <li>8GB RAM recommended</li>
                         <li>500MB available storage</li>
                         <li>Internet connection for initial setup</li>
@@ -100,6 +113,13 @@
                     <a href="/downloads/cindy-linux-1.2.0.AppImage" class="btn btn-primary">Download for Linux</a>
                 </div>
             </div>
+        </div>
+    </section>
+
+    <section id="changelog" class="changelog">
+        <div class="container">
+            <h2>What's New in Version 1.2.0</h2>
+            <ul id="changelog"></ul>
         </div>
     </section>
 
@@ -158,9 +178,9 @@
                         <h4>Product</h4>
                         <ul>
                             <li><a href="index.html#features">Features</a></li>
-                            <li><a href="product.html">Technology</a></li>
+                            <li><a href="product.html#technology">Technology</a></li>
                             <li><a href="download.html">Download</a></li>
-                            <li><a href="index.html#pricing">Pricing</a></li>
+                            <li><a href="pricing.html">Pricing</a></li>
                         </ul>
                     </div>
                     <div class="footer-column">

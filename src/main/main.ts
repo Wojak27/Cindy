@@ -9,6 +9,7 @@ import { LLMRouterService } from './services/LLMRouterService';
 import { AudioCaptureService } from './services/AudioCaptureService';
 import { SpeechToTextService } from './services/SpeechToTextService';
 import { AgentService } from './services/AgentService';
+import { ChatStorageService } from './services/ChatStorageService';
 
 async function waitForDevServer(maxRetries = 10, delay = 1000): Promise<boolean> {
     for (let i = 0; i < maxRetries; i++) {
@@ -46,6 +47,9 @@ const createWindow = async (): Promise<void> => {
     // Create the browser window.
     mainWindow = new BrowserWindow({
         height: 600,
+        minWidth: 800,
+        maxWidth: 1200,
+
         webPreferences: {
             nodeIntegration: true,
             contextIsolation: false,
@@ -168,10 +172,15 @@ app.on('ready', async () => {
     await createWindow();
     await createTray();
 
+    // Ensure settings service is fully initialized
+    if (settingsService) {
+        await settingsService.initialize();
+    }
+
     // Initialize OllamaProvider for connection monitoring
     const config = await settingsService?.getAll();
     const ollamaConfig = {
-        model: config?.llm?.ollama?.model || 'llama2',
+        model: config?.llm?.ollama?.model || 'qwen3:8b',
         baseUrl: config?.llm?.ollama?.baseUrl || 'http://127.0.0.1:11434',
         temperature: config?.llm?.ollama?.temperature || 0.7
     };
@@ -222,6 +231,8 @@ app.on('ready', async () => {
             },
             llmRouterService
         );
+    } else {
+        console.warn('LLM configuration not found. AgentService will be initialized on first message.');
     }
 
     // Initialize audio services
@@ -273,7 +284,7 @@ app.on('ready', async () => {
         if (!llmRouterService) {
             return {
                 openai: ['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo'],
-                ollama: ['llama2', 'mistral', 'codellama']
+                ollama: ['qwen3:8b', 'mistral', 'codellama']
             };
         }
 
@@ -283,15 +294,46 @@ app.on('ready', async () => {
             console.error('Failed to get available models:', error);
             return {
                 openai: ['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo'],
-                ollama: ['llama2', 'mistral', 'codellama']
+                ollama: ['qwen3:8b', 'mistral', 'codellama']
             };
         }
     });
 
     // Set up IPC handler for message processing
     ipcMain.handle('process-message', async (event, message: string) => {
+        // Ensure agentService is initialized
         if (!agentService) {
-            throw new Error('AgentService not initialized');
+            // Try to initialize agentService if not already done
+            const llmConfig = await settingsService?.get('llm');
+            if (llmConfig && !agentService) {
+                // Add default values for required LLMConfig properties
+                const completeLlmConfig = {
+                    ...llmConfig,
+                    streaming: true,
+                    timeout: 30000,
+                    // Ensure openai.apiKey is always present (empty string if not set)
+                    openai: {
+                        ...llmConfig.openai,
+                        apiKey: llmConfig.openai.apiKey || ''
+                    }
+                };
+
+                llmRouterService = new LLMRouterService(completeLlmConfig);
+                await llmRouterService.initialize();
+
+                // Initialize AgentService
+                agentService = new AgentService(
+                    {
+                        maxIterations: 10,
+                        timeout: 30000,
+                        memorySize: 100,
+                        enableStreaming: true
+                    },
+                    llmRouterService
+                );
+            } else {
+                throw new Error('AgentService not initialized and could not initialize');
+            }
         }
 
         try {
@@ -337,6 +379,51 @@ app.on('ready', async () => {
         } catch (error) {
             console.error(`Connection test failed for ${provider}:`, error);
             return false;
+        }
+    });
+
+    // Set up IPC handler for chat storage
+    ipcMain.handle('get-conversations', async () => {
+        try {
+            if (!settingsService) {
+                throw new Error('SettingsService not initialized');
+            }
+
+            const chatStorage = new ChatStorageService();
+            await chatStorage.initialize();
+
+            const conversations = await chatStorage.getConversations();
+            return conversations;
+        } catch (error) {
+            console.error('Failed to get conversations:', error);
+            return [];
+        }
+    });
+
+    // Set up IPC handler for loading conversation history
+    ipcMain.handle('load-conversation', async (event, conversationId: string) => {
+        try {
+            // In a real implementation, this would use the ChatStorageService
+            // For now, we'll return a mock response
+            return [
+                {
+                    id: 1,
+                    conversationId: conversationId,
+                    role: 'user',
+                    content: 'Hello, how are you?',
+                    timestamp: Date.now() - 3600000
+                },
+                {
+                    id: 2,
+                    conversationId: conversationId,
+                    role: 'assistant',
+                    content: "I'm doing well, thank you for asking!",
+                    timestamp: Date.now() - 3500000
+                }
+            ];
+        } catch (error) {
+            console.error('Failed to load conversation:', error);
+            return [];
         }
     });
 

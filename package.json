@@ -26,11 +26,16 @@
         "pre-commit": "lint-staged"
     },
     "dependencies": {
+        "@emotion/react": "^11.14.0",
+        "@emotion/styled": "^11.14.1",
+        "@mui/icons-material": "^7.3.0",
+        "@mui/material": "^7.3.0",
         "@picovoice/porcupine-node": "^3.0.0",
         "auto-launch": "^5.0.5",
         "axios": "^1.4.0",
         "bull": "^4.11.5",
         "electron": "^25.0.0",
+        "electron-squirrel-startup": "^1.0.1",
         "faiss-node": "^0.5.1",
         "keytar": "^7.9.0",
         "langchain": "^0.0.190",

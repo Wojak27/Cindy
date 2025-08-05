@@ -8,3 +8,5 @@ https://cindy-ai.com/about
 https://cindy-ai.com/contact
 https://cindy-ai.com/privacy
 https://cindy-ai.com/terms
+https://cindy-ai.com/product
+https://cindy-ai.com/pricing

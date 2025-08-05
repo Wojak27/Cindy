@@ -86,4 +86,42 @@ export class ChatStorageService {
             this.db = null;
         }
     }
+
+    async getConversations(): Promise<Array<{ id: string; title: string; lastMessageAt: number }>> {
+        if (!this.db) await this.initialize();
+
+        const rows = await (this.db! as any).all(
+            `SELECT conversationId, MAX(timestamp) as lastMessageAt
+             FROM messages 
+             GROUP BY conversationId 
+             ORDER BY lastMessageAt DESC`
+        );
+
+        // For each conversation, get the first message to use as title
+        const conversations = await Promise.all(rows.map(async (row: any) => {
+            const firstMessage = await this.getFirstMessage(row.conversationId);
+            return {
+                id: row.conversationId,
+                title: firstMessage ? firstMessage.substring(0, 50) + (firstMessage.length > 50 ? '...' : '') : `Conversation ${new Date(row.lastMessageAt).toLocaleDateString()}`,
+                lastMessageAt: row.lastMessageAt
+            };
+        }));
+
+        return conversations;
+    }
+
+    async getFirstMessage(conversationId: string): Promise<string | null> {
+        if (!this.db) await this.initialize();
+
+        const row = await (this.db! as any).get(
+            `SELECT content 
+             FROM messages 
+             WHERE conversationId = ? 
+             ORDER BY timestamp ASC 
+             LIMIT 1`,
+            [conversationId]
+        );
+
+        return row ? row.content : null;
+    }
 }

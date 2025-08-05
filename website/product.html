@@ -114,27 +114,37 @@
             <h2>Our Technology</h2>
             <div class="tech-content">
                 <div class="tech-image">
-                    <img src="assets/hero-image.png" alt="Cindy Technology Architecture" loading="lazy">
+                    <img src="assets/tech-architecture.png" alt="Cindy Technology Architecture" loading="lazy">
                 </div>
                 <div class="tech-text">
                     <p>Cindy's architecture combines multiple advanced technologies to deliver a seamless voice research
                         experience:</p>
                     <ul>
                         <li><strong>Wake Word Detection:</strong> Our custom wake word system uses machine learning to
-                            recognize your activation phrase with high accuracy while maintaining privacy.</li>
+                            recognize your activation phrase with high accuracy while maintaining privacy. Built on
+                            Porcupine by Picovoice, our implementation processes audio locally for maximum security.
+                        </li>
                         <li><strong>Speech-to-Text:</strong> We use advanced speech recognition models that adapt to
-                            your voice and speaking style over time.</li>
+                            your voice and speaking style over time. Supports both cloud-based (OpenAI Whisper) and
+                            offline (Whisper.cpp) transcription with automatic fallback.</li>
                         <li><strong>Natural Language Understanding:</strong> Cindy parses your queries to understand
-                            intent, context, and specific requirements for research tasks.</li>
+                            intent, context, and specific requirements for research tasks. Our system uses
+                            transformer-based
+                            models with fine-tuned embeddings for research-specific terminology.</li>
                         <li><strong>Web Crawling & Analysis:</strong> Our research engine analyzes multiple sources,
-                            evaluates credibility, and extracts relevant information.</li>
+                            evaluates credibility using domain authority metrics, and extracts relevant information with
+                            semantic understanding.</li>
                         <li><strong>Response Generation:</strong> Cindy compiles research findings into coherent,
-                            well-structured responses with proper citations.</li>
+                            well-structured responses with proper citations. Our system supports multiple LLM backends
+                            including OpenAI, Ollama, and local models with configurable temperature and context window.
+                        </li>
                         <li><strong>Voice Synthesis:</strong> Responses are delivered through natural-sounding
-                            text-to-speech that can be customized to your preferences.</li>
+                            text-to-speech that can be customized to your preferences. Supports multiple voices and
+                            languages with adjustable speed and pitch.</li>
                     </ul>
                     <p>All these components work together seamlessly to create an assistant that feels natural and
-                        intuitive to use.</p>
+                        intuitive to use. The entire system is designed with privacy in mind, giving users control over
+                        what data is processed locally versus in the cloud.</p>
                 </div>
             </div>
         </div>
@@ -232,9 +242,9 @@
                         <h4>Product</h4>
                         <ul>
                             <li><a href="index.html#features">Features</a></li>
-                            <li><a href="product.html">Technology</a></li>
+                            <li><a href="product.html#technology">Technology</a></li>
                             <li><a href="download.html">Download</a></li>
-                            <li><a href="index.html#pricing">Pricing</a></li>
+                            <li><a href="pricing.html">Pricing</a></li>
                         </ul>
                     </div>
                     <div class="footer-column">

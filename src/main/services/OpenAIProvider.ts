@@ -20,14 +20,21 @@ class OpenAIProvider {
 
     private initializeClient(): void {
         if (!this.config.apiKey) {
-            throw new Error('OpenAI API key is required');
+            console.warn('OpenAI API key not provided. OpenAI functionality will be disabled.');
+            this.client = null;
+            return;
         }
 
-        this.client = new OpenAI({
-            apiKey: this.config.apiKey,
-            organization: this.config.organizationId,
-            timeout: 60000, // 60 seconds
-        });
+        try {
+            this.client = new OpenAI({
+                apiKey: this.config.apiKey,
+                organization: this.config.organizationId,
+                timeout: 60000, // 60 seconds
+            });
+        } catch (error) {
+            console.error('Failed to initialize OpenAI client:', error);
+            this.client = null;
+        }
     }
 
     async chat(

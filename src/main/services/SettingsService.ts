@@ -212,7 +212,7 @@ class SettingsService extends EventEmitter {
                     maxTokens: 1500
                 },
                 ollama: {
-                    model: 'llama2',
+                    model: 'qwen3:8b',
                     baseUrl: 'http://127.0.0.1:11434',
                     temperature: 0.7
                 }

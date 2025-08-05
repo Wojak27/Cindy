@@ -1,0 +1,105 @@
+import React, { useState, useEffect } from 'react';
+import { ipcRenderer } from 'electron';
+import './ChatList.css';
+
+interface Conversation {
+    id: string;
+    title: string;
+    lastMessageAt: number;
+}
+
+const ChatList: React.FC<{
+    onSelectConversation: (id: string) => void;
+    onCreateNewChat: () => void;
+    currentConversationId: string;
+}> = ({ onSelectConversation, onCreateNewChat, currentConversationId }) => {
+    const [conversations, setConversations] = useState<Conversation[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        loadConversations();
+    }, []);
+
+    const loadConversations = async () => {
+        try {
+            setIsLoading(true);
+            const convos = await ipcRenderer.invoke('get-conversations');
+            setConversations(convos);
+        } catch (error) {
+            console.error('Failed to load conversations:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleNewChat = () => {
+        onCreateNewChat();
+        // Refresh conversations list after creating new chat
+        loadConversations();
+    };
+
+    const formatTimeAgo = (timestamp: number) => {
+        const now = Date.now();
+        const diff = now - timestamp;
+        const minutes = Math.floor(diff / 60000);
+        const hours = Math.floor(diff / 3600000);
+        const days = Math.floor(diff / 86400000);
+
+        if (days > 0) return `${days}d ago`;
+        if (hours > 0) return `${hours}h ago`;
+        if (minutes > 0) return `${minutes}m ago`;
+        return 'now';
+    };
+
+    const getConversationTitle = (conversation: Conversation) => {
+        // Use the first message content or fallback to timestamp
+        return conversation.title || `Conversation ${new Date(conversation.lastMessageAt).toLocaleDateString()}`;
+    };
+
+    return (
+        <div className="chat-list">
+            <div className="chat-list-header">
+                <h2>Chats</h2>
+                <button
+                    className="new-chat-button"
+                    onClick={handleNewChat}
+                    aria-label="New chat"
+                >
+                    +
+                </button>
+            </div>
+
+            <div className="chat-list-body">
+                {isLoading ? (
+                    <div className="loading">Loading...</div>
+                ) : conversations.length === 0 ? (
+                    <div className="empty-state">
+                        No conversations yet
+                    </div>
+                ) : (
+                    conversations.map((conversation) => (
+                        <div
+                            key={conversation.id}
+                            className={`chat-item ${conversation.id === currentConversationId ? 'active' : ''}`}
+                            onClick={() => onSelectConversation(conversation.id)}
+                            role="button"
+                            tabIndex={0}
+                            aria-label={`Conversation: ${getConversationTitle(conversation)}`}
+                        >
+                            <div className="chat-item-content">
+                                <div className="chat-item-title" title={getConversationTitle(conversation)}>
+                                    {getConversationTitle(conversation)}
+                                </div>
+                                <div className="chat-item-time">
+                                    {formatTimeAgo(conversation.lastMessageAt)}
+                                </div>
+                            </div>
+                        </div>
+                    ))
+                )}
+            </div>
+        </div>
+    );
+};
+
+export default ChatList;
