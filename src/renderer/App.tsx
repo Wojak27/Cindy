@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
+import { thinkingTokenHandler } from './services/ThinkingTokenHandler';
+import ThinkingBlock from './components/ThinkingBlock';
 // SoundReactiveCircle was imported but not used in the component
 // The component now uses SoundReactiveBlob instead
 import SoundReactiveBlob from './components/SoundReactiveBlob';
@@ -8,6 +10,7 @@ import SettingsPanel from './components/SettingsPanel';
 import DatabasePanel from './components/DatabasePanel';
 import { getSettings } from '../store/actions';
 import { toggleSettings } from '../store/actions';
+import { appendToLastMessage, streamComplete, streamError } from '../store/actions';
 import './styles/main.css';
 import './styles/database-sidebar.css';
 import { ipcRenderer } from 'electron';
@@ -28,7 +31,8 @@ const App: React.FC = () => {
     const dispatch = useDispatch();
     const showSettings = useSelector((state: any) => state.ui.showSettings);
     const showDatabase = useSelector((state: any) => state.ui.showDatabase);
-    const thinkingStartTime = useSelector((state: any) => state.ui.thinkingStartTime);
+    // const thinkingStartTime = useSelector((state: any) => state.ui.thinkingStartTime);
+    const thinkingBlocks = useSelector((state: any) => state.messages?.thinkingBlocks || []);
     // settings is used in the welcome message, but we're replacing that with SoundReactiveCircle
     // const settings = useSelector((state: any) => state.settings);
     const [isSpeaking, setIsSpeaking] = useState(false);
@@ -36,11 +40,12 @@ const App: React.FC = () => {
     const [isListening, setIsListening] = useState(false);
     const [inputValue, setInputValue] = useState('');
     const [liveTranscription, setLiveTranscription] = useState('');
-    const messages = useSelector((state: any) => state.messages || []);
+    const messages = useSelector((state: any) => state.messages?.messages || []);
     const [currentConversationId, setCurrentConversationId] = useState<string>(Date.now().toString());
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const audioContext = useRef<AudioContext | null>(null);
     const sounds = useRef<Record<string, AudioBuffer>>({});
+    const streamController = useRef<AbortController | null>(null);
 
     // Load conversation history when conversation changes
     useEffect(() => {
@@ -285,22 +290,89 @@ const App: React.FC = () => {
             dispatch({ type: 'ADD_MESSAGE', payload: { role: 'user', content: inputValue, timestamp: new Date().toISOString() } });
             dispatch({ type: 'START_THINKING' });
 
+            // Create new AbortController for this request
+            streamController.current = new AbortController();
+
             try {
                 // Process message through agent with conversation ID
-                const response = await ipcRenderer.invoke('process-message', inputValue, currentConversationId);
-
-                // Add assistant response to store
-                dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: response, timestamp: new Date().toISOString() } });
+                await ipcRenderer.invoke('process-message', inputValue, currentConversationId);
             } catch (error) {
                 console.error('Error processing message:', error);
                 // Add error message
                 dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: 'Sorry, I encountered an error processing your request.', timestamp: new Date().toISOString() } });
-            } finally {
                 dispatch({ type: 'STOP_THINKING' });
                 setInputValue('');
             }
         }
     };
+
+    // Cleanup function
+    useEffect(() => {
+        return () => {
+            if (streamController.current) {
+                streamController.current.abort();
+            }
+        };
+    }, []);
+
+    // Listen for streaming events from main process
+    useEffect(() => {
+        const handleStreamChunk = (event: any, data: { chunk: string, conversationId: string }) => {
+            if (data.conversationId === currentConversationId) {
+                // Process the chunk for thinking tokens
+                const processed = thinkingTokenHandler.processChunk(data.chunk, currentConversationId);
+
+                // Add any extracted thinking blocks to Redux
+                processed.thinkingBlocks.forEach(block => {
+                    dispatch({ type: 'ADD_THINKING_BLOCK', payload: block });
+                });
+
+                // Append the display content to the message
+                if (processed.displayContent) {
+                    dispatch(appendToLastMessage(processed.displayContent));
+                }
+            }
+        };
+
+        const handleStreamComplete = (event: any, data: { conversationId: string }) => {
+            if (data.conversationId === currentConversationId) {
+                // Finalize any open thinking blocks
+                const finalizedBlocks = thinkingTokenHandler.finalizeThinkingBlocks(
+                    thinkingBlocks.filter((block: any) => !block.endTime)
+                );
+                finalizedBlocks.forEach((block: any) => {
+                    dispatch({ type: 'UPDATE_THINKING_BLOCK', payload: block });
+                });
+
+                dispatch(streamComplete());
+                dispatch({ type: 'STOP_THINKING' });
+                setInputValue('');
+            }
+        };
+
+        const handleStreamError = (event: any, data: { error: string, conversationId: string }) => {
+            if (data.conversationId === currentConversationId) {
+                dispatch(streamError(data.error));
+                dispatch({ type: 'STOP_THINKING' });
+                dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: `Sorry, I encountered an error: ${data.error}`, timestamp: new Date().toISOString() } });
+                setInputValue('');
+            }
+        };
+
+        ipcRenderer.on('stream-chunk', handleStreamChunk);
+        ipcRenderer.on('stream-complete', handleStreamComplete);
+        ipcRenderer.on('stream-error', handleStreamError);
+
+        // Cleanup listeners on unmount
+        return () => {
+            ipcRenderer.off('stream-chunk', handleStreamChunk);
+            ipcRenderer.off('stream-complete', handleStreamComplete);
+            ipcRenderer.off('stream-error', handleStreamError);
+            if (streamController.current) {
+                streamController.current.abort();
+            }
+        };
+    }, [currentConversationId, dispatch, thinkingBlocks]);
 
     // Handle input change
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -407,55 +479,6 @@ const App: React.FC = () => {
                             {messages.map((msg: any, index: number) => {
                                 const messageClass = `message ${msg.role} ${isSpeaking && msg.role === 'assistant' ? 'speaking' : ''} ${isListening ? 'listening' : ''}`;
 
-                                // Process message content to handle thinking sections
-                                const processContent = (content: string) => {
-                                    if (!content) return '';
-
-                                    // Replace thinking sections with expandable blocks
-                                    const regex = /<tool_call>([\s\S]*?)<\/think>/gi;
-                                    return content.split(regex).map((part, i) => {
-                                        // Even indices are non-thinking content, odd indices are thinking content
-                                        if (i % 2 === 1) {
-                                            const blockId = `thinking-${index}-${Math.floor(i / 2)}`;
-                                            return (
-                                                <div key={blockId} className="thinking-block">
-                                                    <button
-                                                        className="thinking-toggle"
-                                                        onClick={() => {
-                                                            const contentEl = document.getElementById(`${blockId}-content`);
-                                                            const toggleEl = document.getElementById(`${blockId}-toggle`);
-                                                            if (contentEl && toggleEl) {
-                                                                contentEl.style.display = contentEl.style.display === 'none' ? 'block' : 'none';
-                                                                toggleEl.textContent = contentEl.style.display === 'none' ? '▶' : '▼';
-                                                            }
-                                                        }}
-                                                    >
-                                                        <span id={`${blockId}-toggle`}>💡</span> <span className="thinking-text">Thought for</span> <span className="thinking-timer">{getElapsedTime()}</span>
-                                                    </button>
-                                                    <div
-                                                        id={`${blockId}-content`}
-                                                        className="thinking-content"
-                                                        style={{ display: 'none' }}
-                                                    >
-                                                        {part}
-                                                    </div>
-                                                </div>
-                                            );
-                                        }
-                                        // Regular text content (including content outside thinking tags)
-                                        return part;
-                                    });
-                                };
-
-                                // Calculate elapsed time since thinking started
-                                const getElapsedTime = () => {
-                                    if (!thinkingStartTime) return '00:00';
-                                    const elapsed = Math.floor((Date.now() - thinkingStartTime) / 1000);
-                                    const minutes = Math.floor(elapsed / 60).toString().padStart(2, '0');
-                                    const seconds = (elapsed % 60).toString().padStart(2, '0');
-                                    return `${minutes}:${seconds}`;
-                                };
-
                                 return (
                                     <div
                                         key={index}
@@ -463,7 +486,24 @@ const App: React.FC = () => {
                                     >
                                         <div className="message-content">
                                             {msg.content && typeof msg.content === 'string' ? (
-                                                processContent(msg.content)
+                                                <>
+                                                    {/* Render thinking blocks from Redux state */}
+                                                    {thinkingBlocks
+                                                        .filter((block: any) => block.startTime >= msg.timestamp)
+                                                        .map((block: any) => (
+                                                            <ThinkingBlock
+                                                                key={block.id}
+                                                                id={block.id}
+                                                                content={block.content}
+                                                                startTime={block.startTime}
+                                                                endTime={block.endTime}
+                                                                duration={block.duration}
+                                                                defaultOpen={false}
+                                                            />
+                                                        ))}
+                                                    {/* Display the message content */}
+                                                    {msg.content}
+                                                </>
                                             ) : (
                                                 msg.content
                                             )}

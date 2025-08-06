@@ -603,3 +603,25 @@ body {
     font-size: 16px;
     color: #666;
 }
+
+/* Thinking Block Styles - Import component-specific styles */
+@import '../components/ThinkingBlock.css';
+
+/* Additional global thinking block styles if needed */
+.message .thinking-block {
+    margin: 8px 0;
+    border-radius: 8px;
+}
+
+.message .thinking-toggle {
+    padding: 8px 12px;
+    font-size: 13px;
+}
+
+.message .thinking-content {
+    padding: 12px;
+}
+
+.message .thinking-paragraph {
+    margin: 6px 0;
+}

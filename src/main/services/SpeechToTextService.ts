@@ -51,20 +51,11 @@ class SpeechToTextService extends EventEmitter {
 
     async transcribe(audioData: ArrayBuffer | Int16Array[]): Promise<string> {
         try {
-            // Convert Int16Array[] to ArrayBuffer if needed
+            // Convert Int16Array[] to WAV ArrayBuffer
             let buffer: ArrayBuffer;
             if (Array.isArray(audioData)) {
-                // Convert Int16Array[] to ArrayBuffer
-                const totalLength = audioData.reduce((sum, arr) => sum + arr.length, 0);
-                buffer = new ArrayBuffer(totalLength * 2);
-                const view = new DataView(buffer);
-                let offset = 0;
-                for (const chunk of audioData) {
-                    for (const sample of chunk) {
-                        view.setInt16(offset, sample, true);
-                        offset += 2;
-                    }
-                }
+                // Convert Int16Array[] to WAV format
+                buffer = this.int16ArraysToWav(audioData);
             } else {
                 buffer = audioData;
             }
@@ -99,6 +90,68 @@ class SpeechToTextService extends EventEmitter {
         } catch (error) {
             this.emit('transcriptionError', error);
             throw error;
+        }
+    }
+
+    /**
+     * Converts Int16Array audio chunks to WAV format ArrayBuffer
+     * @param chunks Array of Int16Array audio data chunks
+     * @returns ArrayBuffer containing WAV file data
+     */
+    private int16ArraysToWav(chunks: Int16Array[]): ArrayBuffer {
+        // Calculate total number of samples
+        const totalSamples = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+
+        // WAV header parameters
+        const sampleRate = 16000;
+        const numChannels = 1;
+        const bitsPerSample = 16;
+        const byteRate = sampleRate * numChannels * bitsPerSample / 8;
+        const blockAlign = numChannels * bitsPerSample / 8;
+        const dataSize = totalSamples * 2; // 2 bytes per sample
+        const riffChunkSize = 36 + dataSize;
+
+        // Create buffer for WAV file (RIFF header + data)
+        const buffer = new ArrayBuffer(44 + dataSize);
+        const view = new DataView(buffer);
+
+        // RIFF header
+        this.writeString(view, 0, 'RIFF');
+        view.setUint32(4, riffChunkSize, true);
+        this.writeString(view, 8, 'WAVE');
+
+        // Format chunk
+        this.writeString(view, 12, 'fmt ');
+        view.setUint32(16, 16, true); // fmt chunk size
+        view.setUint16(20, 1, true); // audio format (PCM)
+        view.setUint16(22, numChannels, true); // number of channels
+        view.setUint32(24, sampleRate, true); // sample rate
+        view.setUint32(28, byteRate, true); // byte rate
+        view.setUint16(32, blockAlign, true); // block align
+        view.setUint16(34, bitsPerSample, true); // bits per sample
+
+        // Data chunk
+        this.writeString(view, 36, 'data');
+        view.setUint32(40, dataSize, true);
+
+        // Add audio data
+        let offset = 44;
+        for (const chunk of chunks) {
+            for (let i = 0; i < chunk.length; i++) {
+                view.setInt16(offset, chunk[i], true);
+                offset += 2;
+            }
+        }
+
+        return buffer;
+    }
+
+    /**
+     * Helper method to write a string to a DataView
+     */
+    private writeString(view: DataView, offset: number, str: string): void {
+        for (let i = 0; i < str.length; i++) {
+            view.setUint8(offset + i, str.charCodeAt(i));
         }
     }
 
@@ -196,21 +249,91 @@ class OnlineSTTEngine {
 
 class OfflineSTTEngine {
     private isInitialized: boolean = false;
+    private whisperFunction: any;
+    private modelPath: string;
+    private modelDir: string = require('path').join(require('os').homedir(), '.cindy', 'models');
 
     constructor(private config: STTConfig) {
+        this.modelPath = require('path').join(this.modelDir, `ggml-${this.config.offlineModel || 'base'}.bin`);
     }
 
     async initialize(): Promise<void> {
         if (this.isInitialized) return;
 
         try {
-            // This is a simplified example - actual implementation would initialize whisper.cpp
-            console.log('Initializing offline STT engine with model:', this.config.offlineModel);
+            // Ensure model directory exists
+            await require('fs').promises.mkdir(this.modelDir, { recursive: true });
+
+            // Download model if it doesn't exist
+            if (!await this.modelExists()) {
+                await this.downloadModel();
+            }
+
+            // Import whisper-node function (not constructor)
+            const { whisper } = require('whisper-node');
+            this.whisperFunction = whisper;
+
             this.isInitialized = true;
+            console.log('Offline STT engine initialized with model:', this.modelPath);
         } catch (error) {
             console.error('Failed to initialize offline STT engine:', error);
             throw error;
         }
+    }
+
+    private async modelExists(): Promise<boolean> {
+        try {
+            await require('fs').promises.access(this.modelPath);
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    private async downloadModel(): Promise<void> {
+        console.log(`Downloading Whisper ${this.config.offlineModel} model to ${this.modelPath}...`);
+
+        // Map config model to Hugging Face model names
+        const modelMap: Record<string, string> = {
+            'tiny': 'ggml-tiny.bin',
+            'base': 'ggml-base.bin',
+            'small': 'ggml-small.bin',
+            'medium': 'ggml-medium.bin'
+        };
+
+        const modelName = modelMap[this.config.offlineModel || 'base'];
+        const modelUrl = `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${modelName}`;
+
+        const response = await fetch(modelUrl);
+        if (!response.ok) {
+            throw new Error(`Failed to download model: ${response.status} ${response.statusText}`);
+        }
+
+        const fileStream = require('fs').createWriteStream(this.modelPath);
+        // Convert ReadableStream to Node.js stream and pipe to file
+        const reader = response.body.getReader();
+        await new Promise((resolve, reject) => {
+            const writeChunk = async () => {
+                try {
+                    const { done, value } = await reader.read();
+                    if (done) {
+                        fileStream.end();
+                        resolve(undefined);
+                        return;
+                    }
+                    fileStream.write(value);
+                    writeChunk();
+                } catch (error) {
+                    fileStream.destroy(error);
+                    reject(error);
+                }
+            };
+            fileStream.on('error', reject);
+            fileStream.on('finish', resolve);
+            writeChunk();
+        });
+
+        console.log(`Model downloaded successfully to ${this.modelPath}`);
     }
 
     async transcribe(audioData: ArrayBuffer): Promise<string> {
@@ -218,27 +341,76 @@ class OfflineSTTEngine {
             await this.initialize();
         }
 
-        // Convert ArrayBuffer to temporary file
+        // Convert ArrayBuffer to temporary WAV file
         const tempFilePath = require('path').join(require('os').tmpdir(), `cindy_audio_${Date.now()}.wav`);
         await require('fs').promises.writeFile(tempFilePath, Buffer.from(audioData));
 
-        return new Promise((resolve, reject) => {
-            // In a real implementation, this would call whisper.cpp
-            setTimeout(() => {
-                // Clean up temporary file
-                require('fs').promises.unlink(tempFilePath).catch(console.warn);
+        try {
+            // Transcribe using whisper-node function
+            console.log('DEBUG: Calling whisper function with options:', {
+                modelPath: this.modelPath,
+                language: this.config.language
+            });
 
-                // Return simulated result
-                resolve("This is a simulated transcription result from the offline STT engine.");
-            }, 1000);
-        });
+            const result = await this.whisperFunction(tempFilePath, {
+                modelPath: this.modelPath,
+                whisperOptions: {
+                    language: this.config.language,
+                    word_timestamps: false,
+                    gen_file_txt: false,
+                    gen_file_vtt: false,
+                    gen_file_srt: false
+                }
+            });
+
+            console.log('DEBUG: Raw whisper result:', result);
+            console.log('DEBUG: Result type:', typeof result);
+            console.log('DEBUG: Is array:', Array.isArray(result));
+
+            // Clean up temporary file
+            await require('fs').promises.unlink(tempFilePath);
+
+            // Handle empty or null results gracefully
+            if (!result) {
+                console.log('DEBUG: Whisper returned null/undefined result');
+                return '';
+            }
+
+            // Extract text from result array - whisper-node returns array of {start, end, speech}
+            if (Array.isArray(result)) {
+                const text = result.map(segment => segment.speech || '').join(' ').trim();
+                console.log('DEBUG: Extracted text:', text);
+                return text;
+            } else {
+                console.log('DEBUG: Unexpected result format, returning as string');
+                return String(result || '');
+            }
+        } catch (error) {
+            // Clean up temporary file on error
+            await require('fs').promises.unlink(tempFilePath).catch(console.warn);
+            console.error('Whisper transcription failed:', error);
+
+            // Return empty string instead of throwing for parsing errors
+            if (error.message && error.message.includes('Cannot read properties of null')) {
+                console.log('DEBUG: Handling whisper-node parsing error gracefully');
+                return '';
+            }
+
+            throw error;
+        }
     }
 
     async updateConfig(config: STTConfig): Promise<void> {
+        const modelChanged = this.config.offlineModel !== config.offlineModel;
         this.config = config;
-        // Re-initialize if model changed
-        if (this.isInitialized) {
+
+        // Update model path if model changed
+        if (modelChanged) {
+            this.modelPath = require('path').join(this.modelDir, `ggml-${this.config.offlineModel || 'base'}.bin`);
             this.isInitialized = false;
+        }
+
+        if (this.isInitialized) {
             await this.initialize();
         }
     }

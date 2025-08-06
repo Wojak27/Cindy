@@ -28,7 +28,10 @@ let store = createStore(
             blobSensitivity: 0.5,
             blobStyle: 'moderate'
         },
-        messages: [],
+        messages: {
+            messages: [],
+            thinkingBlocks: []
+        },
         ui: {
             showSettings: false,
             showDatabase: false,
@@ -68,7 +71,10 @@ const initializeStore = async () => {
                     blobSensitivity: settings.general?.blobSensitivity || 0.5,
                     blobStyle: settings.general?.blobStyle || 'moderate'
                 },
-                messages: [],
+                messages: {
+                    messages: [],
+                    thinkingBlocks: []
+                },
                 ui: {
                     showSettings: false,
                     showDatabase: false,
@@ -113,7 +119,10 @@ const initializeStore = async () => {
             rootReducer,
             {
                 settings: defaultSettings,
-                messages: [],
+                messages: {
+                    messages: [],
+                    thinkingBlocks: []
+                },
                 ui: {
                     showSettings: false,
                     showDatabase: false,

@@ -109,13 +109,35 @@ const createWindow = async (): Promise<void> => {
 const createTray = async (): Promise<void> => {
     // Determine platform-appropriate icon format
     const getTrayIcon = (): string | NativeImage => {
-        const basePath = path.join(__dirname, 'assets/icons/');
+        const fs = require('fs');
+
+        // Helper function to find icon with fallback path resolution
+        const findIconPath = (iconName: string): string => {
+            // Try different possible locations for assets
+            const possiblePaths = [
+                path.join(process.cwd(), 'assets/icons/', iconName),      // Project root (development)
+                path.join(__dirname, '../assets/icons/', iconName),      // Relative to compiled main
+                path.join(__dirname, 'assets/icons/', iconName),         // Same directory as main
+                path.join(process.cwd(), 'src/assets/icons/', iconName), // Source directory
+            ];
+
+            for (const iconPath of possiblePaths) {
+                if (fs.existsSync(iconPath)) {
+                    return iconPath;
+                }
+            }
+
+            // Return first path as fallback if none exist
+            return possiblePaths[0];
+        };
+
         if (process.platform === 'win32') {
-            return path.join(basePath, 'tray-icon.ico');
+            return findIconPath('tray-icon.ico');
         }
 
         if (process.platform === 'darwin') {
-            const iconPath = path.join(basePath, 'tray-icon.png');
+            const iconPath = findIconPath('tray-icon.png');
+
             try {
                 const icon = nativeImage.createFromPath(iconPath);
                 if (icon.isEmpty()) {
@@ -123,10 +145,9 @@ const createTray = async (): Promise<void> => {
                 }
                 const { width, height } = icon.getSize();
                 if (width < 16 || height < 16) {
-                    console.warn(`Icon too small (${width}x${height}), using default`);
-                    const fallbackIcon = nativeImage.createFromPath(
-                        path.join(basePath, 'tray-icon-connected.png')
-                    ).resize({ width: 16, height: 16 });
+                    console.warn(`Icon too small (${width}x${height}), using fallback`);
+                    const fallbackPath = findIconPath('tray-icon-connected.png');
+                    const fallbackIcon = nativeImage.createFromPath(fallbackPath).resize({ width: 16, height: 16 });
                     fallbackIcon.setTemplateImage(true);
                     return fallbackIcon;
                 }
@@ -135,15 +156,14 @@ const createTray = async (): Promise<void> => {
                 return resizedIcon;
             } catch (error) {
                 console.error('Tray icon error:', error);
-                const smallIcon = nativeImage.createFromPath(
-                    path.join(basePath, 'tray-icon-connected.png')
-                ).resize({ width: 16, height: 16 });
+                const fallbackPath = findIconPath('tray-icon-connected.png');
+                const smallIcon = nativeImage.createFromPath(fallbackPath).resize({ width: 16, height: 16 });
                 smallIcon.setTemplateImage(true);
                 return smallIcon;
             }
         } else {
             // Linux and other platforms
-            return path.join(basePath, 'tray-icon.png');
+            return findIconPath('tray-icon.png');
         }
     };
 
@@ -558,8 +578,8 @@ app.on('ready', async () => {
         }
     });
 
-    // IPC handler for processing messages
-    ipcMain.handle('process-message', async (event, message: string, conversationId: string) => {
+    // IPC handler for processing messages with streaming
+    ipcMain.handle('process-message', async (event, message: string, conversationId: string): Promise<string> => {
         console.log('Main process - process-message IPC called with:', message);
         try {
             if (!cindyAgent) {
@@ -577,24 +597,27 @@ app.on('ready', async () => {
 
             // Handle streaming response
             if (typeof response === 'object' && 'next' in response) {
-                // Convert async generator to string
-                let result = '';
+                // Stream chunks to renderer process
                 for await (const chunk of response as AsyncGenerator<string>) {
-                    result += chunk;
+                    event.sender.send('stream-chunk', { chunk, conversationId });
                 }
-                return result;
+                event.sender.send('stream-complete', { conversationId });
+                return ""; // Return empty string since we're streaming
             }
 
-            // Return direct response
-            return response as string;
+            // Return direct response for non-streaming case
+            event.sender.send('stream-chunk', { chunk: response as string, conversationId });
+            event.sender.send('stream-complete', { conversationId });
+            return "";
         } catch (error) {
             console.error('Main process - process-message: error processing message:', error);
-            // Provide more specific error message based on error type
-            if (error instanceof Error) {
-                return `Sorry, I encountered an error processing your request: ${error.message}`;
-            }
-            return "Sorry, I encountered an error processing your request.";
+            // Send error to renderer
+            event.sender.send('stream-error', {
+                error: error instanceof Error ? error.message : 'Unknown error',
+                conversationId
+            });
         }
+        return "Sorry, I encountered an error processing your request.";
     });
 
     // IPC handler for creating conversations

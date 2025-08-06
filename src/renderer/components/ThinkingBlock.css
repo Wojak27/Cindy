@@ -1,0 +1,118 @@
+.thinking-block {
+    margin: 12px 0;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+    background-color: #f8f9fa;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.thinking-toggle {
+    width: 100%;
+    padding: 12px 16px;
+    background-color: #f0f2f5;
+    border: none;
+    border-bottom: 1px solid #e0e0e0;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #1a1a1a;
+    transition: all 0.2s ease;
+}
+
+.thinking-toggle:hover {
+    background-color: #e6e8eb;
+}
+
+.thinking-toggle.open {
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.thinking-toggle .thinking-icon {
+    font-size: 16px;
+}
+
+.thinking-toggle .thinking-label {
+    font-weight: 600;
+    color: #1a73e8;
+}
+
+.thinking-toggle .thinking-duration {
+    color: #5f6368;
+    font-family: 'Courier New', monospace;
+    margin-left: auto;
+}
+
+.thinking-toggle .thinking-arrow {
+    color: #5f6368;
+    margin-left: 8px;
+    transition: transform 0.2s ease;
+}
+
+.thinking-toggle.open .thinking-arrow {
+    transform: rotate(180deg);
+}
+
+.thinking-content {
+    padding: 0;
+    transition: all 0.3s ease;
+    max-height: 0;
+    overflow: hidden;
+}
+
+.thinking-content.expanded {
+    max-height: 1000px;
+    padding: 16px;
+}
+
+.thinking-content-inner {
+    line-height: 1.5;
+    color: #3c4043;
+}
+
+.thinking-paragraph {
+    margin: 8px 0;
+    line-height: 1.5;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+    .thinking-block {
+        background-color: #2d2d2d;
+        border-color: #3c3c3c;
+    }
+
+    .thinking-toggle {
+        background-color: #3c3c3c;
+        color: #e0e0e0;
+        border-color: #3c3c3c;
+    }
+
+    .thinking-toggle:hover {
+        background-color: #4a4a4a;
+    }
+
+    .thinking-toggle .thinking-label {
+        color: #8ab4f8;
+    }
+
+    .thinking-toggle .thinking-duration {
+        color: #b0b0b0;
+    }
+
+    .thinking-toggle .thinking-arrow {
+        color: #b0b0b0;
+    }
+
+    .thinking-content-inner {
+        color: #e0e0e0;
+    }
+
+    .thinking-paragraph {
+        color: #e0e0e0;
+    }
+}

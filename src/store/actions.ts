@@ -1,3 +1,24 @@
+// Thinking block actions
+export const addThinkingBlock = (block: any) => ({
+  type: 'ADD_THINKING_BLOCK',
+  payload: block
+});
+
+export const updateThinkingBlock = (block: any) => ({
+  type: 'UPDATE_THINKING_BLOCK',
+  payload: block
+});
+
+export const completeThinkingBlock = (blockId: string, endTime: number) => ({
+  type: 'COMPLETE_THINKING_BLOCK',
+  payload: { blockId, endTime }
+});
+
+export const clearThinkingBlocks = () => ({
+  type: 'CLEAR_THINKING_BLOCKS'
+});
+
+// Existing actions
 export const getSettings = () => ({
     type: 'GET_SETTINGS'
 });
@@ -38,4 +59,19 @@ export const startThinking = () => ({
 
 export const stopThinking = () => ({
     type: 'STOP_THINKING'
+});
+
+// Streaming actions
+export const appendToLastMessage = (content: string) => ({
+    type: 'APPEND_TO_LAST_MESSAGE',
+    payload: content
+});
+
+export const streamComplete = () => ({
+    type: 'STREAM_COMPLETE'
+});
+
+export const streamError = (error: string) => ({
+    type: 'STREAM_ERROR',
+    payload: error
 });
