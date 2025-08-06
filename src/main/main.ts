@@ -1,11 +1,17 @@
-import { app, BrowserWindow, Menu, nativeImage, NativeImage, ipcMain } from 'electron';
+import { app, BrowserWindow, Menu, nativeImage, NativeImage, ipcMain, desktopCapturer } from 'electron';
 import * as path from 'path';
 import { CindyMenu } from './menu';
+import { createStore, applyMiddleware } from 'redux';
 import { SettingsService, Settings } from './services/SettingsService';
 import { TrayService } from './services/TrayService';
+import { rootReducer } from '../store/reducers';
+import { persistenceMiddleware } from '../store/middleware/persistenceMiddleware';
 import axios from 'axios';
 import { ChatStorageService } from './services/ChatStorageService';
 import { LLMRouterService } from './services/LLMRouterService';
+import { CindyAgent } from './agents/CindyAgent';
+import { MemoryService } from './services/MemoryService';
+import { ToolExecutorService } from './services/ToolExecutorService';
 
 async function waitForDevServer(maxRetries = 10, delay = 1000): Promise<boolean> {
     for (let i = 0; i < maxRetries; i++) {
@@ -32,7 +38,8 @@ let trayService: TrayService | null = null;
 let settingsService: SettingsService | null = null;
 let chatStorageService: ChatStorageService | null = null;
 let llmRouterService: LLMRouterService | null = null;
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+let cindyAgent: CindyAgent | null = null;
+// Removed unused wakeWordService variable
 
 const createWindow = async (): Promise<void> => {
     // Ensure settings service is initialized
@@ -174,8 +181,90 @@ const createTray = async (): Promise<void> => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', async () => {
+    // Initialize desktopCapturer IPC handler first
+    ipcMain.handle('get-desktop-audio-sources', async () => {
+        try {
+            const sources = await desktopCapturer.getSources({
+                types: ['audio']
+            });
+            return sources;
+        } catch (error) {
+            console.error('Failed to get desktop audio sources:', error);
+            throw error;
+        }
+    });
+
     // Add 2-second timeout at startup
     await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Initialize settings service first
+    if (!settingsService) {
+        settingsService = new SettingsService();
+        await settingsService.initialize();
+    }
+
+    // Initialize LLMRouterService
+    if (!llmRouterService) {
+        const settings = await settingsService?.get('llm');
+        if (settings) {
+            // Get the API key from secure storage
+            const apiKey = await settingsService?.getApiKey();
+
+            // Create a complete config with all required properties
+            const llmConfig = {
+                ...settings,
+                openai: {
+                    ...settings.openai,
+                    apiKey: apiKey || ''  // Provide empty string if no API key
+                },
+                streaming: true,
+                timeout: 30000
+            };
+            llmRouterService = new LLMRouterService(llmConfig);
+            await llmRouterService.initialize();
+        }
+    }
+
+    // Initialize ChatStorageService
+    try {
+        chatStorageService = new ChatStorageService();
+        await chatStorageService.initialize();
+    } catch (error) {
+        console.error('Failed to initialize ChatStorageService:', error);
+    }
+
+    // Initialize CindyAgent after other services
+    if (!cindyAgent && llmRouterService && settingsService && chatStorageService) {
+        // Initialize Redux store with persistence middleware
+        // Initialize Redux store with persistence middleware
+        let store = createStore(
+            rootReducer,
+            applyMiddleware(persistenceMiddleware)
+        );
+        const memoryService = new MemoryService(store);
+        const toolExecutor = new ToolExecutorService();
+
+        // Get agent config from settings
+        const agentConfig = await settingsService.get('general') || {};
+
+        cindyAgent = new CindyAgent({
+            store: {},
+            memoryService,
+            toolExecutor,
+            config: {
+                enableStreaming: true,
+                ...agentConfig
+            },
+            llmRouter: llmRouterService
+        });
+    }
+
+    // Initialize wake word service after settings service
+    if (settingsService && mainWindow) {
+        const WakeWordService = require('./services/WakeWordService').default;
+        // Initialize WakeWordService but don't store reference since it's not used
+        new WakeWordService(settingsService, mainWindow);
+    }
 
     // Initialize settings service first
     if (!settingsService) {
@@ -370,12 +459,17 @@ app.on('ready', async () => {
         return await settingsService.getAll();
     });
 
+
     // IPC handler for starting audio recording
     ipcMain.handle('start-recording', async () => {
         console.log('Main process - start-recording IPC called');
         if (!mainWindow) {
             console.error('Main process - start-recording: mainWindow not available');
             return { success: false, error: 'Main window not available' };
+        }
+        if (mainWindow.webContents.isDestroyed()) {
+            console.error('Main process - start-recording: webContents is destroyed');
+            return { success: false, error: 'Web contents destroyed' };
         }
         try {
             console.log('Main process - start-recording: sending start-recording to renderer');
@@ -395,20 +489,26 @@ app.on('ready', async () => {
             console.error('Main process - stop-recording: mainWindow not available');
             return null;
         }
+        if (mainWindow.webContents.isDestroyed()) {
+            console.error('Main process - stop-recording: webContents is destroyed');
+            return null;
+        }
         try {
             console.log('Main process - stop-recording: sending get-audio-data to renderer');
             // Send message to renderer to get audio data
             await mainWindow.webContents.send('get-audio-data');
+            console.log('Main process - stop-recording: get-audio-data sent to renderer');
 
             // We'll get the audio data back via a response event
             // Return a promise that resolves when we receive the audio data
             return new Promise((resolve) => {
                 const listener = (event: Electron.IpcMainEvent, audioData: Int16Array[]) => {
-                    console.log('Main process - stop-recording: received audio data from renderer');
+                    console.log('Main process - stop-recording: received audio data from renderer, length:', audioData?.length || 0);
                     ipcMain.removeListener('audio-data', listener);
                     resolve(audioData);
                 };
                 ipcMain.on('audio-data', listener);
+                console.log('Main process - stop-recording: listener registered for audio-data');
 
                 // Set a timeout in case we don't receive the data
                 setTimeout(() => {
@@ -440,11 +540,37 @@ app.on('ready', async () => {
     ipcMain.handle('process-message', async (event, message: string, conversationId: string) => {
         console.log('Main process - process-message IPC called with:', message);
         try {
-            // This would normally send the message to the LLM agent
-            // For now, return a mock response
-            return "I heard you say: " + message;
+            if (!cindyAgent) {
+                console.error('Main process - process-message: cindyAgent not initialized');
+                return "Sorry, I encountered an error processing your request. The assistant is not properly initialized.";
+            }
+
+            // Process message through the agent
+            const response = await cindyAgent.process(message, {
+                conversationId,
+                sessionId: Date.now().toString(),
+                timestamp: new Date(),
+                preferences: {}
+            });
+
+            // Handle streaming response
+            if (typeof response === 'object' && 'next' in response) {
+                // Convert async generator to string
+                let result = '';
+                for await (const chunk of response as AsyncGenerator<string>) {
+                    result += chunk;
+                }
+                return result;
+            }
+
+            // Return direct response
+            return response as string;
         } catch (error) {
             console.error('Main process - process-message: error processing message:', error);
+            // Provide more specific error message based on error type
+            if (error instanceof Error) {
+                return `Sorry, I encountered an error processing your request: ${error.message}`;
+            }
             return "Sorry, I encountered an error processing your request.";
         }
     });

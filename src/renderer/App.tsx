@@ -140,18 +140,17 @@ const App: React.FC = () => {
 
     // Handle microphone button click for recording
     const handleMicClick = async () => {
+        console.log('Mic click handler called, isRecording:', isRecording);
         playSound('activation');
-        // Show visual feedback that recording is starting
-        setIsRecording(true);
-
-        // Send start-recording IPC to renderer service
-        ipcRenderer.send('start-recording');
 
         if (isRecording) {
+            console.log('Stopping recording...');
             // Stop recording
             try {
+                console.log('App.tsx: Invoking stop-recording IPC');
                 // Stop recording - this will trigger audio data to be sent
                 const audioData = await ipcRenderer.invoke('stop-recording');
+                console.log('Audio data received:', audioData);
 
                 if (audioData && audioData.length > 0) {
                     // Convert Int16Array[] to ArrayBuffer for transcription
@@ -192,6 +191,8 @@ const App: React.FC = () => {
                             }
                         }
                     }
+                } else {
+                    console.log('No audio data received or audio data is empty');
                 }
             } catch (error) {
                 console.error('Error during recording/transcription:', error);
@@ -200,14 +201,18 @@ const App: React.FC = () => {
                 setIsRecording(false);
             }
         } else {
-            // Start recording
-            try {
-                await ipcRenderer.invoke('start-recording');
-                setIsRecording(true);
-            } catch (error) {
-                console.error('Error starting recording:', error);
-                playSound('error');
-            }
+            console.log('Starting recording...');
+            // Show visual feedback that recording is starting
+            setIsRecording(true);
+            console.log('App.tsx: isRecording state set to true');
+
+            // Send start-recording IPC to renderer service
+            ipcRenderer.invoke('start-recording').then(() => {
+                console.log('App.tsx: start-recording IPC sent to renderer');
+            }).catch((error) => {
+                console.error('App.tsx: Error sending start-recording IPC to renderer:', error);
+            });
+            console.log('App.tsx: start-recording IPC invoked to renderer');
         }
     };
 

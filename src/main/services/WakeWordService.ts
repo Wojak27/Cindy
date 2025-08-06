@@ -10,16 +10,20 @@ class WakeWordService extends EventEmitter {
     private isListening: boolean = false;
     private detectionInterval: NodeJS.Timeout | null = null;
     private accessKey: string = ''; // Will be loaded from secure storage
+    private mainWindow: Electron.BrowserWindow | null;
 
-    constructor(settingsService: SettingsService) {
+    constructor(settingsService: SettingsService, mainWindow: Electron.BrowserWindow) {
         super();
         this.settingsService = settingsService;
         this.porcupine = new PorcupineWrapper();
         this.audioCapture = audioCaptureService;
+        this.mainWindow = mainWindow;
     }
 
     async startListening(): Promise<void> {
+        console.log('WakeWordService: Starting wake word listening');
         if (this.isListening) {
+            console.log('WakeWordService: Already listening, aborting start');
             return;
         }
 
@@ -51,7 +55,9 @@ class WakeWordService extends EventEmitter {
     }
 
     async stopListening(): Promise<void> {
+        console.log('WakeWordService: Stopping wake word listening');
         if (!this.isListening) {
+            console.log('WakeWordService: Not currently listening, aborting stop');
             return;
         }
 
@@ -78,15 +84,26 @@ class WakeWordService extends EventEmitter {
 
     private async detectWakeWord(): Promise<void> {
         try {
-            const audioDataArray = await this.audioCapture.stopCapture();
-            const audioData = audioDataArray.length > 0 ? audioDataArray[audioDataArray.length - 1] : new Int16Array(0);
-            const detected = await this.porcupine.process(audioData);
+            console.log('WakeWordService: Starting wake word detection cycle');
 
-            if (detected) {
-                this.emit('wakeWordDetected');
+            // Check if main window and web contents are available and not destroyed
+            if (this.mainWindow && this.mainWindow.webContents && !this.mainWindow.webContents.isDestroyed()) {
+                console.log('WakeWordService: Main window and web contents are available');
+                const audioDataArray = await this.audioCapture.stopCapture();
+                const audioData = audioDataArray.length > 0 ? audioDataArray[audioDataArray.length - 1] : new Int16Array(0);
+                const detected = await this.porcupine.process(audioData);
+
+                if (detected) {
+                    console.log('WakeWordService: Wake word detected!');
+                    this.emit('wakeWordDetected');
+                } else {
+                    console.log('WakeWordService: No wake word detected');
+                }
+            } else {
+                console.log('WakeWordService: Main window or web contents not available for detection');
             }
         } catch (error) {
-            console.error('Error in wake word detection:', error);
+            console.error('WakeWordService: Error in wake word detection:', error);
         }
     }
 
