@@ -90,3 +90,39 @@
 .thinking-paragraph:last-child {
     margin-bottom: 0;
 }
+
+/* Light mode styling for thinking blocks */
+[data-theme="light"] .thinking-block {
+    background: #f8f9fa;
+    border-color: #e5e7eb;
+}
+
+[data-theme="light"] .thinking-toggle {
+    background: #ffffff;
+    color: #1f2937;
+    border-bottom-color: #e5e7eb;
+}
+
+[data-theme="light"] .thinking-toggle:hover {
+    background: #f8f9fa;
+}
+
+[data-theme="light"] .thinking-toggle .thinking-label {
+    color: #2563eb;
+}
+
+[data-theme="light"] .thinking-toggle .thinking-duration {
+    color: #6b7280;
+}
+
+[data-theme="light"] .thinking-toggle .thinking-arrow {
+    color: #6b7280;
+}
+
+[data-theme="light"] .thinking-content-inner {
+    color: #4b5563;
+}
+
+[data-theme="light"] .thinking-paragraph {
+    color: #4b5563;
+}

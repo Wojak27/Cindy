@@ -26,8 +26,11 @@ const SettingsPanel: React.FC = () => {
     const dispatch = useDispatch();
     const settings = useSelector((state: any) => state.settings);
     // Initialize state with defaults to prevent uncontrolled to controlled input warning
-    const [activationPhrase, setActivationPhrase] = useState(settings?.voice?.activationPhrase || 'cindy');
+    const [activationPhrase, setActivationPhrase] = useState(settings?.voice?.activationPhrase || 'Hi Cindy!');
     const [sttProvider, setSttProvider] = useState(settings?.voice?.sttProvider || 'auto');
+    const [wakeWordSensitivity, setWakeWordSensitivity] = useState(settings?.voice?.wakeWordSensitivity || 0.5);
+    const [wakeWordEnabled, setWakeWordEnabled] = useState(true);
+    const [wakeWordStatus, setWakeWordStatus] = useState('Checking...');
 
     // LLM settings state
     const [llmProvider, setLlmProvider] = useState(settings?.llm?.provider || 'ollama');
@@ -59,8 +62,9 @@ const SettingsPanel: React.FC = () => {
         console.log('🔧 DEBUG: Profile name specifically:', settings?.profile?.name);
 
         if (settings) {
-            setActivationPhrase(settings?.voice?.activationPhrase || 'cindy');
+            setActivationPhrase(settings?.voice?.activationPhrase || 'Hi Cindy!');
             setSttProvider(settings?.voice?.sttProvider || 'auto');
+            setWakeWordSensitivity(settings?.voice?.wakeWordSensitivity || 0.5);
             setLlmProvider(settings?.llm?.provider || 'ollama');
             setOpenaiModel(settings?.llm?.openai?.model || 'gpt-3.5-turbo');
             setOllamaModel(settings?.llm?.ollama?.model || 'qwen3:4b');
@@ -138,7 +142,7 @@ const SettingsPanel: React.FC = () => {
             voice: {
                 activationPhrase,
                 sttProvider,
-                wakeWordSensitivity: settings.voice.wakeWordSensitivity,
+                wakeWordSensitivity,
                 voiceSpeed: settings.voice.voiceSpeed,
                 voicePitch: settings.voice.voicePitch
             },
@@ -181,6 +185,57 @@ const SettingsPanel: React.FC = () => {
             blobSensitivity: newValue as number
         }));
     };
+
+    // Wake word management functions
+    const checkWakeWordStatus = async () => {
+        try {
+            const result = await ipcRenderer.invoke('wake-word:status');
+            if (result.success) {
+                setWakeWordStatus(result.isListening ? 'Active' : 'Inactive');
+                setWakeWordEnabled(result.isListening);
+            } else {
+                setWakeWordStatus('Error');
+            }
+        } catch (error) {
+            console.error('Failed to check wake word status:', error);
+            setWakeWordStatus('Error');
+        }
+    };
+
+    const toggleWakeWord = async () => {
+        try {
+            const action = wakeWordEnabled ? 'wake-word:stop' : 'wake-word:start';
+            const result = await ipcRenderer.invoke(action);
+            if (result.success) {
+                setWakeWordEnabled(!wakeWordEnabled);
+                setWakeWordStatus(!wakeWordEnabled ? 'Active' : 'Inactive');
+            } else {
+                console.error('Failed to toggle wake word:', result.error);
+                setWakeWordStatus('Error');
+            }
+        } catch (error) {
+            console.error('Failed to toggle wake word:', error);
+            setWakeWordStatus('Error');
+        }
+    };
+
+    const updateWakeWordKeyword = async () => {
+        try {
+            const result = await ipcRenderer.invoke('wake-word:update-keyword', activationPhrase, wakeWordSensitivity);
+            if (result.success) {
+                console.log('Wake word keyword updated successfully');
+            } else {
+                console.error('Failed to update wake word keyword:', result.error);
+            }
+        } catch (error) {
+            console.error('Failed to update wake word keyword:', error);
+        }
+    };
+
+    // Check wake word status on component mount
+    useEffect(() => {
+        checkWakeWordStatus();
+    }, []);
 
     return (
         <div className="settings-sidebar">
@@ -263,17 +318,6 @@ const SettingsPanel: React.FC = () => {
                             <Typography variant="subtitle1" gutterBottom>Voice Settings</Typography>
 
                             <FormControl fullWidth margin="normal">
-                                <TextField
-                                    id="activationPhrase"
-                                    label="Activation Phrase"
-                                    value={activationPhrase}
-                                    onChange={(e) => setActivationPhrase(e.target.value)}
-                                    variant="outlined"
-                                    size="small"
-                                />
-                            </FormControl>
-
-                            <FormControl fullWidth margin="normal">
                                 <InputLabel id="sttProvider-label">Speech Recognition</InputLabel>
                                 <Select
                                     labelId="sttProvider-label"
@@ -289,6 +333,51 @@ const SettingsPanel: React.FC = () => {
                                     <MenuItem value="auto">Auto (Preferred)</MenuItem>
                                 </Select>
                             </FormControl>
+
+                            {/* Wake Word Settings */}
+                            <Typography variant="subtitle2" gutterBottom sx={{ mt: 2 }}>Wake Word Settings</Typography>
+                            <FormControl fullWidth margin="normal">
+                                <TextField
+                                    id="activationPhrase"
+                                    label="Wake Word Phrase"
+                                    value={activationPhrase}
+                                    onChange={(e) => setActivationPhrase(e.target.value)}
+                                    variant="outlined"
+                                    size="small"
+                                    helperText="Say this phrase to activate voice recording"
+                                />
+                            </FormControl>
+
+                            <Box sx={{ mt: 2, mb: 2 }}>
+                                <Typography variant="body2" gutterBottom>
+                                    Wake Word Sensitivity: {wakeWordSensitivity.toFixed(2)}
+                                </Typography>
+                                <Slider
+                                    value={wakeWordSensitivity}
+                                    onChange={(_, newValue) => setWakeWordSensitivity(newValue as number)}
+                                    onChangeCommitted={updateWakeWordKeyword}
+                                    min={0.1}
+                                    max={1.0}
+                                    step={0.05}
+                                    marks
+                                    size="small"
+                                />
+                                <FormHelperText>Lower = more sensitive, Higher = less sensitive</FormHelperText>
+                            </Box>
+
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 2 }}>
+                                <Button
+                                    variant={wakeWordEnabled ? "contained" : "outlined"}
+                                    color={wakeWordEnabled ? "success" : "primary"}
+                                    onClick={toggleWakeWord}
+                                    size="small"
+                                >
+                                    {wakeWordEnabled ? "Stop Wake Word" : "Start Wake Word"}
+                                </Button>
+                                <Typography variant="body2" color={wakeWordStatus === 'Active' ? 'success.main' : 'text.secondary'}>
+                                    Status: {wakeWordStatus}
+                                </Typography>
+                            </Box>
 
                             <Divider sx={{ my: 3 }} />
                             <Typography variant="subtitle1" gutterBottom>Language Model</Typography>

@@ -27,7 +27,11 @@ const setupSettingsIPC = () => {
         'settings-get',
         'settings-set',
         'settings-get-all',
-        'settings-save'
+        'settings-save',
+        'wake-word:start',
+        'wake-word:stop',
+        'wake-word:update-keyword',
+        'wake-word:status'
     ];
 
     handlersToRemove.forEach(handler => {
@@ -119,6 +123,65 @@ const setupSettingsIPC = () => {
             throw new Error('SettingsService not initialized');
         }
         return await settingsService.save();
+    });
+
+    // IPC handlers for wake word management
+    ipcMain.handle('wake-word:start', async () => {
+        console.log('Main process - wake-word:start IPC called');
+        try {
+            if (wakeWordService) {
+                await wakeWordService.startListening();
+                return { success: true };
+            }
+            return { success: false, error: 'Wake word service not available' };
+        } catch (error) {
+            console.error('Main process - wake-word:start error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('wake-word:stop', async () => {
+        console.log('Main process - wake-word:stop IPC called');
+        try {
+            if (wakeWordService) {
+                await wakeWordService.stopListening();
+                return { success: true };
+            }
+            return { success: false, error: 'Wake word service not available' };
+        } catch (error) {
+            console.error('Main process - wake-word:stop error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('wake-word:update-keyword', async (_, keyword: string, sensitivity: number) => {
+        console.log('Main process - wake-word:update-keyword IPC called:', keyword, sensitivity);
+        try {
+            if (wakeWordService) {
+                await wakeWordService.updateKeyword(keyword, sensitivity);
+                return { success: true };
+            }
+            return { success: false, error: 'Wake word service not available' };
+        } catch (error) {
+            console.error('Main process - wake-word:update-keyword error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('wake-word:status', async () => {
+        console.log('Main process - wake-word:status IPC called');
+        try {
+            if (wakeWordService) {
+                return { 
+                    success: true, 
+                    isListening: wakeWordService.isCurrentlyListening() 
+                };
+            }
+            return { success: false, isListening: false, error: 'Wake word service not available' };
+        } catch (error) {
+            console.error('Main process - wake-word:status error:', error);
+            return { success: false, isListening: false, error: error.message };
+        }
     });
 
     console.log('🔧 DEBUG: Settings IPC handlers setup complete');
@@ -262,6 +325,7 @@ let chatStorageService: ChatStorageService | null = null;
 let llmRouterService: LLMRouterService | null = null;
 let vectorStoreService: VectorStoreService | null = null;
 let cindyAgent: CindyAgent | null = null;
+let wakeWordService: any = null;
 let speechToTextService: SpeechToTextService | null = null;
 
 const createWindow = async (): Promise<void> => {
@@ -545,10 +609,33 @@ app.on('ready', async () => {
     }
 
     // Initialize wake word service after settings service
-    if (settingsService && mainWindow) {
+    if (settingsService && mainWindow && !wakeWordService) {
         const WakeWordService = require('./services/WakeWordService').default;
-        // Initialize WakeWordService but don't store reference since it's not used
-        new WakeWordService(settingsService, mainWindow);
+        wakeWordService = new WakeWordService(settingsService, mainWindow);
+        
+        // Listen for wake word detection events
+        wakeWordService.on('wakeWordDetected', () => {
+            console.log('🎤 Wake word detected! Activating voice recording...');
+            if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+                mainWindow.webContents.send('wake-word-detected');
+                // Optionally bring window to front
+                if (!mainWindow.isVisible()) {
+                    mainWindow.show();
+                }
+                if (mainWindow.isMinimized()) {
+                    mainWindow.restore();
+                }
+                mainWindow.focus();
+            }
+        });
+
+        // Start wake word listening when app is ready
+        try {
+            await wakeWordService.startListening();
+            console.log('🎤 Wake word service started successfully');
+        } catch (error) {
+            console.error('🎤 Failed to start wake word service:', error);
+        }
     }
 
     // REMOVED: Duplicate service initialization (services already initialized above)
@@ -912,6 +999,7 @@ app.on('ready', async () => {
             app.quit();
         }
     });
+
 
     Menu.setApplicationMenu(menu);
 });

@@ -80,7 +80,10 @@ const messagesReducer = (state = initialState, action: any) => {
       if (lastAssistantIdx >= 0 && state.messages[lastAssistantIdx].role === 'assistant') {
         const updatedMessage = {
           ...state.messages[lastAssistantIdx],
-          content: action.payload,
+          ...(typeof action.payload === 'string' 
+            ? { content: action.payload } 
+            : action.payload
+          ),
           isStreaming: false
         };
         return {

@@ -222,7 +222,7 @@ class CindyAgent {
             const followUpMessages = [
                 {
                     role: 'system' as const,
-                    content: this.getSystemPrompt(userName)
+                    content: this.getSystemPrompt(context?.userId)
                 },
                 {
                     role: 'user' as const,

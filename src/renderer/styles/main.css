@@ -6,9 +6,9 @@
     --surface: #ffffff;
     --surface-secondary: #ffffff;
     --border: #f3f4f6;
-    --text-primary: #000000;
-    --text-secondary: #4a4a4a;
-    --text-muted: #6b6b6b;
+    --text-primary: #1f2937;
+    --text-secondary: #4b5563;
+    --text-muted: #6b7280;
     --success: #10b981;
     --error: #ef4444;
     --warning: #f59e0b;
@@ -99,6 +99,7 @@ body {
 /* Override any computed styles that might be causing dark backgrounds in light theme only */
 html[data-theme="light"] {
     background-color: #ffffff !important;
+    color: #1f2937 !important;
 }
 
 html[data-theme="light"] * {
@@ -107,7 +108,25 @@ html[data-theme="light"] * {
 
 html[data-theme="light"] .app-container {
     background-color: #ffffff !important;
+    color: #1f2937 !important;
 }
+
+/* Blanket override for light mode text */
+html:not([data-theme="dark"]) {
+    color: #1f2937 !important;
+}
+
+/* Remove blanket * selector that might interfere with other components */
+
+html:not([data-theme="dark"]) .message-text {
+    color: #1f2937 !important;
+}
+
+html:not([data-theme="dark"]) .message {
+    color: #1f2937 !important;
+}
+
+/* Removed redundant rules - now handled in theme-specific section below */
 
 /* Force white backgrounds for input area and buttons in light theme */
 [data-theme="light"] .input-area {
@@ -116,8 +135,12 @@ html[data-theme="light"] .app-container {
 
 [data-theme="light"] .message-input {
     background: #ffffff !important;
-    color: #000000 !important;
+    color: #1f2937 !important;
     border-color: #f3f4f6 !important;
+}
+
+[data-theme="light"] .message-input::placeholder {
+    color: #6b7280 !important;
 }
 
 [data-theme="light"] .button-group .MuiIconButton-root {
@@ -140,6 +163,37 @@ html[data-theme="light"] .app-container {
 [data-theme="light"] .MuiButton-root {
     background: #ffffff !important;
     color: #000000 !important;
+}
+
+/* Legacy rules replaced - see theme-specific rules below */
+
+/* Override any potential white text in light mode */
+:root body,
+[data-theme="light"] body,
+body:not([data-theme="dark"]) {
+    color: #1f2937 !important;
+}
+
+/* Ensure all text elements are dark in light mode */
+:root .message,
+[data-theme="light"] .message,
+body:not([data-theme="dark"]) .message {
+    color: #1f2937 !important;
+}
+
+:root .message *,
+[data-theme="light"] .message *,
+body:not([data-theme="dark"]) .message * {
+    color: #1f2937 !important;
+}
+
+/* Fix input text color in dark mode */
+[data-theme="dark"] .message-input {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .message-input::placeholder {
+    color: var(--text-secondary) !important;
 }
 
 #root {
@@ -287,7 +341,8 @@ html[data-theme="light"] .app-container {
 
 .chat-messages {
     width: 100%;
-    margin: 0;
+    max-width: 768px;
+    margin: 0 auto;
     display: flex;
     flex-direction: column;
     gap: 0;
@@ -312,6 +367,19 @@ html[data-theme="light"] .app-container {
     justify-content: flex-start;
 }
 
+/* User message container alignment - override earlier rules */
+.message.user .message-content {
+    display: flex;
+    justify-content: flex-end;
+    align-items: flex-end;
+}
+
+.message.assistant .message-content {
+    display: flex;
+    justify-content: flex-start;
+    align-items: flex-start;
+}
+
 [data-theme="dark"] .message.assistant {
     background: #2f2f2f;
 }
@@ -325,6 +393,9 @@ html[data-theme="light"] .app-container {
     max-width: 768px;
     width: 100%;
     padding: 0 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 }
 
 /* User message content */
@@ -348,24 +419,65 @@ html[data-theme="light"] .app-container {
     background: transparent;
     border: none;
     box-shadow: none;
-    color: var(--text-primary);
     max-width: 100%;
 }
 
-/* User messages - right aligned, compact */
-.message.user .message-text {
-    background: transparent;
+/* Message text colors - use CSS variables correctly */
+.message-text {
     color: var(--text-primary);
-    text-align: right;
-    max-width: 70%;
 }
 
-/* AI messages - full width, left aligned */
+/* Force dark mode text to be white */
+[data-theme="dark"] {
+    --message-text-color: #ffffff;
+}
+
+[data-theme="dark"] .message-text {
+    color: var(--message-text-color) !important;
+}
+
+/* Force light mode text to be black */
+:root {
+    --message-text-color: #000000;
+}
+
+:root .message-text,
+[data-theme="light"] .message-text,
+html:not([data-theme="dark"]) .message-text {
+    color: var(--message-text-color) !important;
+}
+
+/* User messages - soft rounded bubble style */
+.message.user .message-text {
+    background: var(--primary);
+    color: #ffffff !important;
+    padding: 12px 16px;
+    border-radius: 18px;
+    max-width: 70%;
+    text-align: left;
+    display: inline-block;
+    box-shadow: var(--shadow-sm);
+}
+
+/* User message bubble colors by theme - grey styling */
+[data-theme="light"] .message.user .message-text {
+    background: #6b7280;
+    color: #ffffff !important;
+}
+
+[data-theme="dark"] .message.user .message-text {
+    background: #4b5563;
+    color: #ffffff !important;
+}
+
+/* AI messages - plain text, no bubble */
 .message.assistant .message-text {
     background: transparent;
-    color: var(--text-primary);
     text-align: left;
     width: 100%;
+    padding: 0;
+    border-radius: 0;
+    box-shadow: none;
 }
 
 .message.streaming .message-text {
@@ -658,5 +770,133 @@ html[data-theme="light"] .app-container {
     .window-controls .MuiIconButton-root {
         width: 28px;
         height: 28px;
+    }
+}
+
+/* Code block styling */
+.code-block-container {
+    margin: 16px 0;
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--surface-secondary);
+}
+
+.code-block-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+}
+
+.code-block-language {
+    font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
+    color: var(--text-secondary);
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.code-block-copy {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.code-block-copy:hover {
+    background: var(--surface-secondary);
+    color: var(--text-primary);
+}
+
+.code-block {
+    margin: 0;
+    padding: 16px;
+    background: var(--surface-secondary);
+    color: var(--text-primary);
+    font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.code-block code {
+    background: transparent;
+    padding: 0;
+    border: none;
+    color: inherit;
+    font-family: inherit;
+}
+
+/* Light mode code block styling */
+[data-theme="light"] .code-block-container {
+    background: #f8f9fa;
+    border-color: #e5e7eb;
+}
+
+[data-theme="light"] .code-block-header {
+    background: #f3f4f6;
+    border-bottom-color: #e5e7eb;
+}
+
+[data-theme="light"] .code-block {
+    background: #f8f9fa;
+    color: #1f2937;
+}
+
+[data-theme="light"] .code-block-copy {
+    border-color: #d1d5db;
+    color: #6b7280;
+}
+
+[data-theme="light"] .code-block-copy:hover {
+    background: #e5e7eb;
+    color: #1f2937;
+}
+
+/* Wake word status indicator */
+.wake-word-indicator {
+    border-radius: 50%;
+    transition: var(--transition);
+}
+
+.wake-word-indicator.active {
+    background-color: var(--success) !important;
+    color: white !important;
+    opacity: 1 !important;
+}
+
+.wake-word-indicator.inactive {
+    background-color: var(--surface-secondary) !important;
+    color: var(--text-muted) !important;
+    opacity: 0.7 !important;
+}
+
+.wake-word-indicator:hover {
+    transform: scale(1.1);
+}
+
+/* Wake word listening animation */
+.wake-word-indicator.active {
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 10px rgba(16, 185, 129, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
     }
 }

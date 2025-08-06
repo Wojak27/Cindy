@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { thinkingTokenHandler } from './services/ThinkingTokenHandler';
 import ThinkingBlock from './components/ThinkingBlock';
+import ContentProcessor from './utils/contentProcessor';
 // SoundReactiveCircle was imported but not used in the component
 // The component now uses SoundReactiveBlob instead
 import SoundReactiveBlob from './components/SoundReactiveBlob';
@@ -27,7 +28,8 @@ import {
     ViewSidebar as ViewSidebarIcon,
     EditSquare as EditSquareIcon,
     Settings as SettingsIcon,
-    Storage as DatabaseIcon
+    Storage as DatabaseIcon,
+    Hearing as WakeWordIcon
 } from '@mui/icons-material';
 
 const App: React.FC = () => {
@@ -45,6 +47,7 @@ const App: React.FC = () => {
     const [currentConversationId, setCurrentConversationId] = useState<string>(Date.now().toString());
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [isAppLoading, setIsAppLoading] = useState(true);
+    const [wakeWordActive, setWakeWordActive] = useState(false);
     const audioContext = useRef<AudioContext | null>(null);
     const sounds = useRef<Record<string, AudioBuffer>>({});
     const streamController = useRef<AbortController | null>(null);
@@ -63,10 +66,24 @@ const App: React.FC = () => {
                 dispatch({ type: 'CLEAR_MESSAGES' });
                 dispatch({ type: 'CLEAR_THINKING_BLOCKS' });
                 
-                // Add loaded messages
-                messages.forEach((message: any) => {
-                    console.log('🔧 DEBUG: Restoring message from storage:', message);
+                // Process existing messages for thinking tokens and code blocks
+                const { updatedMessages, extractedThinkingBlocks } = ContentProcessor.processExistingMessages(
+                    messages, 
+                    currentConversationId
+                );
+                
+                console.log('🔧 DEBUG: Processed', messages.length, 'messages, extracted', extractedThinkingBlocks.length, 'thinking blocks');
+                
+                // Add processed messages
+                updatedMessages.forEach((message: any) => {
+                    console.log('🔧 DEBUG: Restoring processed message from storage:', message);
                     dispatch({ type: 'ADD_MESSAGE', payload: message });
+                });
+                
+                // Add extracted thinking blocks
+                extractedThinkingBlocks.forEach((block: any) => {
+                    console.log('🔧 DEBUG: Adding extracted thinking block:', block);
+                    dispatch({ type: 'ADD_THINKING_BLOCK', payload: block });
                 });
                 
                 // Load thinking blocks for this conversation
@@ -136,6 +153,26 @@ const App: React.FC = () => {
         
         return () => clearTimeout(timer);
     }, [dispatch]);
+
+    // Check wake word status periodically
+    useEffect(() => {
+        const checkWakeWordStatus = async () => {
+            try {
+                const result = await ipcRenderer.invoke('wake-word:status');
+                if (result.success) {
+                    setWakeWordActive(result.isListening);
+                }
+            } catch (error) {
+                console.error('Failed to check wake word status:', error);
+            }
+        };
+
+        // Check immediately and then every 5 seconds
+        checkWakeWordStatus();
+        const interval = setInterval(checkWakeWordStatus, 5000);
+
+        return () => clearInterval(interval);
+    }, []);
 
     // Initialize audio context for recording activation sound only
     useEffect(() => {
@@ -304,13 +341,17 @@ const App: React.FC = () => {
     // Listen for wake word detection events
     useEffect(() => {
         const handleWakeWordDetected = () => {
+            console.log('🎤 Wake word detected in renderer!');
             setIsListening(true);
             playSound('activation');
+
+            // Automatically start recording when wake word is detected
+            handleMicClick();
 
             // Reset listening state after a short delay
             const timer = setTimeout(() => {
                 setIsListening(false);
-            }, 1000);
+            }, 3000); // Extended to 3 seconds for better visual feedback
 
             return () => clearTimeout(timer);
         };
@@ -419,6 +460,27 @@ const App: React.FC = () => {
                 finalizedBlocks.forEach((block: any) => {
                     dispatch({ type: 'UPDATE_THINKING_BLOCK', payload: block });
                 });
+
+                // Process the final message content for code blocks
+                const lastMessage = messages[messages.length - 1];
+                if (lastMessage && lastMessage.role === 'assistant' && lastMessage.content) {
+                    const processed = ContentProcessor.processMessageContent(
+                        lastMessage.content,
+                        lastMessage.id,
+                        currentConversationId
+                    );
+                    
+                    if (processed.hasCodeBlocks) {
+                        console.log('🔧 DEBUG: Processing code blocks for completed message');
+                        dispatch({ 
+                            type: 'UPDATE_LAST_ASSISTANT_MESSAGE', 
+                            payload: { 
+                                content: processed.displayContent, 
+                                hasCodeBlocks: processed.hasCodeBlocks 
+                            } 
+                        });
+                    }
+                }
 
                 // Mark assistant message as complete
                 dispatch({ type: 'COMPLETE_ASSISTANT_MESSAGE' });
@@ -542,6 +604,17 @@ const App: React.FC = () => {
                         <EditSquareIcon fontSize="small" />
                     </IconButton>
                     <div className="window-draggable-area"></div>
+                    
+                    {/* Wake Word Status Indicator */}
+                    <IconButton
+                        className={`wake-word-indicator ${wakeWordActive ? 'active' : 'inactive'}`}
+                        title={wakeWordActive ? 'Wake word listening' : 'Wake word inactive'}
+                        size="small"
+                        disabled
+                    >
+                        <WakeWordIcon fontSize="small" />
+                    </IconButton>
+                    
                     <IconButton
                         className="database-button"
                         onClick={() => dispatch({ type: 'TOGGLE_DATABASE_SIDEBAR' })}
@@ -654,7 +727,11 @@ const App: React.FC = () => {
 
                                             {/* Display the message content */}
                                             <div className="message-text">
-                                                {msg.content || (msg.isStreaming ? '...' : '')}
+                                                {msg.hasCodeBlocks ? (
+                                                    <div dangerouslySetInnerHTML={{ __html: msg.content || '' }} />
+                                                ) : (
+                                                    msg.content || (msg.isStreaming ? '...' : '')
+                                                )}
                                                 {msg.isStreaming && <span className="streaming-cursor">▋</span>}
                                             </div>
                                         </div>
