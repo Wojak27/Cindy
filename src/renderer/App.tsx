@@ -215,6 +215,22 @@ const App: React.FC = () => {
             setIsRecording(true);
             console.log('DEBUG: App.tsx: isRecording state set to true');
 
+            // Test microphone permissions first
+            try {
+                console.log('DEBUG: App.tsx: Testing microphone permissions');
+                const permissionStatus = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+                console.log('DEBUG: App.tsx: Microphone permission status:', permissionStatus.state);
+
+                if (permissionStatus.state === 'denied') {
+                    console.error('DEBUG: App.tsx: Microphone permission denied');
+                    setIsRecording(false);
+                    playSound('error');
+                    return;
+                }
+            } catch (permError) {
+                console.warn('DEBUG: App.tsx: Could not check microphone permissions:', permError);
+            }
+
             // Send start-recording IPC to renderer service
             try {
                 console.log('DEBUG: App.tsx: About to invoke start-recording IPC');

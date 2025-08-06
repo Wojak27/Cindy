@@ -16,58 +16,26 @@ class AudioCaptureService {
         console.log('DEBUG: AudioCaptureService: Starting audio capture...');
 
         try {
+            // Clear any existing data first
+            this.audioData = [];
+
             // Try microphone access first (standard approach)
             console.log('DEBUG: AudioCaptureService: Attempting standard microphone access');
             try {
                 this.mediaStream = await navigator.mediaDevices.getUserMedia({
                     audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        sampleRate: 16000 // Porcupine requirement
+                        echoCancellation: false,  // Turn off processing for cleaner audio
+                        noiseSuppression: false,
+                        autoGainControl: false,
+                        sampleRate: 16000
                     }
                 });
                 console.log('DEBUG: AudioCaptureService: Standard microphone media stream acquired successfully');
+                console.log('DEBUG: AudioCaptureService: Media stream tracks:', this.mediaStream.getTracks().length);
+                console.log('DEBUG: AudioCaptureService: Audio track settings:', this.mediaStream.getAudioTracks()[0]?.getSettings());
             } catch (micError) {
-                console.warn('DEBUG: AudioCaptureService: Standard microphone access failed, trying desktop audio fallback:', micError);
-
-                // Fallback to desktop audio sources via IPC
-                console.log('DEBUG: AudioCaptureService: Requesting desktop audio sources via IPC');
-                const sources = await ipcRenderer.invoke('get-desktop-audio-sources');
-                console.log('DEBUG: AudioCaptureService: Audio sources retrieved:', sources?.length || 0);
-
-                if (!sources || sources.length === 0) {
-                    console.error('DEBUG: AudioCaptureService: No audio sources available');
-                    throw new Error('No audio sources found and microphone access failed');
-                }
-
-                // Find the first audio source
-                const audioSource = sources.find((source: any) => source.name === 'Entire screen' || source.name.includes('audio'));
-                console.log('DEBUG: AudioCaptureService: Audio source found:', audioSource?.name);
-
-                if (!audioSource) {
-                    console.error('DEBUG: AudioCaptureService: No suitable audio source found in:', sources.map((s: any) => s.name));
-                    throw new Error('No suitable audio sources found');
-                }
-
-                // Request desktop audio access
-                console.log('DEBUG: AudioCaptureService: Requesting desktop audio access with source ID:', audioSource.id);
-                try {
-                    this.mediaStream = await navigator.mediaDevices.getUserMedia({
-                        audio: {
-                            mandatory: {
-                                chromeMediaSource: 'desktop',
-                                chromeMediaSourceId: audioSource.id,
-                                echoCancellation: true,
-                                noiseSuppression: true,
-                                sampleRate: 16000 // Porcupine requirement
-                            }
-                        } as any // Type assertion to handle Chrome-specific constraints
-                    });
-                    console.log('DEBUG: AudioCaptureService: Desktop audio media stream acquired');
-                } catch (error) {
-                    console.error('DEBUG: AudioCaptureService: Failed to acquire desktop audio stream:', error);
-                    throw error;
-                }
+                console.warn('DEBUG: AudioCaptureService: Standard microphone access failed:', micError);
+                throw new Error(`Microphone access denied: ${micError.message}`);
             }
 
             // Set up audio context for processing
@@ -99,13 +67,15 @@ class AudioCaptureService {
                 throw error;
             }
 
+            // Set capturing flag BEFORE starting processing loop
+            this.isCapturing = true;
+            console.log('DEBUG: AudioCaptureService: Set isCapturing to true before starting processing');
+
             // Start processing audio
-            console.log('DEBUG: AudioCaptureService: Starting audio processing');
+            console.log('DEBUG: AudioCaptureService: About to start audio processing');
             this.startAudioProcessing();
             console.log('DEBUG: AudioCaptureService: Audio processing started successfully');
-
-            this.isCapturing = true;
-            console.log('DEBUG: AudioCaptureService: Audio capture started successfully, isCapturing:', this.isCapturing);
+            console.log('DEBUG: AudioCaptureService: Final check - analyser exists:', !!this.analyser, 'mediaStream exists:', !!this.mediaStream);
         } catch (error) {
             console.error('DEBUG: AudioCaptureService: Failed to start audio capture:', error);
             console.error('DEBUG: AudioCaptureService: Error details:', {
@@ -179,11 +149,13 @@ class AudioCaptureService {
     }
 
     private startAudioProcessing(): void {
-        console.log('AudioCaptureService: Starting audio processing loop');
+        console.log('DEBUG: AudioCaptureService: Starting audio processing loop');
+        console.log('DEBUG: AudioCaptureService: Initial state - isCapturing:', this.isCapturing, 'analyser exists:', !!this.analyser);
+
         const processAudio = () => {
             try {
                 if (!this.isCapturing || !this.analyser) {
-                    console.log('AudioCaptureService: Stopping audio processing loop, isCapturing:', this.isCapturing, 'analyser exists:', !!this.analyser);
+                    console.log('DEBUG: AudioCaptureService: Stopping audio processing loop, isCapturing:', this.isCapturing, 'analyser exists:', !!this.analyser);
                     return;
                 }
 
@@ -200,9 +172,11 @@ class AudioCaptureService {
 
                 this.audioData.push(int16Array);
 
-                // Log every 10 chunks to avoid spam but confirm it's working
-                if (this.audioData.length % 10 === 0) {
-                    console.log('AudioCaptureService: Audio data chunks collected:', this.audioData.length);
+                // Log first chunk and then every 10 chunks
+                if (this.audioData.length === 1) {
+                    console.log('DEBUG: AudioCaptureService: First audio chunk captured! Size:', int16Array.length);
+                } else if (this.audioData.length % 10 === 0) {
+                    console.log('DEBUG: AudioCaptureService: Audio data chunks collected:', this.audioData.length);
                 }
 
                 // Keep buffer size reasonable (about 5 seconds at ~50 fps)
@@ -213,15 +187,19 @@ class AudioCaptureService {
                 // Continue processing
                 if (this.isCapturing) {
                     requestAnimationFrame(processAudio);
+                } else {
+                    console.log('DEBUG: AudioCaptureService: Processing loop stopped - isCapturing is false');
                 }
             } catch (error) {
-                console.error('AudioCaptureService: Error in audio processing loop:', error);
+                console.error('DEBUG: AudioCaptureService: Error in audio processing loop:', error);
                 this.isCapturing = false;
-                console.log('AudioCaptureService: isCapturing set to false due to error in processing loop');
+                console.log('DEBUG: AudioCaptureService: isCapturing set to false due to error in processing loop');
             }
         };
 
+        console.log('DEBUG: AudioCaptureService: About to call processAudio for the first time');
         processAudio();
+        console.log('DEBUG: AudioCaptureService: First call to processAudio completed');
     }
 
     private stopAudioProcessing(): void {
@@ -239,13 +217,18 @@ export const audioCaptureService = new AudioCaptureService();
 
 // Set up IPC handlers for main process communication
 ipcRenderer.on('start-recording', async () => {
-    console.log('AudioCaptureService: Received start-recording event');
+    console.log('DEBUG: AudioCaptureService: Received start-recording event');
     try {
-        console.log('AudioCaptureService: Calling startCapture');
+        console.log('DEBUG: AudioCaptureService: About to call startCapture');
         await audioCaptureService.startCapture();
-        console.log('AudioCaptureService: startCapture completed, isCapturing:', audioCaptureService.isCurrentlyCapturing());
+        console.log('DEBUG: AudioCaptureService: startCapture completed, isCapturing:', audioCaptureService.isCurrentlyCapturing());
     } catch (error) {
-        console.error('AudioCaptureService: Error starting recording:', error);
+        console.error('DEBUG: AudioCaptureService: Error starting recording:', error);
+        console.error('DEBUG: AudioCaptureService: Error details:', {
+            name: error?.name,
+            message: error?.message,
+            stack: error?.stack
+        });
     }
 });
 
