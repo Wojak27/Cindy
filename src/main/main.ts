@@ -12,6 +12,7 @@ import { LLMRouterService } from './services/LLMRouterService';
 import { CindyAgent } from './agents/CindyAgent';
 import { MemoryService } from './services/MemoryService';
 import { ToolExecutorService } from './services/ToolExecutorService';
+import { SpeechToTextService } from './services/SpeechToTextService';
 
 async function waitForDevServer(maxRetries = 10, delay = 1000): Promise<boolean> {
     for (let i = 0; i < maxRetries; i++) {
@@ -39,7 +40,7 @@ let settingsService: SettingsService | null = null;
 let chatStorageService: ChatStorageService | null = null;
 let llmRouterService: LLMRouterService | null = null;
 let cindyAgent: CindyAgent | null = null;
-// Removed unused wakeWordService variable
+let speechToTextService: SpeechToTextService | null = null;
 
 const createWindow = async (): Promise<void> => {
     // Ensure settings service is initialized
@@ -183,13 +184,16 @@ const createTray = async (): Promise<void> => {
 app.on('ready', async () => {
     // Initialize desktopCapturer IPC handler first
     ipcMain.handle('get-desktop-audio-sources', async () => {
+        console.log('DEBUG: Main process - get-desktop-audio-sources IPC called');
         try {
             const sources = await desktopCapturer.getSources({
                 types: ['audio']
             });
+            console.log('DEBUG: Main process - found audio sources:', sources.length);
+            console.log('DEBUG: Main process - source names:', sources.map(s => s.name));
             return sources;
         } catch (error) {
-            console.error('Failed to get desktop audio sources:', error);
+            console.error('DEBUG: Main process - Failed to get desktop audio sources:', error);
             throw error;
         }
     });
@@ -257,6 +261,18 @@ app.on('ready', async () => {
             },
             llmRouter: llmRouterService
         });
+    }
+
+    // Initialize Speech-to-Text Service
+    if (!speechToTextService) {
+        const sttConfig = {
+            provider: 'offline' as const,
+            language: 'en-US',
+            autoPunctuation: true,
+            profanityFilter: false,
+            offlineModel: 'base' as const
+        };
+        speechToTextService = new SpeechToTextService(sttConfig);
     }
 
     // Initialize wake word service after settings service
@@ -462,22 +478,22 @@ app.on('ready', async () => {
 
     // IPC handler for starting audio recording
     ipcMain.handle('start-recording', async () => {
-        console.log('Main process - start-recording IPC called');
+        console.log('DEBUG: Main process - start-recording IPC called');
         if (!mainWindow) {
-            console.error('Main process - start-recording: mainWindow not available');
+            console.error('DEBUG: Main process - start-recording: mainWindow not available');
             return { success: false, error: 'Main window not available' };
         }
         if (mainWindow.webContents.isDestroyed()) {
-            console.error('Main process - start-recording: webContents is destroyed');
+            console.error('DEBUG: Main process - start-recording: webContents is destroyed');
             return { success: false, error: 'Web contents destroyed' };
         }
         try {
-            console.log('Main process - start-recording: sending start-recording to renderer');
-            await mainWindow.webContents.send('start-recording');
-            console.log('Main process - start-recording: successfully sent to renderer');
+            console.log('DEBUG: Main process - start-recording: sending start-recording to renderer');
+            mainWindow.webContents.send('start-recording');
+            console.log('DEBUG: Main process - start-recording: successfully sent to renderer');
             return { success: true };
         } catch (error) {
-            console.error('Main process - start-recording: error sending to renderer:', error);
+            console.error('DEBUG: Main process - start-recording: error sending to renderer:', error);
             return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
         }
     });
@@ -525,13 +541,19 @@ app.on('ready', async () => {
 
     // IPC handler for transcribing audio
     ipcMain.handle('transcribe-audio', async (event, audioBuffer: ArrayBuffer) => {
-        console.log('Main process - transcribe-audio IPC called');
+        console.log('DEBUG: Main process - transcribe-audio IPC called with buffer size:', audioBuffer.byteLength);
         try {
-            // This would normally send the audio to a speech-to-text service
-            // For now, return a mock transcription
-            return "Hello, this is a test transcription";
+            if (!speechToTextService) {
+                console.error('DEBUG: Main process - transcribe-audio: speechToTextService not initialized');
+                return "Speech-to-text service not available";
+            }
+
+            console.log('DEBUG: Main process - transcribe-audio: calling speechToTextService.transcribe');
+            const transcription = await speechToTextService.transcribe(audioBuffer);
+            console.log('DEBUG: Main process - transcribe-audio: transcription result:', transcription);
+            return transcription;
         } catch (error) {
-            console.error('Main process - transcribe-audio: error transcribing audio:', error);
+            console.error('DEBUG: Main process - transcribe-audio: error transcribing audio:', error);
             return null;
         }
     });

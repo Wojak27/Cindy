@@ -3,6 +3,7 @@ import { useSelector, useDispatch } from 'react-redux';
 // SoundReactiveCircle was imported but not used in the component
 // The component now uses SoundReactiveBlob instead
 import SoundReactiveBlob from './components/SoundReactiveBlob';
+import RollingTranscription from './components/RollingTranscription';
 import SettingsPanel from './components/SettingsPanel';
 import DatabasePanel from './components/DatabasePanel';
 import { getSettings } from '../store/actions';
@@ -34,6 +35,7 @@ const App: React.FC = () => {
     const [isRecording, setIsRecording] = useState(false);
     const [isListening, setIsListening] = useState(false);
     const [inputValue, setInputValue] = useState('');
+    const [liveTranscription, setLiveTranscription] = useState('');
     const messages = useSelector((state: any) => state.messages || []);
     const [currentConversationId, setCurrentConversationId] = useState<string>(Date.now().toString());
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -140,11 +142,12 @@ const App: React.FC = () => {
 
     // Handle microphone button click for recording
     const handleMicClick = async () => {
-        console.log('Mic click handler called, isRecording:', isRecording);
+        console.log('DEBUG: Mic click handler called, isRecording:', isRecording);
+        console.log('DEBUG: About to play activation sound');
         playSound('activation');
 
         if (isRecording) {
-            console.log('Stopping recording...');
+            console.log('DEBUG: Stopping recording...');
             // Stop recording
             try {
                 console.log('App.tsx: Invoking stop-recording IPC');
@@ -167,7 +170,9 @@ const App: React.FC = () => {
                     // Send audio data to Whisper for transcription
                     const transcript = await ipcRenderer.invoke('transcribe-audio', audioBuffer);
                     if (transcript) {
-                        // First, set the transcribed text in the input field
+                        // Update the live transcription display
+                        setLiveTranscription(transcript);
+                        // Also set the transcribed text in the input field
                         setInputValue(transcript);
 
                         // Handle the transcribed text by sending it as a message
@@ -199,20 +204,32 @@ const App: React.FC = () => {
                 playSound('error');
             } finally {
                 setIsRecording(false);
+                // Clear live transcription after a delay
+                setTimeout(() => {
+                    setLiveTranscription('');
+                }, 3000);
             }
         } else {
-            console.log('Starting recording...');
+            console.log('DEBUG: Starting recording...');
             // Show visual feedback that recording is starting
             setIsRecording(true);
-            console.log('App.tsx: isRecording state set to true');
+            console.log('DEBUG: App.tsx: isRecording state set to true');
 
             // Send start-recording IPC to renderer service
-            ipcRenderer.invoke('start-recording').then(() => {
-                console.log('App.tsx: start-recording IPC sent to renderer');
-            }).catch((error) => {
-                console.error('App.tsx: Error sending start-recording IPC to renderer:', error);
-            });
-            console.log('App.tsx: start-recording IPC invoked to renderer');
+            try {
+                console.log('DEBUG: App.tsx: About to invoke start-recording IPC');
+                const result = await ipcRenderer.invoke('start-recording');
+                console.log('DEBUG: App.tsx: start-recording IPC result:', result);
+                if (!result?.success) {
+                    console.error('DEBUG: App.tsx: start-recording failed:', result?.error);
+                    setIsRecording(false);
+                    playSound('error');
+                }
+            } catch (error) {
+                console.error('DEBUG: App.tsx: Error sending start-recording IPC to renderer:', error);
+                setIsRecording(false);
+                playSound('error');
+            }
         }
     };
 
@@ -357,15 +374,17 @@ const App: React.FC = () => {
 
                 <div className="chat-container">
                     <div className="chat-messages-container">
-                        <div className="chat-messages">
+                        <div className="chat-messages" style={{ height: '100%', overflowY: 'auto' }}>
                             {/* Show sound reactive circle when no messages and no current input */}
                             {messages.length === 0 && (
-                                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-                                    <div style={{ position: "relative", width: "200px", height: "200px" }}>
-                                        <SoundReactiveBlob isActive={true} />
+                                <div style={{ display: 'flex', justifyContent: 'center', flexDirection: "column", alignItems: 'center', height: '100%' }}>
+                                    <div>
+                                        <div style={{ position: "relative", width: "200px", height: "200px" }}>
+                                            <SoundReactiveBlob isActive={true} />
+                                        </div>
                                     </div>
-                                    <div className="welcome-message">
-                                        <h2>How can I assist you today?</h2>
+                                    <div>
+                                        <h2 style={{ textAlign: "center" }}>How can I assist you today?</h2>
                                     </div>
                                 </div>
                             )}
@@ -478,6 +497,13 @@ const App: React.FC = () => {
                         </div>
                     </div>
                 </div>
+
+                {/* Rolling Transcription Display */}
+                <RollingTranscription
+                    text={liveTranscription}
+                    isRecording={isRecording}
+                />
+
                 <div className={`settings-sidebar-container ${showSettings ? 'open' : ''}`}>
                     <SettingsPanel />
                 </div>

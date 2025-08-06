@@ -132,12 +132,48 @@ export default function SoundReactiveBlob({ isActive }: Props) {
             /* 3. update DOM */
             pathRef.current.setAttribute('d', smoothPath(pts));
 
-            // ───── colour logic ─────────
-            // timeHue  : slow 360° sweep (one full cycle ≈ 50 s)
-            // rmsBoost : ±120° punch when you make a sound
-            const timeHue = (performance.now() * 0.02) % 360;   // 0-359
-            const hue = (timeHue + rms * 120) % 360;        // mix in volume
-            pathRef.current.setAttribute('fill', `hsl(${hue} 100% 60% / 0.9)`);
+            // ───── Enhanced colour palette logic ─────────
+            const time = performance.now() * 0.001;
+
+            // Create multiple color palettes that transition based on audio
+            const palettes = [
+                // Cosmic blues and purples
+                { base: 240, range: 60, sat: 90, light: 65 },
+                // Sunset oranges and reds
+                { base: 15, range: 45, sat: 85, light: 60 },
+                // Ocean greens and teals
+                { base: 180, range: 40, sat: 80, light: 55 },
+                // Warm magenta and pink
+                { base: 300, range: 50, sat: 85, light: 65 },
+                // Electric cyan and blue
+                { base: 200, range: 35, sat: 95, light: 70 }
+            ];
+
+            // Select palette based on slow time progression
+            const paletteIndex = Math.floor((time * 0.1) % palettes.length);
+            const currentPalette = palettes[paletteIndex];
+
+            // Create smooth transition between palettes
+            const nextPalette = palettes[(paletteIndex + 1) % palettes.length];
+            const transitionFactor = ((time * 0.1) % 1);
+
+            const baseHue = currentPalette.base + (nextPalette.base - currentPalette.base) * transitionFactor;
+            const hueRange = currentPalette.range + (nextPalette.range - currentPalette.range) * transitionFactor;
+            const saturation = currentPalette.sat + (nextPalette.sat - currentPalette.sat) * transitionFactor;
+            const lightness = currentPalette.light + (nextPalette.light - currentPalette.light) * transitionFactor;
+
+            // Apply audio reactivity
+            const audioShift = rms * hueRange;
+            const finalHue = (baseHue + audioShift + time * 20) % 360;
+            const finalSat = Math.min(100, saturation + rms * 15);
+            const finalLight = Math.max(40, lightness - rms * 10);
+
+            // Add subtle color variations for depth
+            const fillColor = `hsl(${finalHue} ${finalSat}% ${finalLight}% / ${0.85 + rms * 0.15})`;
+            const strokeColor = `hsl(${(finalHue + 20) % 360} ${Math.min(100, finalSat + 10)}% ${Math.max(30, finalLight - 20)}% / 0.8)`;
+
+            pathRef.current.setAttribute('fill', fillColor);
+            pathRef.current.setAttribute('stroke', strokeColor);
 
             /* 4. loop */
             animationRef.current = requestAnimationFrame(animate);
@@ -181,8 +217,8 @@ export default function SoundReactiveBlob({ isActive }: Props) {
             >
                 <path
                     ref={pathRef}
-                    fill="hsl(210 100% 60% / 0.9)"
-                    stroke="hsla(210,100%,40%,0.6)"
+                    fill="hsl(240 90% 65% / 0.9)"
+                    stroke="hsl(260 100% 45% / 0.8)"
                     strokeWidth="2"
                 />
             </svg>
