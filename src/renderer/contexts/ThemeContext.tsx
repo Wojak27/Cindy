@@ -39,7 +39,7 @@ const lightTheme = createTheme({
             primary: '#000000',
             secondary: '#4a4a4a',
         },
-        divider: '#d1d5db',
+        divider: '#f3f4f6',
         action: {
             hover: 'rgba(0, 0, 0, 0.04)',
             selected: 'rgba(0, 0, 0, 0.08)',
@@ -72,7 +72,7 @@ const lightTheme = createTheme({
                     transition: 'all 0.3s ease',
                     backgroundColor: '#ffffff !important',
                     color: '#000000 !important',
-                    border: '1px solid #e5e7eb !important',
+                    border: '1px solid #f3f4f6 !important',
                     '&:hover': {
                         backgroundColor: '#f9f9f9 !important',
                         borderColor: '#9ca3af !important',
@@ -85,7 +85,7 @@ const lightTheme = createTheme({
                 root: {
                     backgroundColor: '#ffffff !important',
                     color: '#000000 !important',
-                    border: '1px solid #e5e7eb !important',
+                    border: '1px solid #f3f4f6 !important',
                     '&:hover': {
                         backgroundColor: '#f9f9f9 !important',
                         borderColor: '#9ca3af !important',
@@ -98,10 +98,10 @@ const lightTheme = createTheme({
                 root: {
                     '& .MuiOutlinedInput-root': {
                         '& fieldset': {
-                            borderColor: '#d1d5db',
+                            borderColor: '#f3f4f6',
                         },
                         '&:hover fieldset': {
-                            borderColor: '#9ca3af',
+                            borderColor: '#e5e7eb',
                         },
                         '&.Mui-focused fieldset': {
                             borderColor: '#6b7280',
@@ -127,10 +127,10 @@ const lightTheme = createTheme({
             styleOverrides: {
                 root: {
                     '& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: '#d1d5db',
+                        borderColor: '#f3f4f6',
                     },
                     '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: '#9ca3af',
+                        borderColor: '#e5e7eb',
                     },
                     '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
                         borderColor: '#6b7280',
@@ -271,10 +271,10 @@ const darkTheme = createTheme({
                 root: {
                     '& .MuiOutlinedInput-root': {
                         '& fieldset': {
-                            borderColor: '#d1d5db',
+                            borderColor: '#f3f4f6',
                         },
                         '&:hover fieldset': {
-                            borderColor: '#9ca3af',
+                            borderColor: '#e5e7eb',
                         },
                         '&.Mui-focused fieldset': {
                             borderColor: '#6b7280',

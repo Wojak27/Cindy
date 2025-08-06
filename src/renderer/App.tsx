@@ -12,6 +12,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { getSettings } from '../store/actions';
 import { toggleSettings } from '../store/actions';
 import { streamError } from '../store/actions';
+import { getWelcomeMessage, getPersonalizedMessage, shouldShowWelcome } from './utils/personalizedMessages';
 import './styles/main.css';
 import './styles/database-sidebar.css';
 import { ipcRenderer } from 'electron';
@@ -35,8 +36,7 @@ const App: React.FC = () => {
     const showDatabase = useSelector((state: any) => state.ui.showDatabase);
     // const thinkingStartTime = useSelector((state: any) => state.ui.thinkingStartTime);
     const thinkingBlocks = useSelector((state: any) => state.messages?.thinkingBlocks || []);
-    // settings is used in the welcome message, but we're replacing that with SoundReactiveCircle
-    // const settings = useSelector((state: any) => state.settings);
+    const settings = useSelector((state: any) => state.settings);
     const [isSpeaking, setIsSpeaking] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
     const [isListening, setIsListening] = useState(false);
@@ -44,6 +44,7 @@ const App: React.FC = () => {
     const messages = useSelector((state: any) => state.messages?.messages || []);
     const [currentConversationId, setCurrentConversationId] = useState<string>(Date.now().toString());
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [isAppLoading, setIsAppLoading] = useState(true);
     const audioContext = useRef<AudioContext | null>(null);
     const sounds = useRef<Record<string, AudioBuffer>>({});
     const streamController = useRef<AbortController | null>(null);
@@ -127,6 +128,13 @@ const App: React.FC = () => {
 
     useEffect(() => {
         dispatch(getSettings());
+        
+        // Hide loading screen after a delay to show the app is ready
+        const timer = setTimeout(() => {
+            setIsAppLoading(false);
+        }, 2000); // Show loading blob for 2 seconds
+        
+        return () => clearTimeout(timer);
     }, [dispatch]);
 
     // Initialize audio context for recording activation sound only
@@ -453,6 +461,27 @@ const App: React.FC = () => {
         }
     };
 
+    // Show loading screen with just the blob
+    if (isAppLoading) {
+        return (
+            <ThemeProvider>
+                <CssBaseline />
+                <div style={{ 
+                    width: '100vw', 
+                    height: '100vh', 
+                    display: 'flex', 
+                    justifyContent: 'center', 
+                    alignItems: 'center',
+                    backgroundColor: 'var(--background)' 
+                }}>
+                    <div style={{ position: "relative", width: "200px", height: "200px" }}>
+                        <SoundReactiveBlob isActive={true} />
+                    </div>
+                </div>
+            </ThemeProvider>
+        );
+    }
+
     return (
         <ThemeProvider>
             <CssBaseline />
@@ -543,8 +572,19 @@ const App: React.FC = () => {
                                             <SoundReactiveBlob isActive={true} />
                                         </div>
                                     </div>
-                                    <div>
-                                        <h2 style={{ textAlign: "center" }}>How can I assist you today?</h2>
+                                    <div style={{ maxWidth: '600px', textAlign: 'center', padding: '0 20px' }}>
+                                        {settings?.profile?.name && shouldShowWelcome(settings.profile.name, settings.profile.hasCompletedSetup) ? (
+                                            <div>
+                                                <h2 style={{ marginBottom: '10px' }}>Welcome!</h2>
+                                                <p style={{ fontSize: '16px', lineHeight: '1.5', color: 'var(--text-secondary)' }}>
+                                                    {getWelcomeMessage(settings.profile.name)}
+                                                </p>
+                                            </div>
+                                        ) : settings?.profile?.name ? (
+                                            <h2>{getPersonalizedMessage(settings.profile.name, 'greeting')}</h2>
+                                        ) : (
+                                            <h2>How can I assist you today?</h2>
+                                        )}
                                     </div>
                                 </div>
                             )}

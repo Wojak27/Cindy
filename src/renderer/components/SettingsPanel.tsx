@@ -222,7 +222,17 @@ const SettingsPanel: React.FC = () => {
                                     id="name"
                                     label="First Name"
                                     value={name}
-                                    onChange={(e) => setName(e.target.value)}
+                                    onChange={(e) => {
+                                        setName(e.target.value);
+                                        // Auto-save name changes
+                                        dispatch(updateSettings({
+                                            profile: {
+                                                name: e.target.value,
+                                                surname,
+                                                hasCompletedSetup: true
+                                            }
+                                        }));
+                                    }}
                                     variant="outlined"
                                     size="small"
                                 />
@@ -233,7 +243,17 @@ const SettingsPanel: React.FC = () => {
                                     id="surname"
                                     label="Last Name"
                                     value={surname}
-                                    onChange={(e) => setSurname(e.target.value)}
+                                    onChange={(e) => {
+                                        setSurname(e.target.value);
+                                        // Auto-save surname changes
+                                        dispatch(updateSettings({
+                                            profile: {
+                                                name,
+                                                surname: e.target.value,
+                                                hasCompletedSetup: true
+                                            }
+                                        }));
+                                    }}
                                     variant="outlined"
                                     size="small"
                                 />

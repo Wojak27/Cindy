@@ -296,7 +296,8 @@ const createWindow = async (): Promise<void> => {
             // The security warning is resolved by removing unsafe-eval from the policy
         },
         width: 1000,
-        show: false, // Start hidden, show only when needed
+        show: false, // Hide until content is loaded
+        backgroundColor: '#ffffff' // Set background to match theme
     });
 
     // and load the index.html of the app.
@@ -318,6 +319,11 @@ const createWindow = async (): Promise<void> => {
         // This bypasses the protocol scheme restriction
         mainWindow.webContents.openDevTools({ mode: 'detach' });
     }
+
+    // Show window when ready to avoid white flash
+    mainWindow.once('ready-to-show', () => {
+        mainWindow?.show();
+    });
 
     // Hide window instead of closing it
     mainWindow.on('close', (event: Electron.Event) => {
@@ -699,12 +705,15 @@ app.on('ready', async () => {
                 return "Sorry, I encountered an error processing your request. The assistant is not properly initialized.";
             }
 
+            // Get user settings for context
+            const userSettings = await settingsService?.getAll() || {};
+            
             // Process message through the agent
             const response = await cindyAgent.process(message, {
                 conversationId,
                 sessionId: Date.now().toString(),
                 timestamp: new Date(),
-                preferences: {}
+                preferences: userSettings
             });
 
             let assistantContent = '';

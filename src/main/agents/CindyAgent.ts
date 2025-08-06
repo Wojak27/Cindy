@@ -45,11 +45,14 @@ class CindyAgent {
             context?.conversationId || 'default'
         );
 
+        // Extract user name from context preferences
+        const userName = context?.preferences?.profile?.name || '';
+
         // Prepare messages for LLM
         const messages = [
             {
                 role: 'system' as const,
-                content: this.getSystemPrompt()
+                content: this.getSystemPrompt(userName)
             },
             ...history.map(msg => ({
                 role: this.ensureValidRole(msg.role),
@@ -138,7 +141,7 @@ class CindyAgent {
                     const followUpMessages = [
                         {
                             role: 'system' as const,
-                            content: this.getSystemPrompt()
+                            content: this.getSystemPrompt(context?.preferences?.profile?.name || '')
                         },
                         {
                             role: 'user' as const,
@@ -219,7 +222,7 @@ class CindyAgent {
             const followUpMessages = [
                 {
                     role: 'system' as const,
-                    content: this.getSystemPrompt()
+                    content: this.getSystemPrompt(userName)
                 },
                 {
                     role: 'user' as const,
@@ -254,8 +257,10 @@ class CindyAgent {
 
     // Legacy methods removed - now using ToolTokenHandler
 
-    private getSystemPrompt(): string {
-        return `You are Cindy, an intelligent voice research assistant with advanced capabilities.
+    private getSystemPrompt(userName?: string): string {
+        const nameIntro = userName ? `You are Cindy, ${userName}'s intelligent voice research assistant with advanced capabilities.` : 'You are Cindy, an intelligent voice research assistant with advanced capabilities.';
+        
+        return `${nameIntro}
 
 Your tools include:
 
