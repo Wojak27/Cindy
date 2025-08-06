@@ -81,7 +81,9 @@ const ChatList: React.FC<{
                         No conversations yet
                     </div>
                 ) : (
-                    conversations.map((conversation) => (
+                    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
+                        <div style={{ flex: 1 }}></div>
+                        {conversations.map((conversation) => (
                         <div
                             key={conversation.id}
                             className={`chat-item ${conversation.id === currentConversationId ? 'active' : ''}`}
@@ -103,7 +105,8 @@ const ChatList: React.FC<{
                                 </div>
                             </div>
                         </div>
-                    ))
+                        ))}
+                    </div>
                 )}
             </div>
         </div >

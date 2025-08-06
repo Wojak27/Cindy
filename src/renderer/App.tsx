@@ -5,9 +5,10 @@ import ThinkingBlock from './components/ThinkingBlock';
 // SoundReactiveCircle was imported but not used in the component
 // The component now uses SoundReactiveBlob instead
 import SoundReactiveBlob from './components/SoundReactiveBlob';
-import RollingTranscription from './components/RollingTranscription';
 import SettingsPanel from './components/SettingsPanel';
 import DatabasePanel from './components/DatabasePanel';
+import ThemeToggle from './components/ThemeToggle';
+import { ThemeProvider } from './contexts/ThemeContext';
 import { getSettings } from '../store/actions';
 import { toggleSettings } from '../store/actions';
 import { streamError } from '../store/actions';
@@ -16,7 +17,8 @@ import './styles/database-sidebar.css';
 import { ipcRenderer } from 'electron';
 import ChatList from './components/ChatList';
 import {
-    IconButton
+    IconButton,
+    CssBaseline
 } from '@mui/material';
 import {
     Mic as MicIcon,
@@ -39,7 +41,6 @@ const App: React.FC = () => {
     const [isRecording, setIsRecording] = useState(false);
     const [isListening, setIsListening] = useState(false);
     const [inputValue, setInputValue] = useState('');
-    const [liveTranscription, setLiveTranscription] = useState('');
     const messages = useSelector((state: any) => state.messages?.messages || []);
     const [currentConversationId, setCurrentConversationId] = useState<string>(Date.now().toString());
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -57,14 +58,67 @@ const App: React.FC = () => {
                 const messages = await ipcRenderer.invoke('load-conversation', currentConversationId);
                 console.log('🔧 DEBUG: Loaded messages from ChatStorageService:', messages.length, 'messages');
 
-                // Clear current messages and add loaded ones
+                // Clear current messages and thinking blocks
                 dispatch({ type: 'CLEAR_MESSAGES' });
+                dispatch({ type: 'CLEAR_THINKING_BLOCKS' });
+                
+                // Add loaded messages
                 messages.forEach((message: any) => {
                     console.log('🔧 DEBUG: Restoring message from storage:', message);
                     dispatch({ type: 'ADD_MESSAGE', payload: message });
                 });
+                
+                // Load thinking blocks for this conversation
+                try {
+                    console.log('🔧 DEBUG: Loading thinking blocks for conversation:', currentConversationId);
+                    const conversationThinkingBlocks = await ipcRenderer.invoke('get-thinking-blocks', currentConversationId);
+                    console.log('🔧 DEBUG: Loaded thinking blocks:', conversationThinkingBlocks?.length || 0, 'blocks');
+                    
+                    if (conversationThinkingBlocks && conversationThinkingBlocks.length > 0) {
+                        // Retroactively associate thinking blocks with messages if not already associated
+                        const updatedBlocks = conversationThinkingBlocks.map((block: any) => {
+                            if (!block.messageId) {
+                                // Find the closest assistant message by timestamp
+                                const assistantMessages = messages.filter((msg: any) => msg.role === 'assistant');
+                                if (assistantMessages.length > 0) {
+                                    const blockTime = new Date(block.startTime).getTime();
+                                    let closestMessage = assistantMessages[0];
+                                    let smallestDiff = Math.abs(new Date(closestMessage.timestamp).getTime() - blockTime);
+                                    
+                                    assistantMessages.forEach((msg: any) => {
+                                        if (msg.timestamp) {
+                                            const msgTime = new Date(msg.timestamp).getTime();
+                                            const diff = Math.abs(msgTime - blockTime);
+                                            if (diff < smallestDiff) {
+                                                smallestDiff = diff;
+                                                closestMessage = msg;
+                                            }
+                                        }
+                                    });
+                                    
+                                    // Associate if within 2 minutes
+                                    if (smallestDiff <= 120000) { // 2 minutes
+                                        console.log('🔧 DEBUG: Associated thinking block', block.id, 'with message', closestMessage.id);
+                                        return { ...block, messageId: closestMessage.id };
+                                    }
+                                }
+                            }
+                            return block;
+                        });
+                        
+                        // Add all thinking blocks to the store
+                        updatedBlocks.forEach((block: any) => {
+                            dispatch({ type: 'ADD_THINKING_BLOCK', payload: block });
+                        });
+                        console.log('🔧 DEBUG: Added', updatedBlocks.length, 'thinking blocks to store');
+                    }
+                } catch (thinkingError) {
+                    console.warn('🔧 DEBUG: Failed to load thinking blocks, continuing without them:', thinkingError);
+                }
             } catch (error) {
                 console.error('🚨 DEBUG: Failed to load conversation history:', error);
+                dispatch({ type: 'CLEAR_MESSAGES' });
+                dispatch({ type: 'CLEAR_THINKING_BLOCKS' });
             }
         };
 
@@ -151,9 +205,7 @@ const App: React.FC = () => {
                     // Send Int16Array[] directly to main process for proper WAV conversion
                     const transcript = await ipcRenderer.invoke('transcribe-audio', audioData);
                     if (transcript) {
-                        // Update the live transcription display
-                        setLiveTranscription(transcript);
-                        // Also set the transcribed text in the input field
+                        // Set the transcribed text in the input field
                         setInputValue(transcript);
 
                         // Handle the transcribed text by sending it as a message
@@ -200,10 +252,6 @@ const App: React.FC = () => {
                 // Removed error sound effect
             } finally {
                 setIsRecording(false);
-                // Clear live transcription after a delay
-                setTimeout(() => {
-                    setLiveTranscription('');
-                }, 3000);
             }
         } else {
             console.log('DEBUG: Starting recording...');
@@ -331,7 +379,7 @@ const App: React.FC = () => {
 
     // Listen for streaming events from main process
     useEffect(() => {
-        const handleStreamChunk = (event: any, data: { chunk: string, conversationId: string }) => {
+        const handleStreamChunk = (_: any, data: { chunk: string, conversationId: string }) => {
             if (data.conversationId === currentConversationId) {
                 // Process the chunk for thinking tokens
                 const processed = thinkingTokenHandler.processChunk(data.chunk, currentConversationId);
@@ -354,7 +402,7 @@ const App: React.FC = () => {
             }
         };
 
-        const handleStreamComplete = (event: any, data: { conversationId: string }) => {
+        const handleStreamComplete = (_: any, data: { conversationId: string }) => {
             if (data.conversationId === currentConversationId) {
                 // Finalize any open thinking blocks
                 const finalizedBlocks = thinkingTokenHandler.finalizeThinkingBlocks(
@@ -370,7 +418,7 @@ const App: React.FC = () => {
             }
         };
 
-        const handleStreamError = (event: any, data: { error: string, conversationId: string }) => {
+        const handleStreamError = (_: any, data: { error: string, conversationId: string }) => {
             if (data.conversationId === currentConversationId) {
                 dispatch(streamError(data.error));
                 dispatch({ type: 'STOP_THINKING' });
@@ -406,11 +454,14 @@ const App: React.FC = () => {
     };
 
     return (
-        <div className="app-container">
-            <div className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
-                <ChatList
-                    onSelectConversation={setCurrentConversationId}
-                    onCreateNewChat={async () => {
+        <ThemeProvider>
+            <CssBaseline />
+            <div className="app-container">
+                <div className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
+                    <div className="sidebar-content">
+                        <ChatList
+                            onSelectConversation={setCurrentConversationId}
+                            onCreateNewChat={async () => {
                         try {
                             // Create new conversation through IPC handler
                             const newId = await ipcRenderer.invoke('create-conversation');
@@ -426,8 +477,9 @@ const App: React.FC = () => {
                         }
                     }}
                     currentConversationId={currentConversationId}
-                />
-            </div>
+                        />
+                    </div>
+                </div>
             <div className="main-content">
                 <div className="window-controls" >
                     <IconButton
@@ -477,11 +529,12 @@ const App: React.FC = () => {
                     >
                         <SettingsIcon fontSize="small" />
                     </IconButton>
+                    <ThemeToggle variant="icon" />
                 </div>
 
                 <div className="chat-container">
                     <div className="chat-messages-container">
-                        <div className="chat-messages" style={{ height: '100%', overflowY: 'auto' }}>
+                        <div className="chat-messages" style={{ height: '100%', overflowY: 'auto', display: 'flex', flexDirection: 'column-reverse' }}>
                             {/* Show sound reactive circle when no messages and no current input */}
                             {messages.length === 0 && (
                                 <div style={{ display: 'flex', justifyContent: 'center', flexDirection: "column", alignItems: 'center', height: '100%' }}>
@@ -495,14 +548,43 @@ const App: React.FC = () => {
                                     </div>
                                 </div>
                             )}
-                            {messages.map((msg: any, index: number) => {
+                            {[...messages].reverse().map((msg: any, index: number) => {
                                 const messageClass = `message ${msg.role} ${msg.isStreaming ? 'streaming' : ''} ${isSpeaking && msg.role === 'assistant' ? 'speaking' : ''} ${isListening ? 'listening' : ''}`;
 
                                 // Get thinking blocks associated with this specific message
-                                const associatedBlocks = thinkingBlocks.filter((block: any) =>
-                                    block.messageId === msg.id ||
-                                    (!block.messageId && msg.role === 'assistant' && index === messages.length - 1)
-                                );
+                                // For older chats, associate thinking blocks with assistant messages based on timestamp proximity
+                                const associatedBlocks = thinkingBlocks.filter((block: any) => {
+                                    // Direct association by messageId (new messages)
+                                    if (block.messageId === msg.id) {
+                                        return true;
+                                    }
+                                    
+                                    // For assistant messages without direct association, use timestamp-based matching
+                                    if (msg.role === 'assistant' && !block.messageId) {
+                                        // Check if this is the closest assistant message to the thinking block
+                                        const msgTime = new Date(msg.timestamp).getTime();
+                                        const blockTime = new Date(block.startTime).getTime();
+                                        const timeDiff = Math.abs(msgTime - blockTime);
+                                        
+                                        // Associate if within 30 seconds and no other assistant message is closer
+                                        if (timeDiff <= 30000) { // 30 seconds
+                                            const otherAssistantMessages = messages.filter((m: any) => 
+                                                m.role === 'assistant' && m.id !== msg.id && m.timestamp
+                                            );
+                                            
+                                            const isClosest = otherAssistantMessages.every((otherMsg: any) => {
+                                                const otherMsgTime = new Date(otherMsg.timestamp).getTime();
+                                                const otherTimeDiff = Math.abs(otherMsgTime - blockTime);
+                                                return timeDiff <= otherTimeDiff;
+                                            });
+                                            
+                                            return isClosest;
+                                        }
+                                    }
+                                    
+                                    // Fallback: associate with current streaming message (for live messages)
+                                    return !block.messageId && msg.role === 'assistant' && msg.isStreaming;
+                                });
 
                                 return (
                                     <div
@@ -549,7 +631,7 @@ const App: React.FC = () => {
                             className="message-input"
                             value={inputValue}
                             onChange={handleInputChange}
-                            onKeyPress={handleKeyPress}
+                            onKeyDown={handleKeyPress}
                             disabled={isRecording}
                         />
                         <div className="button-group">
@@ -574,11 +656,6 @@ const App: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Rolling Transcription Display */}
-                <RollingTranscription
-                    text={liveTranscription}
-                    isRecording={isRecording}
-                />
 
                 <div className={`settings-sidebar-container ${showSettings ? 'open' : ''}`}>
                     <SettingsPanel />
@@ -588,6 +665,7 @@ const App: React.FC = () => {
                 </div>
             </div>
         </div>
+        </ThemeProvider>
     );
 };
 

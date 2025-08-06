@@ -124,6 +124,117 @@ const setupSettingsIPC = () => {
     console.log('🔧 DEBUG: Settings IPC handlers setup complete');
 };
 
+// Function to set up database-related IPC handlers
+const setupDatabaseIPC = () => {
+    console.log('🔧 DEBUG: Setting up database IPC handlers');
+
+    const fs = require('fs');
+    const { dialog } = require('electron');
+
+    // Remove any existing handlers first
+    const handlersToRemove = [
+        'validate-path',
+        'show-directory-dialog',
+        'create-vector-store'
+    ];
+
+    handlersToRemove.forEach(handler => {
+        try {
+            ipcMain.removeHandler(handler);
+        } catch (error) {
+            console.debug(`No existing handler for ${handler} to remove`);
+        }
+    });
+
+    // Validate path handler
+    ipcMain.handle('validate-path', async (event, pathToValidate) => {
+        console.log('[IPC] Validating path:', pathToValidate);
+        try {
+            if (!pathToValidate || pathToValidate.trim() === '') {
+                return { valid: false, message: 'Path cannot be empty' };
+            }
+
+            // Check if path exists
+            if (!fs.existsSync(pathToValidate)) {
+                return { valid: false, message: 'Path does not exist' };
+            }
+
+            // Check if it's a directory
+            const stat = fs.statSync(pathToValidate);
+            if (!stat.isDirectory()) {
+                return { valid: false, message: 'Path must be a directory' };
+            }
+
+            // Check if writable
+            try {
+                fs.accessSync(pathToValidate, fs.constants.W_OK);
+                return { valid: true, message: 'Path is valid and writable' };
+            } catch (error) {
+                return { valid: false, message: 'Directory is not writable' };
+            }
+        } catch (error) {
+            console.error('[IPC] Error validating path:', error);
+            return { valid: false, message: 'Error accessing path' };
+        }
+    });
+
+    // Show directory dialog handler
+    ipcMain.handle('show-directory-dialog', async (event, defaultPath) => {
+        console.log('[IPC] Showing directory dialog, default path:', defaultPath);
+        try {
+            const result = await dialog.showOpenDialog(mainWindow, {
+                properties: ['openDirectory', 'createDirectory'],
+                defaultPath: defaultPath || undefined,
+                title: 'Select Database Directory'
+            });
+
+            if (result.canceled || result.filePaths.length === 0) {
+                return null;
+            }
+
+            return result.filePaths[0];
+        } catch (error) {
+            console.error('[IPC] Error showing directory dialog:', error);
+            throw error;
+        }
+    });
+
+    // Create vector store handler (placeholder)
+    ipcMain.handle('create-vector-store', async (event, options) => {
+        console.log('[IPC] Creating vector store with options:', options);
+        try {
+            // Validate path first
+            if (!options.databasePath) {
+                return { success: false, message: 'Database path is required' };
+            }
+
+            // Validate path manually (inline validation)
+            try {
+                if (!fs.existsSync(options.databasePath)) {
+                    return { success: false, message: 'Path does not exist' };
+                }
+                const stat = fs.statSync(options.databasePath);
+                if (!stat.isDirectory()) {
+                    return { success: false, message: 'Path must be a directory' };
+                }
+                fs.accessSync(options.databasePath, fs.constants.W_OK);
+            } catch (error) {
+                return { success: false, message: 'Error accessing path or directory not writable' };
+            }
+
+            // TODO: Implement actual vector store creation
+            // For now, just return success if path is valid
+            console.log('[IPC] Vector store creation simulated successfully');
+            return { success: true, message: 'Vector store created successfully (placeholder)' };
+        } catch (error) {
+            console.error('[IPC] Error creating vector store:', error);
+            return { success: false, message: error.message };
+        }
+    });
+
+    console.log('🔧 DEBUG: Database IPC handlers setup complete');
+};
+
 async function waitForDevServer(maxRetries = 10, delay = 1000): Promise<boolean> {
     for (let i = 0; i < maxRetries; i++) {
         try {
@@ -163,8 +274,8 @@ const createWindow = async (): Promise<void> => {
     // Create the browser window.
     mainWindow = new BrowserWindow({
         height: 600,
-        minWidth: 800,
-        maxWidth: 1200,
+        minWidth: 400,
+        // Remove maxWidth to allow free resizing
         titleBarStyle: 'hidden',
         titleBarOverlay: {
             color: '#f5f7fa',
@@ -184,7 +295,7 @@ const createWindow = async (): Promise<void> => {
             // Note: CSP is now properly set in the renderer process via meta tag
             // The security warning is resolved by removing unsafe-eval from the policy
         },
-        width: 800,
+        width: 1000,
         show: false, // Start hidden, show only when needed
     });
 
@@ -343,6 +454,7 @@ app.on('ready', async () => {
     // This ensures IPC is ready when renderer process loads
     console.log('🔧 DEBUG: Setting up IPC handlers before window creation');
     setupSettingsIPC();
+    setupDatabaseIPC();
 
     // Initialize LLMRouterService
     if (!llmRouterService) {
@@ -670,7 +782,7 @@ app.on('ready', async () => {
     });
 
     // IPC handler for loading conversations
-    ipcMain.handle('load-conversation', async (event, conversationId: string) => {
+    ipcMain.handle('load-conversation', async (_, conversationId: string) => {
         console.log('Main process - load-conversation IPC called for:', conversationId);
         try {
             if (!chatStorageService) {
@@ -680,6 +792,29 @@ app.on('ready', async () => {
             return await chatStorageService.getConversationHistory(conversationId);
         } catch (error) {
             console.error('Main process - load-conversation: error loading conversation:', error);
+            return [];
+        }
+    });
+
+    // IPC handler for loading thinking blocks
+    ipcMain.handle('get-thinking-blocks', async (_, conversationId: string) => {
+        console.log('Main process - get-thinking-blocks IPC called for:', conversationId);
+        try {
+            if (!chatStorageService) {
+                console.error('Main process - get-thinking-blocks: chatStorageService not available');
+                return [];
+            }
+            
+            // Get thinking blocks from storage - this assumes chatStorageService has a method for this
+            // If not implemented yet, return empty array for now
+            if (typeof chatStorageService.getThinkingBlocks === 'function') {
+                return await chatStorageService.getThinkingBlocks(conversationId);
+            } else {
+                console.warn('Main process - get-thinking-blocks: method not implemented yet');
+                return [];
+            }
+        } catch (error) {
+            console.error('Main process - get-thinking-blocks: error loading thinking blocks:', error);
             return [];
         }
     });

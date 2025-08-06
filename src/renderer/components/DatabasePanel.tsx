@@ -36,6 +36,37 @@ const DatabasePanel: React.FC = () => {
         dispatch(getSettings());
     }, [dispatch]);
 
+    // Sync local state when Redux store changes (like SettingsPanel)
+    useEffect(() => {
+        if (settings?.database) {
+            setDatabasePath(settings.database.path || '');
+            setEmbeddingModel(settings.database.embeddingModel || 'qwen3:8b');
+            setChunkSize(settings.database.chunkSize || 1000);
+            setChunkOverlap(settings.database.chunkOverlap || 200);
+            setAutoIndex(settings.database.autoIndex ?? true);
+        }
+    }, [settings]);
+
+    // Auto-save function (like SettingsPanel)
+    const autoSaveSettings = () => {
+        dispatch(updateSettings({
+            database: {
+                path: databasePath,
+                embeddingModel,
+                chunkSize,
+                chunkOverlap,
+                autoIndex
+            }
+        }));
+    };
+
+    // Auto-save when settings change
+    useEffect(() => {
+        if (databasePath || embeddingModel !== 'qwen3:8b' || chunkSize !== 1000 || chunkOverlap !== 200 || !autoIndex) {
+            autoSaveSettings();
+        }
+    }, [databasePath, embeddingModel, chunkSize, chunkOverlap, autoIndex]);
+
     const handleBrowse = async () => {
         try {
             const result = await ipcRenderer.invoke('show-directory-dialog', databasePath);
@@ -96,11 +127,25 @@ const DatabasePanel: React.FC = () => {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        // Validate path before submitting
-        const isValid = await validatePath(databasePath);
-        if (!isValid) return;
+        // Save settings immediately (separate from vector store creation)
+        dispatch(updateSettings({
+            database: {
+                path: databasePath,
+                embeddingModel,
+                chunkSize,
+                chunkOverlap,
+                autoIndex
+            }
+        }));
 
-        // Create vector store
+        // Validate path before creating vector store
+        const isValid = await validatePath(databasePath);
+        if (!isValid) {
+            console.log('Database settings saved, but vector store creation skipped due to invalid path');
+            return;
+        }
+
+        // Create vector store (optional step)
         await createVectorStore();
     };
 

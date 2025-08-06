@@ -20,6 +20,7 @@ import {
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { ipcRenderer } from 'electron';
+import ThemeToggle from './ThemeToggle';
 
 const SettingsPanel: React.FC = () => {
     const dispatch = useDispatch();
@@ -49,10 +50,14 @@ const SettingsPanel: React.FC = () => {
     const [surname, setSurname] = useState(settings?.profile?.surname || '');
 
     // Theme settings state
-    const [theme, setTheme] = useState(settings?.theme || 'system');
+    const [, setTheme] = useState(settings?.theme || 'system');
 
     // Update local state when settings change in the store
     useEffect(() => {
+        console.log('🔧 DEBUG: SettingsPanel settings changed:', settings);
+        console.log('🔧 DEBUG: Profile data structure:', settings?.profile);
+        console.log('🔧 DEBUG: Profile name specifically:', settings?.profile?.name);
+
         if (settings) {
             setActivationPhrase(settings?.voice?.activationPhrase || 'cindy');
             setSttProvider(settings?.voice?.sttProvider || 'auto');
@@ -66,6 +71,8 @@ const SettingsPanel: React.FC = () => {
             setName(settings?.profile?.name || '');
             setSurname(settings?.profile?.surname || '');
             setTheme(settings?.theme || 'system');
+
+            console.log('🔧 DEBUG: Set name to:', settings?.profile?.name || '');
         }
     }, [settings]);
 
@@ -403,6 +410,14 @@ const SettingsPanel: React.FC = () => {
                         </Box>
                     </>
                 )}
+
+                <Divider sx={{ my: 3 }} />
+                <Typography variant="subtitle1" gutterBottom>Appearance</Typography>
+                
+                <FormControl fullWidth margin="normal">
+                    <Typography gutterBottom>Theme</Typography>
+                    <ThemeToggle variant="inline" showLabel />
+                </FormControl>
 
                 <Divider sx={{ my: 3 }} />
                 <Typography variant="subtitle1" gutterBottom>Visual Feedback</Typography>

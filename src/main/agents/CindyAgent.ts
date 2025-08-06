@@ -1,6 +1,7 @@
 import { LLMRouterService } from '../services/LLMRouterService';
 import { MemoryService } from '../services/MemoryService';
 import { ToolExecutorService } from '../services/ToolExecutorService';
+import { toolTokenHandler, ToolCall } from '../services/ToolTokenHandler';
 
 interface AgentContext {
     conversationId: string;
@@ -78,41 +79,85 @@ class CindyAgent {
         stream: AsyncGenerator<string>,
         context?: AgentContext
     ): AsyncGenerator<string> {
-        let buffer = '';
+        const conversationId = context?.conversationId || 'default';
+        let accumulatedTools: ToolCall[] = [];
+        let fullContent = '';
+
+        // Reset the tool handler for new streaming session
+        toolTokenHandler.reset();
 
         for await (const chunk of stream) {
-            buffer += chunk;
+            // Process chunk through tool token handler
+            const processed = toolTokenHandler.processChunk(chunk, conversationId);
+            fullContent += chunk;
 
-            // Check for tool calls in buffer
-            const toolCalls = this.extractToolCalls(buffer);
+            // Yield display content immediately (non-tool content)
+            if (processed.displayContent) {
+                yield processed.displayContent;
+            }
 
-            if (toolCalls.length > 0) {
-                // Execute tools and get results
-                for (const toolCall of toolCalls) {
-                    try {
-                        const result = await this.toolExecutor.execute(
-                            toolCall.name,
-                            toolCall.parameters
-                        );
+            // Handle any complete tool calls found in this chunk
+            if (processed.toolCalls.length > 0) {
+                for (const toolCall of processed.toolCalls) {
+                    console.log(`🤖 CindyAgent: Executing tool during streaming: ${toolCall.name}`);
+                    
+                    // Execute the tool call with retry configuration
+                    const executedTool = await toolTokenHandler.executeToolCall(
+                        toolCall,
+                        this.toolExecutor.execute.bind(this.toolExecutor),
+                        {
+                            maxRetries: 3,
+                            baseDelay: 1000,
+                            exponentialBackoff: true,
+                            retryableErrors: ['timeout', 'network', 'rate limit', 'temporary', 'connection', 'ECONNRESET', 'ETIMEDOUT']
+                        }
+                    );
 
-                        // Add tool result to conversation
-                        await this.memoryService.addMessage({
-                            conversationId: context?.conversationId || 'default',
-                            role: 'tool',
-                            content: JSON.stringify(result),
-                            toolName: toolCall.name,
-                            timestamp: new Date()
-                        });
-                    } catch (error) {
-                        console.error(`Tool execution failed: ${toolCall.name}`, error);
-                    }
+                    accumulatedTools.push(executedTool);
+
+                    // Add tool execution to memory
+                    await this.memoryService.addMessage({
+                        conversationId,
+                        role: 'tool',
+                        content: JSON.stringify({
+                            name: executedTool.name,
+                            parameters: executedTool.parameters,
+                            result: executedTool.result,
+                            error: executedTool.error,
+                            status: executedTool.status,
+                            duration: executedTool.duration
+                        }),
+                        toolName: executedTool.name,
+                        timestamp: new Date()
+                    });
+
+                    // Generate and yield follow-up response for this tool
+                    const toolResultText = toolTokenHandler.formatToolResults([executedTool]);
+                    
+                    // Get follow-up from LLM about the tool result
+                    const followUpMessages = [
+                        {
+                            role: 'system' as const,
+                            content: this.getSystemPrompt()
+                        },
+                        {
+                            role: 'user' as const,
+                            content: `${toolResultText}\n\nPlease provide a response based on the tool execution result.`
+                        }
+                    ];
+
+                    const followUpResponse = await this.llmRouter.chat(followUpMessages, { streaming: false }) as any;
+                    yield '\n\n' + followUpResponse.content;
                 }
+            }
+        }
 
-                // Continue processing with tool results
-                const followUp = await this.processToolResults(toolCalls, context);
-                yield followUp;
-            } else {
-                yield chunk;
+        // Handle any incomplete tool blocks (error recovery)
+        if (toolTokenHandler.isProcessingTool()) {
+            const pending = toolTokenHandler.finalize();
+            if (pending) {
+                console.warn('🤖 CindyAgent: Incomplete tool block detected:', pending);
+                yield '\n\n[Note: An incomplete tool call was detected and could not be executed]';
             }
         }
     }
@@ -121,100 +166,93 @@ class CindyAgent {
         response: string,
         context?: AgentContext
     ): Promise<string> {
-        // Check for tool calls in response
-        const toolCalls = this.extractToolCalls(response);
-
-        if (toolCalls.length > 0) {
-            // Execute tools and get results
-            const results = [];
-
-            for (const toolCall of toolCalls) {
-                try {
-                    const result = await this.toolExecutor.execute(
-                        toolCall.name,
-                        toolCall.parameters
-                    );
-                    results.push({ tool: toolCall.name, result });
-                } catch (error) {
-                    console.error(`Tool execution failed: ${toolCall.name}`, error);
-                    let errorMessage = 'Unknown error';
-                    if (error instanceof Error) {
-                        errorMessage = error.message;
-                    } else if (typeof error === 'string') {
-                        errorMessage = error;
+        const conversationId = context?.conversationId || 'default';
+        
+        // Reset tool handler for new response
+        toolTokenHandler.reset();
+        
+        // Process the entire response at once
+        const processed = toolTokenHandler.processChunk(response, conversationId);
+        
+        // If there are tool calls, execute them
+        if (processed.toolCalls.length > 0) {
+            const executedTools: ToolCall[] = [];
+            
+            for (const toolCall of processed.toolCalls) {
+                console.log(`🤖 CindyAgent: Executing tool: ${toolCall.name}`);
+                
+                // Execute the tool call with retry configuration
+                const executedTool = await toolTokenHandler.executeToolCall(
+                    toolCall,
+                    this.toolExecutor.execute.bind(this.toolExecutor),
+                    {
+                        maxRetries: 3,
+                        baseDelay: 1000,
+                        exponentialBackoff: true,
+                        retryableErrors: ['timeout', 'network', 'rate limit', 'temporary', 'connection', 'ECONNRESET', 'ETIMEDOUT']
                     }
-                    results.push({ tool: toolCall.name, error: errorMessage });
-                }
+                );
+                
+                executedTools.push(executedTool);
+                
+                // Add tool execution to memory
+                await this.memoryService.addMessage({
+                    conversationId,
+                    role: 'tool',
+                    content: JSON.stringify({
+                        name: executedTool.name,
+                        parameters: executedTool.parameters,
+                        result: executedTool.result,
+                        error: executedTool.error,
+                        status: executedTool.status,
+                        duration: executedTool.duration
+                    }),
+                    toolName: executedTool.name,
+                    timestamp: new Date()
+                });
             }
-
-            // Continue processing with tool results
-            return await this.processToolResults(results, context);
-        } else {
-            // Save response to memory
+            
+            // Format tool results for LLM
+            const toolResultText = toolTokenHandler.formatToolResults(executedTools);
+            
+            // Get follow-up response from LLM
+            const followUpMessages = [
+                {
+                    role: 'system' as const,
+                    content: this.getSystemPrompt()
+                },
+                {
+                    role: 'user' as const,
+                    content: `${toolResultText}\n\nPlease provide a final response based on the tool execution results.`
+                }
+            ];
+            
+            const followUpResponse = await this.llmRouter.chat(followUpMessages, { streaming: false }) as any;
+            
+            // Save final response to memory
             await this.memoryService.addMessage({
-                conversationId: context?.conversationId || 'default',
+                conversationId,
                 role: 'assistant',
-                content: response,
+                content: followUpResponse.content,
                 timestamp: new Date()
             });
-
-            return response;
+            
+            // Return display content + follow-up response
+            return processed.displayContent + '\n\n' + followUpResponse.content;
+        } else {
+            // No tool calls, just save and return the response
+            await this.memoryService.addMessage({
+                conversationId,
+                role: 'assistant',
+                content: processed.displayContent,
+                timestamp: new Date()
+            });
+            
+            return processed.displayContent;
         }
     }
 
-    private extractToolCalls(text: string): Array<{ name: string, parameters: any }> {
-        // Extract tool calls from text using regex or JSON parsing
-        // This is a simplified implementation
-
-        const toolCallRegex = /<tool>(.*?)<\/tool>/g;
-        const matches = [];
-        let match;
-
-        while ((match = toolCallRegex.exec(text)) !== null) {
-            try {
-                const toolCall = JSON.parse(match[1]);
-                matches.push(toolCall);
-            } catch (error) {
-                console.warn('Failed to parse tool call:', match[1]);
-            }
-        }
-
-        return matches;
-    }
-
-    private async processToolResults(
-        results: any[],
-        context?: AgentContext
-    ): Promise<string> {
-        // Process tool results and generate follow-up response
-        const toolResults = results.map(r =>
-            `Tool: ${r.tool}\nResult: ${JSON.stringify(r.result || r.error)}`
-        ).join('\n\n');
-
-        // Get follow-up from LLM
-        const messages: { role: 'system' | 'user' | 'assistant', content: string }[] = [
-            {
-                role: 'system' as const,
-                content: this.getSystemPrompt()
-            },
-            {
-                role: 'user' as const,
-                content: `Here are the results from the tools I executed:\n\n${toolResults}\n\nPlease provide a final response.`
-            }
-        ];
-
-        const response = await this.llmRouter.chat(messages, { streaming: false }) as any;
-
-        // Save final response to memory
-        await this.memoryService.addMessage({
-            conversationId: context?.conversationId || 'default',
-            role: 'assistant',
-            content: response.content,
-            timestamp: new Date()
-        });
-
-        return response.content;
-    }
+    // Legacy methods removed - now using ToolTokenHandler
 
     private getSystemPrompt(): string {
         return `You are Cindy, an intelligent voice research assistant with advanced capabilities.

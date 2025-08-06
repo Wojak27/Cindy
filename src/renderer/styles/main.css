@@ -1,22 +1,51 @@
-/* Modern, clean design system */
+/* Modern, clean design system - Light Mode */
 :root {
-    --primary: #2563eb;
-    --primary-hover: #1d4ed8;
+    --primary: #000000;
+    --primary-hover: #333333;
     --background: #ffffff;
-    --surface: #f8fafc;
-    --surface-secondary: #f1f5f9;
-    --border: #e2e8f0;
-    --text-primary: #0f172a;
-    --text-secondary: #64748b;
-    --text-muted: #94a3b8;
+    --surface: #ffffff;
+    --surface-secondary: #ffffff;
+    --border: #e5e7eb;
+    --text-primary: #000000;
+    --text-secondary: #4a4a4a;
+    --text-muted: #6b6b6b;
     --success: #10b981;
     --error: #ef4444;
     --warning: #f59e0b;
-    --radius: 8px;
-    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-    --transition: all 0.2s ease;
+    --radius: 12px;
+    --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.05);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.05), 0 4px 6px -4px rgb(0 0 0 / 0.05);
+    --transition: all 0.3s ease;
+    
+    /* Chat-specific variables - Light Mode */
+    --user-message-bg: #8b4513;
+    --user-message-text: #ffffff;
+    --ai-message-bg: transparent;
+    --ai-message-text: var(--text-primary);
+    --message-padding: 12px 16px;
+}
+
+/* Dark mode variables */
+[data-theme="dark"] {
+    --primary: #60a5fa;
+    --primary-hover: #3b82f6;
+    --background: #0d1117;
+    --surface: #161b22;
+    --surface-secondary: #21262d;
+    --border: #30363d;
+    --text-primary: #f0f6fc;
+    --text-secondary: #7d8590;
+    --text-muted: #656d76;
+    --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.4);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.4);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.4);
+    
+    /* Chat-specific variables for dark mode */
+    --user-message-bg: #e6e6fa;
+    --user-message-text: #2d3748;
+    --ai-message-bg: transparent;
+    --ai-message-text: var(--text-primary);
 }
 
 /* Base styles */
@@ -28,11 +57,89 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     margin: 0;
     padding: 0;
-    background: var(--background);
+    background: #ffffff !important;
     color: var(--text-primary);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Force white background for light theme only */
+[data-theme="light"] body,
+:root:not([data-theme="dark"]) {
+    background: #ffffff !important;
+}
+
+[data-theme="light"] .app-container {
+    background: #ffffff !important;
+}
+
+[data-theme="light"] .sidebar {
+    background: #ffffff !important;
+}
+
+[data-theme="light"] .main-content {
+    background: #ffffff !important;
+}
+
+/* Force white background for ALL elements in light theme only */
+[data-theme="light"] .chat-container {
+    background: #ffffff !important;
+}
+
+[data-theme="light"] .chat-messages-container {
+    background: #ffffff !important;
+}
+
+[data-theme="light"] .window-controls {
+    background: #ffffff !important;
+}
+
+/* Override any computed styles that might be causing dark backgrounds in light theme only */
+html[data-theme="light"] {
+    background-color: #ffffff !important;
+}
+
+html[data-theme="light"] * {
+    background-color: transparent !important;
+}
+
+html[data-theme="light"] .app-container {
+    background-color: #ffffff !important;
+}
+
+/* Force white backgrounds for input area and buttons in light theme */
+[data-theme="light"] .input-area {
+    background: #ffffff !important;
+}
+
+[data-theme="light"] .message-input {
+    background: #ffffff !important;
+    color: #000000 !important;
+    border-color: #e5e7eb !important;
+}
+
+[data-theme="light"] .button-group .MuiIconButton-root {
+    background: #ffffff !important;
+    color: #000000 !important;
+    border-color: #e5e7eb !important;
+}
+
+[data-theme="light"] .window-controls .MuiIconButton-root {
+    background: #ffffff !important;
+    color: #000000 !important;
+    border-color: #e5e7eb !important;
+}
+
+[data-theme="light"] .MuiIconButton-root {
+    background: #ffffff !important;
+    color: #000000 !important;
+}
+
+[data-theme="light"] .MuiButton-root {
+    background: #ffffff !important;
+    color: #000000 !important;
 }
 
 #root {
@@ -54,14 +161,49 @@ body {
     width: 60px;
     background: var(--surface);
     border-right: 1px solid var(--border);
-    transition: var(--transition);
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease;
     overflow: hidden;
     z-index: 100;
+    position: relative;
 }
 
 .sidebar:hover,
 .sidebar.open {
     width: 280px;
+    box-shadow: var(--shadow-lg);
+}
+
+/* Sidebar content wrapper for opacity animation */
+.sidebar-content {
+    width: 280px;
+    height: 100%;
+    transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transform: translateX(0);
+}
+
+/* Hide content when sidebar is collapsed */
+.sidebar:not(:hover):not(.open) .sidebar-content {
+    opacity: 0;
+    transform: translateX(-20px);
+    pointer-events: none;
+}
+
+/* Show content when expanded */
+.sidebar:hover .sidebar-content,
+.sidebar.open .sidebar-content {
+    opacity: 1;
+    transform: translateX(0);
+    pointer-events: auto;
+}
+
+/* Delay opacity animation when collapsing to allow smooth transition */
+.sidebar:not(:hover):not(.open) .sidebar-content {
+    transition-delay: 0s, 0s;
+}
+
+.sidebar:hover .sidebar-content,
+.sidebar.open .sidebar-content {
+    transition-delay: 0.1s, 0s;
 }
 
 /* Main content area */
@@ -71,6 +213,8 @@ body {
     flex-direction: column;
     height: 100vh;
     overflow: hidden;
+    min-width: 0; /* Allow shrinking below content size */
+    transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Window controls */
@@ -121,12 +265,33 @@ body {
     background: var(--background);
 }
 
+/* Custom scrollbar styling */
+.chat-messages-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.chat-messages-container::-webkit-scrollbar-track {
+    background: var(--surface);
+    border-radius: 4px;
+}
+
+.chat-messages-container::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+    transition: background-color 0.3s ease;
+}
+
+.chat-messages-container::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
 .chat-messages {
-    max-width: 800px;
+    max-width: min(800px, calc(100vw - 120px)); /* Responsive max width */
     margin: 0 auto;
     display: flex;
     flex-direction: column;
     gap: 16px;
+    width: 100%;
 }
 
 /* Messages */
@@ -135,56 +300,67 @@ body {
     gap: 12px;
     max-width: 100%;
     animation: fadeIn 0.3s ease;
+    margin-bottom: 16px;
 }
 
 .message.user {
     flex-direction: row-reverse;
+    justify-content: flex-start;
 }
 
+.message.assistant {
+    justify-content: flex-start;
+}
+
+/* Remove avatar for human messages, keep for AI for alignment */
 .message-avatar {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background: var(--surface-secondary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 16px;
-    flex-shrink: 0;
-    border: 1px solid var(--border);
-}
-
-.message.user .message-avatar {
-    background: var(--primary);
-    color: white;
-    border-color: var(--primary);
+    display: none;
 }
 
 .message-content {
-    flex: 1;
+    flex: 0 1 auto;
     min-width: 0;
+    max-width: 85%;
+}
+
+/* User message content - width adapts to content */
+.message.user .message-content {
+    max-width: fit-content;
+    min-width: 60px;
 }
 
 .message-text {
-    background: var(--surface);
-    border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 12px 16px;
+    padding: var(--message-padding);
     font-size: 14px;
     line-height: 1.6;
     word-wrap: break-word;
     position: relative;
+    transition: var(--transition);
 }
 
+/* AI messages - no border, transparent background */
+.message.assistant .message-text {
+    background: var(--ai-message-bg);
+    color: var(--ai-message-text);
+    border: none;
+    box-shadow: none;
+}
+
+/* User messages - adaptive width, themed colors */
 .message.user .message-text {
-    background: var(--primary);
-    color: white;
-    border-color: var(--primary);
+    background: var(--user-message-bg);
+    color: var(--user-message-text);
+    border: none;
+    box-shadow: var(--shadow-sm);
+    max-width: fit-content;
+    margin-left: auto;
 }
 
 .message.streaming .message-text {
-    border-color: var(--primary);
     background: var(--surface-secondary);
+    border: 1px solid var(--primary);
+    opacity: 0.9;
 }
 
 .streaming-cursor {
@@ -313,11 +489,28 @@ body {
     right: -400px;
     width: 400px;
     height: 100vh;
-    background: var(--background);
+    background: #ffffff !important;
+    color: #000000 !important;
     border-left: 1px solid var(--border);
     transition: var(--transition);
     z-index: 1000;
     box-shadow: var(--shadow-lg);
+}
+
+[data-theme="light"] .settings-sidebar-container,
+[data-theme="light"] .database-sidebar-container {
+    background: #ffffff !important;
+    color: #000000 !important;
+}
+
+[data-theme="light"] .settings-sidebar-container *,
+[data-theme="light"] .database-sidebar-container * {
+    color: #000000 !important;
+}
+
+[data-theme="light"] .settings-sidebar-container .MuiTypography-root,
+[data-theme="light"] .database-sidebar-container .MuiTypography-root {
+    color: #000000 !important;
 }
 
 .settings-sidebar-container.open,
@@ -346,8 +539,8 @@ body {
 /* Dark mode support */
 @media (prefers-color-scheme: dark) {
     :root {
-        --primary: #3b82f6;
-        --primary-hover: #2563eb;
+        --primary: #60a5fa;
+        --primary-hover: #3b82f6;
         --background: #0f172a;
         --surface: #1e293b;
         --surface-secondary: #334155;
@@ -377,7 +570,26 @@ body {
 }
 
 /* Mobile responsiveness */
+@media (max-width: 1024px) {
+    .chat-messages {
+        max-width: min(700px, calc(100vw - 100px));
+    }
+}
+
 @media (max-width: 768px) {
+    .sidebar {
+        width: 50px;
+    }
+    
+    .sidebar:hover,
+    .sidebar.open {
+        width: 240px;
+        position: absolute;
+        height: 100vh;
+        z-index: 1000;
+        box-shadow: var(--shadow-lg);
+    }
+    
     .chat-messages-container {
         padding: 16px;
     }
@@ -385,12 +597,48 @@ body {
     .input-area {
         padding: 12px 16px;
     }
-
-    .sidebar:hover {
-        width: 60px;
+    
+    .chat-messages {
+        gap: 12px;
+        max-width: calc(100vw - 80px);
     }
+    
+    .message-text {
+        font-size: 13px;
+        padding: 10px 14px;
+    }
+    
+    /* Overlay backdrop when sidebar is open on mobile */
+    .sidebar.open::before {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 240px;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.3);
+        z-index: -1;
+        opacity: 1;
+        transition: opacity 0.3s ease;
+    }
+}
 
-    .sidebar.open {
-        width: 240px;
+@media (max-width: 480px) {
+    .main-content {
+        min-width: 300px;
+    }
+    
+    .chat-messages {
+        max-width: calc(100vw - 60px);
+    }
+    
+    .window-controls {
+        padding: 8px 12px;
+        gap: 6px;
+    }
+    
+    .window-controls .MuiIconButton-root {
+        width: 28px;
+        height: 28px;
     }
 }

@@ -156,7 +156,7 @@ export class ChatStorageService {
             `SELECT conversationId, MAX(timestamp) as lastMessageAt
              FROM messages 
              GROUP BY conversationId 
-             ORDER BY lastMessageAt DESC`
+             ORDER BY lastMessageAt ASC`
         );
 
         // For each conversation, get the first message to use as title
@@ -205,5 +205,21 @@ export class ChatStorageService {
         });
 
         return conversationId;
+    }
+
+    /**
+     * Get thinking blocks for a specific conversation
+     * Note: For now, returns empty array since thinking blocks are not yet stored in the database
+     * This is a placeholder for future implementation
+     */
+    async getThinkingBlocks(conversationId: string): Promise<any[]> {
+        console.log('🔧 DEBUG: ChatStorageService.getThinkingBlocks() called for conversation:', conversationId);
+        
+        // TODO: Implement thinking blocks storage in database
+        // For now, return empty array as thinking blocks are not stored in the database
+        // They are managed in Redux store during the session
+        
+        console.log('🔧 DEBUG: Thinking blocks not implemented in storage yet, returning empty array');
+        return [];
     }
 }

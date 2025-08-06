@@ -134,6 +134,13 @@ export const persistenceMiddleware = () => (next: any) => async (action: any) =>
                     name: action.payload.profile?.name || '',
                     surname: action.payload.profile?.surname || '',
                     hasCompletedSetup: action.payload.profile?.hasCompletedSetup || false
+                },
+                database: {
+                    path: action.payload.database?.path || '',
+                    embeddingModel: action.payload.database?.embeddingModel || 'qwen3:8b',
+                    chunkSize: action.payload.database?.chunkSize || 1000,
+                    chunkOverlap: action.payload.database?.chunkOverlap || 200,
+                    autoIndex: action.payload.database?.autoIndex || true
                 }
             };
 
@@ -180,6 +187,9 @@ export const persistenceMiddleware = () => (next: any) => async (action: any) =>
 
             console.log('🔧 DEBUG: Saving profile settings to main process');
             await invokeWithRetry('settings-set', 'profile', transformedForService.profile);
+
+            console.log('🔧 DEBUG: Saving database settings to main process');
+            await invokeWithRetry('settings-set', 'database', transformedForService.database);
 
             // Force a save to ensure persistence to disk
             console.log('🔧 DEBUG: Forcing settings save to disk via main process');
@@ -413,9 +423,27 @@ export const loadInitialSettings = async () => {
                     temperature: settings.llm?.openai?.temperature || 0.7
                 }
             },
+            // Profile data mapping
+            profile: {
+                name: settings.profile?.name || '',
+                surname: settings.profile?.surname || '',
+                hasCompletedSetup: settings.profile?.hasCompletedSetup || false
+            },
+            // Database settings mapping
+            database: {
+                path: settings.database?.path || '',
+                embeddingModel: settings.database?.embeddingModel || 'qwen3:8b',
+                chunkSize: settings.database?.chunkSize || 1000,
+                chunkOverlap: settings.database?.chunkOverlap || 200,
+                autoIndex: settings.database?.autoIndex || true
+            },
+            // Include all other sections
             general: { ...settings.general },
             privacy: { ...settings.privacy },
-            system: { ...settings.system }
+            system: { ...settings.system },
+            // Blob settings
+            blobSensitivity: settings.general?.blobSensitivity || 0.5,
+            blobStyle: settings.general?.blobStyle || 'moderate'
         };
 
         // Save to localStorage for future use

@@ -9,10 +9,15 @@ import { CitationTool } from '../tools/CitationTool';
 import { RAGTool } from '../tools/RAGTool';
 import { VectorStoreService } from '../services/VectorStoreService';
 
-interface ToolResult {
+export interface ToolResult {
     success: boolean;
     data?: any;
     error?: string;
+    metadata?: {
+        executionTime?: number;
+        toolName?: string;
+        parameters?: any;
+    };
 }
 
 class ToolExecutorService extends EventEmitter {
@@ -55,6 +60,7 @@ class ToolExecutorService extends EventEmitter {
 
     async execute(toolName: string, parameters: any): Promise<ToolResult> {
         this.emit('toolExecutionStarted', { toolName, parameters });
+        const startTime = Date.now();
 
         try {
             const tool = this.tools[toolName];
@@ -63,7 +69,7 @@ class ToolExecutorService extends EventEmitter {
                 throw new Error(`Tool not found: ${toolName}`);
             }
 
-            let result;
+            let result: any;
 
             switch (toolName) {
                 case 'create_note':
@@ -121,17 +127,29 @@ class ToolExecutorService extends EventEmitter {
                     throw new Error(`Unsupported tool: ${toolName}`);
             }
 
+            const executionTime = Date.now() - startTime;
             const toolResult: ToolResult = {
                 success: true,
-                data: result
+                data: result,
+                metadata: {
+                    executionTime,
+                    toolName,
+                    parameters
+                }
             };
 
             this.emit('toolExecutionCompleted', { toolName, result: toolResult });
             return toolResult;
         } catch (error) {
+            const executionTime = Date.now() - startTime;
             const toolResult: ToolResult = {
                 success: false,
-                error: error instanceof Error ? error.message : 'Unknown error'
+                error: error instanceof Error ? error.message : 'Unknown error',
+                metadata: {
+                    executionTime,
+                    toolName,
+                    parameters
+                }
             };
 
             this.emit('toolExecutionError', { toolName, error: toolResult.error });
@@ -144,4 +162,4 @@ class ToolExecutorService extends EventEmitter {
     }
 }
 
-export { ToolExecutorService, ToolResult };
+export { ToolExecutorService };

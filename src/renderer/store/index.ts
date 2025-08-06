@@ -23,6 +23,18 @@ const getDefaultState = () => ({
                 temperature: 0.7
             }
         },
+        database: {
+            path: '',
+            embeddingModel: 'qwen3:8b',
+            chunkSize: 1000,
+            chunkOverlap: 200,
+            autoIndex: true
+        },
+        profile: {
+            name: '',
+            surname: '',
+            hasCompletedSetup: false
+        },
         blobSensitivity: 0.5,
         blobStyle: 'moderate'
     },
