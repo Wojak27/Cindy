@@ -36,6 +36,13 @@ const SettingsPanel: React.FC = () => {
     const [temperature, setTemperature] = useState(settings?.llm?.openai?.temperature || 0.7);
     const [maxTokens, setMaxTokens] = useState(settings?.llm?.openai?.maxTokens || 4096);
 
+    // Connection test state
+    const [testingConnection, setTestingConnection] = useState(false);
+    const [connectionStatus, setConnectionStatus] = useState({
+        openai: false,
+        ollama: false
+    });
+
     // Profile settings state
     const [name, setName] = useState(settings?.profile?.name || '');
     const [surname, setSurname] = useState(settings?.profile?.surname || '');
@@ -43,6 +50,21 @@ const SettingsPanel: React.FC = () => {
     useEffect(() => {
         dispatch(getSettings());
     }, [dispatch]);
+
+    // Test LLM connections
+    const testConnection = async () => {
+        setTestingConnection(true);
+        try {
+            const result = await ipcRenderer.invoke('llm:test-connection');
+            if (result.success) {
+                setConnectionStatus(result.connections);
+            }
+        } catch (error) {
+            console.error('Failed to test connection:', error);
+        } finally {
+            setTestingConnection(false);
+        }
+    };
 
     // State for storage permission
     const [hasStoragePermission, setHasStoragePermission] = useState<boolean>(false);
@@ -221,6 +243,43 @@ const SettingsPanel: React.FC = () => {
                                 </Select>
                                 <FormHelperText>Auto mode uses OpenAI when available, falling back to Ollama</FormHelperText>
                             </FormControl>
+
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+                                <Button
+                                    variant="outlined"
+                                    size="small"
+                                    onClick={testConnection}
+                                    disabled={testingConnection}
+                                >
+                                    {testingConnection ? 'Testing...' : 'Test Connection'}
+                                </Button>
+                                <Box sx={{ display: 'flex', gap: 1 }}>
+                                    <Box
+                                        sx={{
+                                            width: 12,
+                                            height: 12,
+                                            borderRadius: '50%',
+                                            backgroundColor: connectionStatus.openai ? 'success.main' : 'error.main',
+                                            opacity: connectionStatus.openai || connectionStatus.ollama ? 1 : 0.3
+                                        }}
+                                    />
+                                    <Typography variant="caption" color="text.secondary">
+                                        OpenAI
+                                    </Typography>
+                                    <Box
+                                        sx={{
+                                            width: 12,
+                                            height: 12,
+                                            borderRadius: '50%',
+                                            backgroundColor: connectionStatus.ollama ? 'success.main' : 'error.main',
+                                            opacity: connectionStatus.openai || connectionStatus.ollama ? 1 : 0.3
+                                        }}
+                                    />
+                                    <Typography variant="caption" color="text.secondary">
+                                        Ollama
+                                    </Typography>
+                                </Box>
+                            </Box>
 
                             {llmProvider === 'openai' && (
                                 <div className="provider-settings openai">

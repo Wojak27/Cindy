@@ -302,6 +302,38 @@ app.on('ready', async () => {
         }
     });
 
+    // IPC handler for testing LLM connections
+    ipcMain.handle('llm:test-connection', async () => {
+        console.log('Main process - llm:test-connection IPC called');
+        if (!llmRouterService) {
+            console.error('Main process - llm:test-connection: llmRouterService not available');
+            return {
+                success: false,
+                error: 'LLM Router service not available',
+                connections: { openai: false, ollama: false }
+            };
+        }
+        try {
+            console.log('Main process - llm:test-connection: testing OpenAI and Ollama connections');
+            // Access the providers through the LLMRouterService
+            const openaiConnected = await llmRouterService['openaiProvider']?.testConnection?.() || false;
+            const ollamaConnected = await llmRouterService['ollamaProvider']?.testConnection?.() || false;
+
+            console.log('Main process - llm:test-connection: connection results - OpenAI:', openaiConnected, 'Ollama:', ollamaConnected);
+            return {
+                success: true,
+                connections: { openai: openaiConnected, ollama: ollamaConnected }
+            };
+        } catch (error) {
+            console.error('Main process - llm:test-connection: error testing connections:', error);
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : 'Unknown error',
+                connections: { openai: false, ollama: false }
+            };
+        }
+    });
+
     // IPC handlers for settings service methods
     ipcMain.handle('settings-get', async (event, section: string) => {
         if (!settingsService) {

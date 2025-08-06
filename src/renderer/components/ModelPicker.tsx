@@ -27,9 +27,20 @@ const ModelPicker: React.FC<ModelPickerProps> = ({
         const loadModels = async () => {
             setLoading(true);
             try {
-                const availableModels = await ipcRenderer.invoke('llm:get-available-models');
-                setModels(availableModels[provider]);
+                const response = await ipcRenderer.invoke('llm:get-available-models');
+                // Handle the response structure properly - it returns { success: boolean, models?: { openai: string[], ollama: string[] } }
+                if (response?.success && response.models) {
+                    const providerModels = response.models[provider] || [];
+                    setModels(providerModels);
+                } else {
+                    // Fallback to default models if response is invalid
+                    setModels(provider === 'openai'
+                        ? ['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo']
+                        : ['qwen3:8b', 'mistral', 'codellama']);
+                }
             } catch (err) {
+                console.error('Failed to load models:', err);
+                // Fallback to default models on error
                 setModels(provider === 'openai'
                     ? ['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo']
                     : ['qwen3:8b', 'mistral', 'codellama']);
@@ -46,12 +57,15 @@ const ModelPicker: React.FC<ModelPickerProps> = ({
         setInputValue(selectedModel);
     }, [selectedModel]);
 
+    // Ensure models is always an array
+    const safeModels = Array.isArray(models) ? models : [];
+
     return (
         <Autocomplete
-            options={models}
+            options={safeModels}
             freeSolo
-            value={selectedModel}
-            inputValue={inputValue}
+            value={selectedModel || ''}
+            inputValue={inputValue || ''}
             onInputChange={(event, newInputValue) => {
                 setInputValue(newInputValue);
             }}
@@ -80,11 +94,14 @@ const ModelPicker: React.FC<ModelPickerProps> = ({
                 />
             )}
             renderOption={(props, option) => (
-                <li {...props} key={option}>
-                    {option}
+                <li {...props} key={option || 'empty'}>
+                    {option || 'No models available'}
                 </li>
             )}
             sx={{ width: '100%' }}
+            // Add additional props to handle edge cases
+            noOptionsText="No models available"
+            clearOnBlur={false}
         />
     );
 };
