@@ -389,6 +389,8 @@ class OfflineSTTEngine {
             return '';
         }
 
+        let result: any;
+
         try {
             // Additional WAV file validation
             const wavBuffer = await require('fs').promises.readFile(tempFilePath);
@@ -440,121 +442,230 @@ class OfflineSTTEngine {
             await require('fs').promises.copyFile(tempFilePath, desktopPath);
             console.log('DEBUG: Audio file copied to desktop for inspection:', desktopPath);
 
-            // Transcribe using whisper-node function
+            // DIAGNOSTIC: Test model corruption - try re-downloading if transcription fails
+            console.log('DEBUG: ===== MODEL CORRUPTION TEST =====');
+
+            // Check model file integrity
+            const modelStats = await require('fs').promises.stat(this.modelPath);
+            console.log('DEBUG: Current model size:', modelStats.size, 'bytes');
+
+            // Calculate simple checksum
+            const modelData = await require('fs').promises.readFile(this.modelPath);
+            const firstChunk = modelData.slice(0, 1000);
+            const lastChunk = modelData.slice(-1000);
+            console.log('DEBUG: Model first 20 bytes:', Array.from(firstChunk.slice(0, 20)));
+            console.log('DEBUG: Model last 20 bytes:', Array.from(lastChunk.slice(-20)));
+
+            // Try backup model if available
+            const backupModelPath = this.modelPath.replace('.bin', '_backup.bin');
+            const hasBackup = await require('fs').promises.access(backupModelPath).then(() => true).catch(() => false);
+            console.log('DEBUG: Backup model available:', hasBackup);
+
+            // DIAGNOSTIC: Validate model file and audio format before whisper call
+            const modelExists = await require('fs').promises.access(this.modelPath).then(() => true).catch(() => false);
+            let modelSize = 0;
+            if (modelExists) {
+                const modelStats = await require('fs').promises.stat(this.modelPath);
+                modelSize = modelStats.size;
+            }
+
+            // Check if WAV format exactly matches whisper-node requirements
+            const sampleRateFromHeader = wavHeader.readUInt32LE(24); // Offset 24 = sample rate
+            const channelsFromHeader = wavHeader.readUInt16LE(22);   // Offset 22 = channels
+            const bitsPerSampleFromHeader = wavHeader.readUInt16LE(34); // Offset 34 = bits per sample
+
+            console.log('DEBUG: Pre-Whisper validation:');
+            console.log('  - Model file exists:', modelExists);
+            console.log('  - Model file size:', (modelSize / 1024 / 1024).toFixed(1), 'MB');
+            console.log('  - WAV sample rate:', sampleRateFromHeader, 'Hz (whisper-node needs 16000)');
+            console.log('  - WAV channels:', channelsFromHeader, '(whisper-node needs 1)');
+            console.log('  - WAV bits per sample:', bitsPerSampleFromHeader, '(whisper-node needs 16)');
+            console.log('  - Audio duration:', duration.toFixed(2), 'seconds');
+            console.log('  - Max amplitude:', maxAmplitude, '/ 32767');
+
+            // Warn about potential format mismatches
+            if (sampleRateFromHeader !== 16000) {
+                console.log('DEBUG: ⚠️  WAV sample rate mismatch! Expected 16000, got', sampleRateFromHeader);
+            }
+            if (channelsFromHeader !== 1) {
+                console.log('DEBUG: ⚠️  WAV channels mismatch! Expected 1, got', channelsFromHeader);
+            }
+            if (bitsPerSampleFromHeader !== 16) {
+                console.log('DEBUG: ⚠️  WAV bits per sample mismatch! Expected 16, got', bitsPerSampleFromHeader);
+            }
+
             console.log('DEBUG: Calling whisper function with options:', {
                 modelPath: this.modelPath,
                 language: 'en',
                 duration: duration + 's',
                 maxAmplitude,
                 avgAmplitude: avgAmplitude.toFixed(1),
-                fileExists: await require('fs').promises.access(this.modelPath).then(() => true).catch(() => false)
+                fileExists: modelExists,
+                modelSizeMB: (modelSize / 1024 / 1024).toFixed(1)
             });
 
-            // Wrap whisper call to handle null results that cause parseTranscript errors
-            let result;
+            // DIAGNOSTIC: Test model integrity and whisper-node directly
+            console.log('DEBUG: ===== WHISPER-NODE LIBRARY DIAGNOSTIC =====');
+
+            // Test 1: Validate model file integrity
+            const modelBuffer = await require('fs').promises.readFile(this.modelPath);
+            const modelMd5 = require('crypto').createHash('md5').update(modelBuffer).digest('hex');
+            console.log('DEBUG: Model file MD5 hash:', modelMd5);
+            console.log('DEBUG: Model file first 100 bytes:', Array.from(modelBuffer.slice(0, 100)));
+
+            // Test 2: Try basic whisper-node call with minimal options first
+            console.log('DEBUG: Testing whisper-node with MINIMAL options (no custom settings)');
             try {
                 result = await this.whisperFunction(tempFilePath, {
-                    modelPath: this.modelPath,
-                    whisperOptions: {
-                        language: 'en',
-                        word_timestamps: false,
-                        gen_file_txt: false,
-                        gen_file_vtt: false,
-                        gen_file_srt: false,
-                        temperature: 0.8,           // Higher temperature for better detection
-                        beam_size: 5,               // Better search
-                        best_of: 5,                 // Multiple attempts
-                        fp16: false,                // Use fp32 for better accuracy
-                        no_speech_threshold: 0.4,   // Lower threshold (default 0.6)
-                        logprob_threshold: -1.0,    // Lower threshold (default -1.0)
-                        compression_ratio_threshold: 2.4  // Allow more compressed audio
-                    }
+                    modelPath: this.modelPath
+                    // No whisperOptions at all - use defaults
                 });
-            } catch (whisperError: any) {
-                // Handle specific parseTranscript error from whisper-node
-                if (whisperError.message && (
-                    whisperError.message.includes('Cannot read properties of null') ||
-                    whisperError.message.includes("reading 'shift'") ||
-                    whisperError.message.includes('parseTranscript')
-                )) {
-                    console.log('DEBUG: whisper-node parseTranscript error caught - whisper returned null, trying alternative approach');
-                    result = null;
-                } else {
-                    // Re-throw other whisper errors
-                    throw whisperError;
+                console.log('DEBUG: Minimal whisper call succeeded, result:', result);
+            } catch (minimalError) {
+                console.log('DEBUG: Minimal whisper call failed:', minimalError.message);
+
+                // Test 3: Try with just language specified
+                console.log('DEBUG: Testing whisper-node with just language option');
+                try {
+                    result = await this.whisperFunction(tempFilePath, {
+                        modelPath: this.modelPath,
+                        whisperOptions: {
+                            language: 'en'
+                        }
+                    });
+                    console.log('DEBUG: Language-only whisper call succeeded, result:', result);
+                } catch (languageError) {
+                    console.log('DEBUG: Language-only whisper call failed:', languageError.message);
+
+                    // Test 4: Try ultra-permissive settings as final attempt
+                    console.log('DEBUG: Testing whisper-node with ULTRA-PERMISSIVE settings as last resort');
+                    result = await this.whisperFunction(tempFilePath, {
+                        modelPath: this.modelPath,
+                        whisperOptions: {
+                            language: 'en',
+                            temperature: 1.0,
+                            no_speech_threshold: 0.1,
+                            logprob_threshold: -2.0,
+                            compression_ratio_threshold: 10.0,
+                            suppress_blank: false,
+                            suppress_non_speech_tokens: false
+                        }
+                    });
+                    console.log('DEBUG: Ultra-permissive whisper call result:', result);
                 }
             }
 
-            console.log('DEBUG: Raw whisper result:', result);
-            console.log('DEBUG: Result type:', typeof result);
-            console.log('DEBUG: Is array:', Array.isArray(result));
+            // FALLBACK: If whisper still returns empty, try re-downloading model
+            if (!result || (Array.isArray(result) && result.length === 0)) {
+                console.log('DEBUG: ===== MODEL RE-DOWNLOAD ATTEMPT =====');
+                console.log('DEBUG: Whisper returned empty despite perfect audio - attempting model re-download');
 
-            if (result === null) {
-                console.log('DEBUG: Whisper explicitly returned null - likely empty/silent audio');
-            } else if (result === undefined) {
-                console.log('DEBUG: Whisper returned undefined - possible processing error');
+                const backupPath = this.modelPath.replace('.bin', '_corrupted_backup.bin');
+                try {
+                    // Backup current model
+                    await require('fs').promises.copyFile(this.modelPath, backupPath);
+                    console.log('DEBUG: Backed up potentially corrupted model to:', backupPath);
+
+                    // Delete current model
+                    await require('fs').promises.unlink(this.modelPath);
+                    console.log('DEBUG: Deleted potentially corrupted model');
+
+                    // Re-download fresh model
+                    console.log('DEBUG: Re-downloading fresh model...');
+                    await this.downloadModel();
+
+                    // Reinitialize whisper
+                    this.isInitialized = false;
+                    await this.initialize();
+
+                    // Retry transcription with fresh model
+                    console.log('DEBUG: Retrying transcription with fresh model...');
+                    result = await this.whisperFunction(tempFilePath, {
+                        modelPath: this.modelPath,
+                        whisperOptions: {
+                            language: 'en'
+                        }
+                    });
+                    console.log('DEBUG: Fresh model result:', result);
+
+                } catch (redownloadError) {
+                    console.log('DEBUG: Model re-download failed:', redownloadError.message);
+                    // Restore backup if re-download fails
+                    try {
+                        await require('fs').promises.copyFile(backupPath, this.modelPath);
+                        console.log('DEBUG: Restored backup model');
+                    } catch (restoreError) {
+                        console.log('DEBUG: Failed to restore backup:', restoreError.message);
+                    }
+                }
             }
+        } catch (whisperError: any) {
+            // Handle specific parseTranscript error from whisper-node
+            if (whisperError.message && (
+                whisperError.message.includes('Cannot read properties of null') ||
+                whisperError.message.includes("reading 'shift'") ||
+                whisperError.message.includes('parseTranscript')
+            )) {
+                console.log('DEBUG: whisper-node parseTranscript error caught - whisper returned null, trying alternative approach');
+                result = null;
+            } else {
+                // Re-throw other whisper errors
+                throw whisperError;
+            }
+        }
 
-            // Clean up temporary file
-            await require('fs').promises.unlink(tempFilePath);
+        console.log('DEBUG: Raw whisper result:', result);
+        console.log('DEBUG: Result type:', typeof result);
+        console.log('DEBUG: Is array:', Array.isArray(result));
 
-            // Handle empty or null results gracefully
-            if (!result) {
-                console.log('DEBUG: Whisper returned null/undefined result - audio was likely empty or silent');
+        if (result === null) {
+            console.log('DEBUG: Whisper explicitly returned null - likely empty/silent audio');
+        } else if (result === undefined) {
+            console.log('DEBUG: Whisper returned undefined - possible processing error');
+        }
+
+        // Clean up temporary file
+        await require('fs').promises.unlink(tempFilePath);
+
+        // Handle empty or null results gracefully
+        if (!result) {
+            console.log('DEBUG: Whisper returned null/undefined result - audio was likely empty or silent');
+            return '';
+        }
+
+        // Extract text from result array - whisper-node returns array of {start, end, speech}
+        if (Array.isArray(result)) {
+            if (result.length === 0) {
+                console.log('DEBUG: Whisper returned empty array - no speech detected');
                 return '';
             }
 
-            // Extract text from result array - whisper-node returns array of {start, end, speech}
-            if (Array.isArray(result)) {
-                if (result.length === 0) {
-                    console.log('DEBUG: Whisper returned empty array - no speech detected');
-                    return '';
-                }
-
-                console.log('DEBUG: Whisper result segments:', result.length);
-                result.forEach((segment, index) => {
-                    console.log(`DEBUG: Segment ${index}:`, {
-                        start: segment?.start,
-                        end: segment?.end,
-                        speech: segment?.speech
-                    });
+            console.log('DEBUG: Whisper result segments:', result.length);
+            result.forEach((segment, index) => {
+                console.log(`DEBUG: Segment ${index}:`, {
+                    start: segment?.start,
+                    end: segment?.end,
+                    speech: segment?.speech
                 });
-
-                const text = result
-                    .map(segment => segment?.speech || '')
-                    .filter(speech => speech && speech !== '[BLANK_AUDIO]') // Filter out blank audio markers
-                    .join(' ')
-                    .trim();
-                console.log('DEBUG: Extracted text:', text);
-
-                // If we only got blank audio, return empty string
-                if (!text || text === '[BLANK_AUDIO]') {
-                    console.log('DEBUG: Only blank audio detected - audio may be too quiet or unclear');
-                    return '';
-                }
-
-                return text;
-            } else {
-                console.log('DEBUG: Unexpected result format, returning as string');
-                return String(result || '');
-            }
-        } catch (error) {
-            // Clean up temporary file on error
-            await require('fs').promises.unlink(tempFilePath).catch(console.warn);
-            console.error('Whisper transcription failed:', error);
-            console.error('DEBUG: Error details:', {
-                name: error?.name,
-                message: error?.message,
-                stack: error?.stack
             });
 
-            // Return empty string instead of throwing for parsing errors
-            if (error.message && error.message.includes('Cannot read properties of null')) {
-                console.log('DEBUG: Handling whisper-node parsing error gracefully - this suggests whisper returned null due to empty/silent audio');
+            const text = result
+                .map(segment => segment?.speech || '')
+                .filter(speech => speech && speech !== '[BLANK_AUDIO]') // Filter out blank audio markers
+                .join(' ')
+                .trim();
+            console.log('DEBUG: Extracted text:', text);
+
+            // If we only got blank audio, return empty string
+            if (!text || text === '[BLANK_AUDIO]') {
+                console.log('DEBUG: Only blank audio detected - audio may be too quiet or unclear');
                 return '';
             }
 
-            throw error;
+            return text;
+        } else {
+            console.log('DEBUG: Unexpected result format, returning as string');
+            return String(result || '');
         }
     }
 
