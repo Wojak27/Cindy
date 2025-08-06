@@ -97,6 +97,10 @@
         ],
         "mac": {
             "category": "public.app-category.productivity",
+            "entitlements": "entitlements.plist",
+            "entitlementsInherit": "entitlements.plist",
+            "hardenedRuntime": true,
+            "gatekeeperAssess": false,
             "target": [
                 "dmg",
                 "zip"

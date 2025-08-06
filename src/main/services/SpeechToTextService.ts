@@ -341,44 +341,120 @@ class OfflineSTTEngine {
             await this.initialize();
         }
 
+        // DIAGNOSTIC: Log input audio data details
+        console.log('DEBUG: Input audio data size:', audioData.byteLength, 'bytes');
+
+        // Check if audio data is effectively empty
+        const audioBuffer = new Uint8Array(audioData);
+        const nonZeroSamples = audioBuffer.filter(sample => sample !== 0).length;
+        console.log('DEBUG: Non-zero audio samples:', nonZeroSamples, 'out of', audioBuffer.length);
+
+        if (audioData.byteLength === 0) {
+            console.log('DEBUG: Audio data is completely empty');
+            return '';
+        }
+
+        if (nonZeroSamples === 0) {
+            console.log('DEBUG: Audio data contains only silence (all zeros)');
+            return '';
+        }
+
         // Convert ArrayBuffer to temporary WAV file
         const tempFilePath = require('path').join(require('os').tmpdir(), `cindy_audio_${Date.now()}.wav`);
-        await require('fs').promises.writeFile(tempFilePath, Buffer.from(audioData));
+        const audioBuffer2 = Buffer.from(audioData);
+        await require('fs').promises.writeFile(tempFilePath, audioBuffer2);
+
+        // DIAGNOSTIC: Validate the created WAV file
+        try {
+            const stats = await require('fs').promises.stat(tempFilePath);
+            console.log('DEBUG: Created WAV file size:', stats.size, 'bytes');
+            console.log('DEBUG: WAV file path:', tempFilePath);
+
+            // Read WAV header to validate format
+            const header = await require('fs').promises.readFile(tempFilePath, { start: 0, end: 44 });
+            const riffMarker = header.toString('ascii', 0, 4);
+            const waveMarker = header.toString('ascii', 8, 12);
+            console.log('DEBUG: WAV RIFF marker:', riffMarker);
+            console.log('DEBUG: WAV WAVE marker:', waveMarker);
+
+            if (riffMarker !== 'RIFF' || waveMarker !== 'WAVE') {
+                console.error('DEBUG: Invalid WAV file format detected');
+                await require('fs').promises.unlink(tempFilePath);
+                return '';
+            }
+        } catch (statError) {
+            console.error('DEBUG: Failed to validate WAV file:', statError);
+            return '';
+        }
 
         try {
             // Transcribe using whisper-node function
             console.log('DEBUG: Calling whisper function with options:', {
                 modelPath: this.modelPath,
-                language: this.config.language
+                language: this.config.language,
+                fileExists: await require('fs').promises.access(this.modelPath).then(() => true).catch(() => false)
             });
 
-            const result = await this.whisperFunction(tempFilePath, {
-                modelPath: this.modelPath,
-                whisperOptions: {
-                    language: this.config.language,
-                    word_timestamps: false,
-                    gen_file_txt: false,
-                    gen_file_vtt: false,
-                    gen_file_srt: false
+            // Wrap whisper call to handle null results that cause parseTranscript errors
+            let result;
+            try {
+                result = await this.whisperFunction(tempFilePath, {
+                    modelPath: this.modelPath,
+                    whisperOptions: {
+                        language: this.config.language,
+                        word_timestamps: false,
+                        gen_file_txt: false,
+                        gen_file_vtt: false,
+                        gen_file_srt: false
+                    }
+                });
+            } catch (whisperError: any) {
+                // Handle specific parseTranscript error from whisper-node
+                if (whisperError.message && whisperError.message.includes('Cannot read properties of null')) {
+                    console.log('DEBUG: whisper-node parseTranscript error caught - whisper returned null (likely empty/silent audio)');
+                    result = null;
+                } else {
+                    // Re-throw other whisper errors
+                    throw whisperError;
                 }
-            });
+            }
 
             console.log('DEBUG: Raw whisper result:', result);
             console.log('DEBUG: Result type:', typeof result);
             console.log('DEBUG: Is array:', Array.isArray(result));
+
+            if (result === null) {
+                console.log('DEBUG: Whisper explicitly returned null - likely empty/silent audio');
+            } else if (result === undefined) {
+                console.log('DEBUG: Whisper returned undefined - possible processing error');
+            }
 
             // Clean up temporary file
             await require('fs').promises.unlink(tempFilePath);
 
             // Handle empty or null results gracefully
             if (!result) {
-                console.log('DEBUG: Whisper returned null/undefined result');
+                console.log('DEBUG: Whisper returned null/undefined result - audio was likely empty or silent');
                 return '';
             }
 
             // Extract text from result array - whisper-node returns array of {start, end, speech}
             if (Array.isArray(result)) {
-                const text = result.map(segment => segment.speech || '').join(' ').trim();
+                if (result.length === 0) {
+                    console.log('DEBUG: Whisper returned empty array - no speech detected');
+                    return '';
+                }
+
+                console.log('DEBUG: Whisper result segments:', result.length);
+                result.forEach((segment, index) => {
+                    console.log(`DEBUG: Segment ${index}:`, {
+                        start: segment?.start,
+                        end: segment?.end,
+                        speech: segment?.speech
+                    });
+                });
+
+                const text = result.map(segment => segment?.speech || '').join(' ').trim();
                 console.log('DEBUG: Extracted text:', text);
                 return text;
             } else {
@@ -389,10 +465,15 @@ class OfflineSTTEngine {
             // Clean up temporary file on error
             await require('fs').promises.unlink(tempFilePath).catch(console.warn);
             console.error('Whisper transcription failed:', error);
+            console.error('DEBUG: Error details:', {
+                name: error?.name,
+                message: error?.message,
+                stack: error?.stack
+            });
 
             // Return empty string instead of throwing for parsing errors
             if (error.message && error.message.includes('Cannot read properties of null')) {
-                console.log('DEBUG: Handling whisper-node parsing error gracefully');
+                console.log('DEBUG: Handling whisper-node parsing error gracefully - this suggests whisper returned null due to empty/silent audio');
                 return '';
             }
 
