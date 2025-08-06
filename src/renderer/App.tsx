@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import SoundReactiveCircle from './components/SoundReactiveCircle';
+// SoundReactiveCircle was imported but not used in the component
+// The component now uses SoundReactiveBlob instead
+import SoundReactiveBlob from './components/SoundReactiveBlob';
 import SettingsPanel from './components/SettingsPanel';
 import DatabasePanel from './components/DatabasePanel';
 import { getSettings } from '../store/actions';
@@ -353,7 +355,7 @@ const App: React.FC = () => {
                         <div className="chat-messages">
                             {/* Show sound reactive circle when no messages and no current input */}
                             {messages.length === 0 && !inputValue && (
-                                <SoundReactiveCircle isActive={true} />
+                                <SoundReactiveBlob isActive={true} />
                             )}
                             {messages.map((msg: any, index: number) => {
                                 const messageClass = `message ${msg.role} ${isSpeaking && msg.role === 'assistant' ? 'speaking' : ''} ${isListening ? 'listening' : ''}`;

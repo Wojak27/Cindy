@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { getSettings, updateSettings, toggleSettings } from '../../store/actions';
 import ModelPicker from './ModelPicker';
+import { isValidBlobStyle } from '../hooks/useSettings';
 import {
     Box,
     Typography,
@@ -133,6 +134,23 @@ const SettingsPanel: React.FC = () => {
                 surname,
                 hasCompletedSetup: true
             }
+        }));
+    };
+
+    // Handle blob style change
+    const handleBlobStyleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const newStyle = event.target.value;
+        if (isValidBlobStyle(newStyle)) {
+            dispatch(updateSettings({
+                blobStyle: newStyle
+            }));
+        }
+    };
+
+    // Handle blob sensitivity change
+    const handleBlobSensitivityChange = (_: Event | null, newValue: number | number[]) => {
+        dispatch(updateSettings({
+            blobSensitivity: newValue as number
         }));
     };
 
@@ -364,6 +382,70 @@ const SettingsPanel: React.FC = () => {
                         </Box>
                     </>
                 )}
+
+                <Divider sx={{ my: 3 }} />
+                <Typography variant="subtitle1" gutterBottom>Visual Feedback</Typography>
+
+                <FormControl fullWidth margin="normal">
+                    <Typography id="blob-sensitivity-slider" gutterBottom>
+                        Blob Sensitivity: {settings.blobSensitivity?.toFixed(1) || 0.5}
+                    </Typography>
+                    <Slider
+                        aria-labelledby="blob-sensitivity-slider"
+                        value={settings.blobSensitivity || 0.5}
+                        onChange={(_, newValue) => handleBlobSensitivityChange(_, newValue)}
+                        step={0.1}
+                        min={0}
+                        max={1}
+                        valueLabelDisplay="auto"
+                    />
+                    <FormHelperText>How strongly the blob reacts to sound input.</FormHelperText>
+                </FormControl>
+
+                <FormControl fullWidth margin="normal">
+                    <Typography id="blob-style-radio" gutterBottom>
+                        Animation Style
+                    </Typography>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, ml: 2 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <input
+                                type="radio"
+                                id="blob-style-subtle"
+                                name="blobStyle"
+                                value="subtle"
+                                checked={settings.blobStyle === 'subtle'}
+                                onChange={handleBlobStyleChange}
+                                style={{ marginRight: 8 }}
+                            />
+                            <label htmlFor="blob-style-subtle">Subtle</label>
+                        </Box>
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <input
+                                type="radio"
+                                id="blob-style-moderate"
+                                name="blobStyle"
+                                value="moderate"
+                                checked={settings.blobStyle === 'moderate'}
+                                onChange={handleBlobStyleChange}
+                                style={{ marginRight: 8 }}
+                            />
+                            <label htmlFor="blob-style-moderate">Moderate</label>
+                        </Box>
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <input
+                                type="radio"
+                                id="blob-style-intense"
+                                name="blobStyle"
+                                value="intense"
+                                checked={settings.blobStyle === 'intense'}
+                                onChange={handleBlobStyleChange}
+                                style={{ marginRight: 8 }}
+                            />
+                            <label htmlFor="blob-style-intense">Intense</label>
+                        </Box>
+                    </Box>
+                    <FormHelperText>Choose the animation style for the visual feedback blob.</FormHelperText>
+                </FormControl>
             </div>
             <div className="settings-footer">
                 <Button

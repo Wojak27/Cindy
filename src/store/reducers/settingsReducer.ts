@@ -19,7 +19,10 @@ const initialState = {
             apiKey: '',
             temperature: 0.7
         }
-    }
+    },
+    // Blob animation settings
+    blobSensitivity: 0.5,
+    blobStyle: 'moderate'
 };
 
 const settingsReducer = (state = initialState, action: any) => {

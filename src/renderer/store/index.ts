@@ -24,7 +24,9 @@ let store = createStore(
                     apiKey: '',
                     temperature: 0.7
                 }
-            }
+            },
+            blobSensitivity: 0.5,
+            blobStyle: 'moderate'
         },
         messages: [],
         ui: {
@@ -61,7 +63,11 @@ const initializeStore = async () => {
         const newStore = createStore(
             rootReducer,
             {
-                settings,
+                settings: {
+                    ...settings,
+                    blobSensitivity: settings.general?.blobSensitivity || 0.5,
+                    blobStyle: settings.general?.blobStyle || 'moderate'
+                },
                 messages: [],
                 ui: {
                     showSettings: false,
@@ -98,7 +104,9 @@ const initializeStore = async () => {
                     apiKey: '',
                     temperature: 0.7
                 }
-            }
+            },
+            blobSensitivity: 0.5,
+            blobStyle: 'moderate'
         };
 
         store = createStore(

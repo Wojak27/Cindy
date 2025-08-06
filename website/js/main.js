@@ -120,7 +120,40 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Setup blog post read more functionality
     setupReadMore();
+    setupMobileMenu();
 });
+
+// Function to handle mobile menu toggle
+function setupMobileMenu() {
+    const navToggle = document.querySelector('.nav-toggle');
+    const navLinks = document.querySelector('.nav-links');
+
+    if (!navToggle || !navLinks) return;
+
+    navToggle.addEventListener('click', function () {
+        navLinks.classList.toggle('active');
+        // Update aria-expanded attribute for accessibility
+        const isExpanded = navLinks.classList.contains('active');
+        navToggle.setAttribute('aria-expanded', isExpanded);
+    });
+
+    // Close mobile menu when clicking on a link
+    const navLinksList = document.querySelectorAll('.nav-links a');
+    navLinksList.forEach(link => {
+        link.addEventListener('click', () => {
+            navLinks.classList.remove('active');
+            navToggle.setAttribute('aria-expanded', 'false');
+        });
+    });
+
+    // Close mobile menu when clicking outside
+    document.addEventListener('click', function (e) {
+        if (!navToggle.contains(e.target) && !navLinks.contains(e.target) && navLinks.classList.contains('active')) {
+            navLinks.classList.remove('active');
+            navToggle.setAttribute('aria-expanded', 'false');
+        }
+    });
+}
 
 // Function to highlight the current page in navigation
 function highlightCurrentPage() {
