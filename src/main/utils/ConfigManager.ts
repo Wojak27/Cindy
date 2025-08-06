@@ -49,36 +49,74 @@ class ConfigManager {
     async save(config: any): Promise<void> {
         try {
             const configDir = dirname(this.configPath);
-            console.log('ConfigManager.save() - Starting save process');
-            console.log('ConfigManager.save() - Config directory:', configDir);
-            console.log('ConfigManager.save() - Config file path:', this.configPath);
+            console.log('🔧 DEBUG: ConfigManager.save() - Starting save process at:', new Date().toISOString());
+            console.log('🔧 DEBUG: ConfigManager.save() - Config directory:', configDir);
+            console.log('🔧 DEBUG: ConfigManager.save() - Config file path:', this.configPath);
+            console.log('🔧 DEBUG: ConfigManager.save() - Config object keys:', Object.keys(config));
+            console.log('🔧 DEBUG: ConfigManager.save() - Config content size:', JSON.stringify(config, null, 2).length, 'chars');
+
+            // Check if config file already exists
+            try {
+                await access(this.configPath, constants.F_OK);
+                console.log('🔧 DEBUG: ConfigManager.save() - Config file already exists, will overwrite');
+            } catch (fileNotFoundError) {
+                console.log('🔧 DEBUG: ConfigManager.save() - Config file does not exist, will create new');
+            }
 
             // Ensure directory exists
-            console.log('ConfigManager.save() - Ensuring directory exists:', configDir);
+            console.log('🔧 DEBUG: ConfigManager.save() - Ensuring directory exists:', configDir);
             await mkdir(configDir, { recursive: true });
-            console.log('ConfigManager.save() - Directory ensured successfully');
+            console.log('🔧 DEBUG: ConfigManager.save() - Directory ensured successfully');
 
             // Check if directory is writable
             try {
+                console.log('🔧 DEBUG: ConfigManager.save() - Checking directory write permissions...');
                 await access(configDir, constants.W_OK);
-                console.log('ConfigManager.save() - Directory is writable');
+                console.log('🔧 DEBUG: ConfigManager.save() - Directory is writable');
             } catch (accessError) {
-                console.error('ConfigManager.save() - Directory is not writable:', configDir);
+                console.error('🚨 DEBUG: ConfigManager.save() - Directory is not writable:', configDir);
+                console.error('🚨 DEBUG: ConfigManager.save() - Access error details:', {
+                    name: accessError.name,
+                    message: accessError.message,
+                    code: (accessError as any).code
+                });
                 throw new Error(`Directory not writable: ${configDir}`);
             }
 
             // Write config file
-            console.log('ConfigManager.save() - Writing config file with content length:', JSON.stringify(config, null, 2).length);
-            await writeFile(this.configPath, JSON.stringify(config, null, 2), 'utf8');
-            console.log('ConfigManager.save() - Config file written successfully');
+            console.log('🔧 DEBUG: ConfigManager.save() - Writing config file...');
+            const configContent = JSON.stringify(config, null, 2);
+            await writeFile(this.configPath, configContent, 'utf8');
+            console.log('🔧 DEBUG: ConfigManager.save() - Config file written successfully');
+
+            // Verify the file was written correctly
+            try {
+                console.log('🔧 DEBUG: ConfigManager.save() - Verifying file write...');
+                const writtenContent = await readFile(this.configPath, 'utf8');
+                console.log('🔧 DEBUG: ConfigManager.save() - Verification: written file size:', writtenContent.length, 'chars');
+                const parsedVerification = JSON.parse(writtenContent);
+                console.log('🔧 DEBUG: ConfigManager.save() - Verification: parsed successfully, keys:', Object.keys(parsedVerification));
+            } catch (verificationError) {
+                console.error('🚨 DEBUG: ConfigManager.save() - File write verification failed:', verificationError);
+            }
+
         } catch (error: any) {
-            console.error('ConfigManager.save() - Failed to save config:', error);
+            console.error('🚨 DEBUG: ConfigManager.save() - Failed to save config:', error);
+            console.error('🚨 DEBUG: ConfigManager.save() - Error details:', {
+                name: error.name,
+                message: error.message,
+                code: error.code,
+                stack: error.stack
+            });
+
             if (error.code === 'EACCES') {
-                console.error('ConfigManager.save() - Permission denied when writing to:', this.configPath);
+                console.error('🚨 DEBUG: ConfigManager.save() - PERMISSION DENIED when writing to:', this.configPath);
             } else if (error.code === 'ENOENT') {
-                console.error('ConfigManager.save() - Directory not found:', dirname(this.configPath));
+                console.error('🚨 DEBUG: ConfigManager.save() - DIRECTORY NOT FOUND:', dirname(this.configPath));
+            } else if (error.code === 'ENOSPC') {
+                console.error('🚨 DEBUG: ConfigManager.save() - NO SPACE LEFT on device');
             } else if (error.message?.includes('writable')) {
-                console.error('ConfigManager.save() - Insufficient permissions to write to directory:', dirname(this.configPath));
+                console.error('🚨 DEBUG: ConfigManager.save() - INSUFFICIENT PERMISSIONS to write to directory:', dirname(this.configPath));
             }
             throw error;
         }

@@ -15,41 +15,98 @@ export class ChatStorageService {
     private DB_PATH: string;
 
     async initialize(): Promise<void> {
-        if (this.db) return;
+        console.log('🔧 DEBUG: ChatStorageService.initialize() called at:', new Date().toISOString());
+        if (this.db) {
+            console.log('🔧 DEBUG: ChatStorageService.initialize() - Database already initialized, skipping');
+            return;
+        }
 
         // Initialize DB_PATH only when needed
         if (!this.DB_PATH) {
             this.DB_PATH = path.join(app.getPath('userData'), 'chat-history.db');
+            console.log('🔧 DEBUG: ChatStorageService.initialize() - Database path set to:', this.DB_PATH);
         }
 
-        this.db = await open({
-            filename: this.DB_PATH,
-            driver: Database as any
-        });
+        try {
+            console.log('🔧 DEBUG: ChatStorageService.initialize() - Opening SQLite database...');
+            this.db = await open({
+                filename: this.DB_PATH,
+                driver: Database as any
+            });
+            console.log('🔧 DEBUG: ChatStorageService.initialize() - Database opened successfully');
 
-        await this.db.exec(`
-      CREATE TABLE IF NOT EXISTS messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        conversationId TEXT NOT NULL,
-        role TEXT NOT NULL,
-        content TEXT NOT NULL,
-        timestamp INTEGER NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS idx_conversation ON messages(conversationId);
-      CREATE INDEX IF NOT EXISTS idx_timestamp ON messages(timestamp);
-    `);
+            console.log('🔧 DEBUG: ChatStorageService.initialize() - Creating tables and indexes...');
+            await this.db.exec(`
+          CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversationId TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            timestamp INTEGER NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS idx_conversation ON messages(conversationId);
+          CREATE INDEX IF NOT EXISTS idx_timestamp ON messages(timestamp);
+        `);
+            console.log('🔧 DEBUG: ChatStorageService.initialize() - Tables and indexes created successfully');
+
+            // Verify database is working by running a test query
+            const tableCheck = await this.db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='messages'");
+            if (tableCheck) {
+                console.log('🔧 DEBUG: ChatStorageService.initialize() - Database verification successful, messages table exists');
+            } else {
+                console.error('🚨 DEBUG: ChatStorageService.initialize() - Database verification failed, messages table not found');
+            }
+        } catch (error) {
+            console.error('🚨 DEBUG: ChatStorageService.initialize() - Failed to initialize database:', error);
+            console.error('🚨 DEBUG: ChatStorageService.initialize() - Error details:', {
+                name: error.name,
+                message: error.message,
+                stack: error.stack
+            });
+            throw error;
+        }
     }
 
     async saveMessage(message: Omit<ChatMessage, 'id'>): Promise<number> {
-        if (!this.db) await this.initialize();
+        console.log('🔧 DEBUG: ChatStorageService.saveMessage() called with:', {
+            conversationId: message.conversationId,
+            role: message.role,
+            contentLength: message.content.length,
+            timestamp: message.timestamp
+        });
 
-        const result = await this.db!.run(
-            `INSERT INTO messages (conversationId, role, content, timestamp)
-           VALUES (?, ?, ?, ?)`,
-            [message.conversationId, message.role, message.content, message.timestamp]
-        ) as any;
+        if (!this.db) {
+            console.log('🔧 DEBUG: ChatStorageService.saveMessage() - Database not initialized, initializing...');
+            await this.initialize();
+        }
 
-        return result.lastID;
+        try {
+            console.log('🔧 DEBUG: ChatStorageService.saveMessage() - Inserting message into database...');
+            const result = await this.db!.run(
+                `INSERT INTO messages (conversationId, role, content, timestamp)
+               VALUES (?, ?, ?, ?)`,
+                [message.conversationId, message.role, message.content, message.timestamp]
+            ) as any;
+
+            console.log('🔧 DEBUG: ChatStorageService.saveMessage() - Message saved successfully with ID:', result.lastID);
+
+            // Verify the save worked by counting messages in this conversation
+            const messageCount = await this.db!.get(
+                `SELECT COUNT(*) as count FROM messages WHERE conversationId = ?`,
+                [message.conversationId]
+            );
+            console.log('🔧 DEBUG: ChatStorageService.saveMessage() - Total messages in conversation:', messageCount.count);
+
+            return result.lastID;
+        } catch (error) {
+            console.error('🚨 DEBUG: ChatStorageService.saveMessage() - Failed to save message:', error);
+            console.error('🚨 DEBUG: ChatStorageService.saveMessage() - Error details:', {
+                name: error.name,
+                message: error.message,
+                stack: error.stack
+            });
+            throw error;
+        }
     }
 
     async getConversationHistory(
@@ -135,10 +192,10 @@ export class ChatStorageService {
      */
     async createConversation(): Promise<string> {
         if (!this.db) await this.initialize();
-        
+
         // Generate a unique conversation ID
         const conversationId = Date.now().toString();
-        
+
         // Save a system message to establish the conversation
         await this.saveMessage({
             conversationId,
@@ -146,7 +203,7 @@ export class ChatStorageService {
             content: 'New conversation created',
             timestamp: Date.now()
         });
-        
+
         return conversationId;
     }
 }

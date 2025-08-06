@@ -48,6 +48,27 @@ const SettingsPanel: React.FC = () => {
     const [name, setName] = useState(settings?.profile?.name || '');
     const [surname, setSurname] = useState(settings?.profile?.surname || '');
 
+    // Theme settings state
+    const [theme, setTheme] = useState(settings?.theme || 'system');
+
+    // Update local state when settings change in the store
+    useEffect(() => {
+        if (settings) {
+            setActivationPhrase(settings?.voice?.activationPhrase || 'cindy');
+            setSttProvider(settings?.voice?.sttProvider || 'auto');
+            setLlmProvider(settings?.llm?.provider || 'ollama');
+            setOpenaiModel(settings?.llm?.openai?.model || 'gpt-3.5-turbo');
+            setOllamaModel(settings?.llm?.ollama?.model || 'qwen3:4b');
+            setOpenaiApiKey(settings?.llm?.openai?.apiKey || '');
+            setOllamaBaseUrl(settings?.llm?.ollama?.baseUrl || 'http://127.0.0.1:11434');
+            setTemperature(settings?.llm?.openai?.temperature || 0.7);
+            setMaxTokens(settings?.llm?.openai?.maxTokens || 4096);
+            setName(settings?.profile?.name || '');
+            setSurname(settings?.profile?.surname || '');
+            setTheme(settings?.theme || 'system');
+        }
+    }, [settings]);
+
     useEffect(() => {
         dispatch(getSettings());
     }, [dispatch]);

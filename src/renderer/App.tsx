@@ -53,17 +53,18 @@ const App: React.FC = () => {
             if (!currentConversationId) return;
 
             try {
-                console.log('Loading conversation history for:', currentConversationId);
+                console.log('🔧 DEBUG: Loading conversation history for:', currentConversationId);
                 const messages = await ipcRenderer.invoke('load-conversation', currentConversationId);
-                console.log('Loaded messages:', messages);
+                console.log('🔧 DEBUG: Loaded messages from ChatStorageService:', messages.length, 'messages');
 
                 // Clear current messages and add loaded ones
                 dispatch({ type: 'CLEAR_MESSAGES' });
                 messages.forEach((message: any) => {
+                    console.log('🔧 DEBUG: Restoring message from storage:', message);
                     dispatch({ type: 'ADD_MESSAGE', payload: message });
                 });
             } catch (error) {
-                console.error('Failed to load conversation history:', error);
+                console.error('🚨 DEBUG: Failed to load conversation history:', error);
             }
         };
 
@@ -162,8 +163,10 @@ const App: React.FC = () => {
                                 id: `user-${Date.now()}`,
                                 role: 'user',
                                 content: transcript,
-                                timestamp: new Date().toISOString()
+                                timestamp: new Date().toISOString(),
+                                conversationId: currentConversationId
                             };
+                            console.log('🔧 DEBUG: Adding user message (from voice) - will be persisted to ChatStorageService:', userMessage);
                             dispatch({ type: 'ADD_MESSAGE', payload: userMessage });
 
                             // Create assistant message placeholder for streaming
@@ -172,7 +175,8 @@ const App: React.FC = () => {
                                 role: 'assistant',
                                 content: '',
                                 timestamp: new Date().toISOString(),
-                                isStreaming: true
+                                isStreaming: true,
+                                conversationId: currentConversationId
                             };
                             dispatch({ type: 'ADD_MESSAGE', payload: assistantMessage });
                             dispatch({ type: 'START_THINKING' });
@@ -279,8 +283,10 @@ const App: React.FC = () => {
                 id: `user-${Date.now()}`,
                 role: 'user',
                 content: inputValue,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                conversationId: currentConversationId
             };
+            console.log('🔧 DEBUG: Adding user message (from text) - will be persisted to ChatStorageService:', userMessage);
             dispatch({ type: 'ADD_MESSAGE', payload: userMessage });
 
             // Create assistant message placeholder for streaming
@@ -289,7 +295,8 @@ const App: React.FC = () => {
                 role: 'assistant',
                 content: '',
                 timestamp: new Date().toISOString(),
-                isStreaming: true
+                isStreaming: true,
+                conversationId: currentConversationId
             };
             dispatch({ type: 'ADD_MESSAGE', payload: assistantMessage });
             dispatch({ type: 'START_THINKING' });

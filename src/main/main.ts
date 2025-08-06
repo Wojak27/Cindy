@@ -12,7 +12,117 @@ import { LLMRouterService } from './services/LLMRouterService';
 import { CindyAgent } from './agents/CindyAgent';
 import { MemoryService } from './services/MemoryService';
 import { ToolExecutorService } from './services/ToolExecutorService';
+import { VectorStoreService } from './services/VectorStoreService';
 import { SpeechToTextService } from './services/SpeechToTextService';
+
+// Function to set up all settings-related IPC handlers
+const setupSettingsIPC = () => {
+    console.log('🔧 DEBUG: Setting up settings IPC handlers');
+
+    // Remove any existing handlers first to prevent duplicate registration
+    const handlersToRemove = [
+        'get-settings-service',
+        'grant-storage-permission',
+        'has-storage-permission',
+        'settings-get',
+        'settings-set',
+        'settings-get-all',
+        'settings-save'
+    ];
+
+    handlersToRemove.forEach(handler => {
+        try {
+            ipcMain.removeHandler(handler);
+        } catch (error) {
+            // Ignore error if handler doesn't exist
+            console.debug(`No existing handler for ${handler} to remove`);
+        }
+    });
+
+    // Settings service availability check
+    ipcMain.handle('get-settings-service', () => {
+        console.log('🔧 DEBUG: Settings service requested by renderer, available:', !!settingsService);
+        return !!settingsService;
+    });
+
+    // Storage permission handlers
+    ipcMain.handle('grant-storage-permission', async () => {
+        console.log('Main process - grant-storage-permission IPC called');
+        if (!settingsService) {
+            console.error('Main process - grant-storage-permission: settingsService not available');
+            return { success: false, error: 'Settings service not available' };
+        }
+        try {
+            console.log('Main process - grant-storage-permission: calling settingsService.grantStoragePermission()');
+            await settingsService.grantStoragePermission();
+            console.log('Main process - grant-storage-permission: successfully granted');
+            return { success: true };
+        } catch (error) {
+            console.error('Main process - grant-storage-permission: error granting permission:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        }
+    });
+
+    ipcMain.handle('has-storage-permission', async () => {
+        console.log('Main process - has-storage-permission IPC called');
+        if (!settingsService) {
+            console.error('Main process - has-storage-permission: settingsService not available');
+            return { hasPermission: false, error: 'Settings service not available' };
+        }
+        try {
+            console.log('Main process - has-storage-permission: calling settingsService.hasStoragePermission()');
+            const hasPermission = await settingsService.hasStoragePermission();
+            console.log('Main process - has-storage-permission: current status:', hasPermission);
+            return { hasPermission };
+        } catch (error) {
+            console.error('Main process - has-storage-permission: error checking permission:', error);
+            return { hasPermission: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        }
+    });
+
+    // Settings CRUD handlers
+    ipcMain.handle('settings-get', async (event, section: string) => {
+        if (!settingsService) {
+            throw new Error('SettingsService not initialized');
+        }
+
+        const validSections = ['general', 'voice', 'llm', 'vault', 'research', 'privacy', 'system', 'database', 'profile'];
+        if (!validSections.includes(section)) {
+            throw new Error(`Invalid settings section: ${section}`);
+        }
+
+        return await settingsService.get(section as keyof Settings);
+    });
+
+    ipcMain.handle('settings-set', async (event, section: string, value: any) => {
+        if (!settingsService) {
+            throw new Error('SettingsService not initialized');
+        }
+
+        const validSections = ['general', 'voice', 'llm', 'vault', 'research', 'privacy', 'system', 'database', 'profile'];
+        if (!validSections.includes(section)) {
+            throw new Error(`Invalid settings section: ${section}`);
+        }
+
+        return await settingsService.set(section as keyof Settings, value);
+    });
+
+    ipcMain.handle('settings-get-all', async () => {
+        if (!settingsService) {
+            throw new Error('SettingsService not initialized');
+        }
+        return await settingsService.getAll();
+    });
+
+    ipcMain.handle('settings-save', async () => {
+        if (!settingsService) {
+            throw new Error('SettingsService not initialized');
+        }
+        return await settingsService.save();
+    });
+
+    console.log('🔧 DEBUG: Settings IPC handlers setup complete');
+};
 
 async function waitForDevServer(maxRetries = 10, delay = 1000): Promise<boolean> {
     for (let i = 0; i < maxRetries; i++) {
@@ -39,6 +149,7 @@ let trayService: TrayService | null = null;
 let settingsService: SettingsService | null = null;
 let chatStorageService: ChatStorageService | null = null;
 let llmRouterService: LLMRouterService | null = null;
+let vectorStoreService: VectorStoreService | null = null;
 let cindyAgent: CindyAgent | null = null;
 let speechToTextService: SpeechToTextService | null = null;
 
@@ -218,14 +329,20 @@ app.on('ready', async () => {
         }
     });
 
-    // Add 2-second timeout at startup
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    // Initialize settings service first
+    // Initialize settings service first (before creating window)
     if (!settingsService) {
+        console.log('🔧 DEBUG: Initializing SettingsService (first time)');
         settingsService = new SettingsService();
         await settingsService.initialize();
+        console.log('🔧 DEBUG: SettingsService initialized successfully');
+    } else {
+        console.log('🔧 DEBUG: SettingsService already exists, skipping initialization');
     }
+
+    // Set up IPC handlers for settings service methods BEFORE creating window
+    // This ensures IPC is ready when renderer process loads
+    console.log('🔧 DEBUG: Setting up IPC handlers before window creation');
+    setupSettingsIPC();
 
     // Initialize LLMRouterService
     if (!llmRouterService) {
@@ -257,16 +374,29 @@ app.on('ready', async () => {
         console.error('Failed to initialize ChatStorageService:', error);
     }
 
+    // Initialize VectorStoreService
+    if (!vectorStoreService) {
+        const databaseSettings = (await settingsService?.get('database') || {}) as any;
+        vectorStoreService = new VectorStoreService({
+            databasePath: databaseSettings.path || path.join(app.getPath('userData'), 'vector-store.db'),
+            embeddingModel: databaseSettings.embeddingModel || 'qwen3:8b',
+            chunkSize: databaseSettings.chunkSize || 1000,
+            chunkOverlap: databaseSettings.chunkOverlap || 200,
+            autoIndex: databaseSettings.autoIndex || true
+        });
+        await vectorStoreService.initialize();
+        console.log('🔧 DEBUG: VectorStoreService initialized');
+    }
+
     // Initialize CindyAgent after other services
-    if (!cindyAgent && llmRouterService && settingsService && chatStorageService) {
-        // Initialize Redux store with persistence middleware
+    if (!cindyAgent && llmRouterService && settingsService && chatStorageService && vectorStoreService) {
         // Initialize Redux store with persistence middleware
         let store = createStore(
             rootReducer,
             applyMiddleware(persistenceMiddleware)
         );
         const memoryService = new MemoryService(store);
-        const toolExecutor = new ToolExecutorService();
+        const toolExecutor = new ToolExecutorService(vectorStoreService);
 
         // Get agent config from settings
         const agentConfig = await settingsService.get('general') || {};
@@ -281,6 +411,7 @@ app.on('ready', async () => {
             },
             llmRouter: llmRouterService
         });
+        console.log('🔧 DEBUG: CindyAgent initialized with RAG capabilities');
     }
 
     // Initialize Speech-to-Text Service
@@ -302,106 +433,8 @@ app.on('ready', async () => {
         new WakeWordService(settingsService, mainWindow);
     }
 
-    // Initialize settings service first
-    if (!settingsService) {
-        settingsService = new SettingsService();
-        await settingsService.initialize();
-    }
-
-    // Initialize LLMRouterService
-    if (!llmRouterService) {
-        const settings = await settingsService?.get('llm');
-        if (settings) {
-            // Get the API key from secure storage
-            const apiKey = await settingsService?.getApiKey();
-
-            // Create a complete config with all required properties
-            const llmConfig = {
-                ...settings,
-                openai: {
-                    ...settings.openai,
-                    apiKey: apiKey || ''  // Provide empty string if no API key
-                },
-                streaming: true,
-                timeout: 30000
-            };
-            llmRouterService = new LLMRouterService(llmConfig);
-            await llmRouterService.initialize();
-        }
-    }
-
-
-    // Initialize ChatStorageService
-    try {
-        chatStorageService = new ChatStorageService();
-        await chatStorageService.initialize();
-    } catch (error) {
-        console.error('Failed to initialize ChatStorageService:', error);
-    }
-
-    // Set up IPC handlers for settings service methods immediately after initialization
-    // This allows the renderer process to access the settings service through IPC
-    // Remove any existing handler first to prevent duplicate registration
-    try {
-        ipcMain.removeHandler('get-settings-service');
-    } catch (error) {
-        // Ignore error if handler doesn't exist
-        console.debug('No existing handler for get-settings-service to remove');
-    }
-    ipcMain.handle('get-settings-service', () => {
-        console.log('Settings service requested by renderer');
-        return true; // Indicate service is available
-    });
-
-    // IPC handler for granting storage permission
-    // Remove any existing handler first to prevent duplicate registration
-    try {
-        ipcMain.removeHandler('grant-storage-permission');
-    } catch (error) {
-        // Ignore error if handler doesn't exist
-        console.debug('No existing handler for grant-storage-permission to remove');
-    }
-    ipcMain.handle('grant-storage-permission', async () => {
-        console.log('Main process - grant-storage-permission IPC called');
-        if (!settingsService) {
-            console.error('Main process - grant-storage-permission: settingsService not available');
-            return { success: false, error: 'Settings service not available' };
-        }
-        try {
-            console.log('Main process - grant-storage-permission: calling settingsService.grantStoragePermission()');
-            await settingsService.grantStoragePermission();
-            console.log('Main process - grant-storage-permission: successfully granted');
-            return { success: true };
-        } catch (error) {
-            console.error('Main process - grant-storage-permission: error granting permission:', error);
-            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-        }
-    });
-
-    // IPC handler for checking storage permission
-    // Remove any existing handler first to prevent duplicate registration
-    try {
-        ipcMain.removeHandler('has-storage-permission');
-    } catch (error) {
-        // Ignore error if handler doesn't exist
-        console.debug('No existing handler for has-storage-permission to remove');
-    }
-    ipcMain.handle('has-storage-permission', async () => {
-        console.log('Main process - has-storage-permission IPC called');
-        if (!settingsService) {
-            console.error('Main process - has-storage-permission: settingsService not available');
-            return { hasPermission: false, error: 'Settings service not available' };
-        }
-        try {
-            console.log('Main process - has-storage-permission: calling settingsService.hasStoragePermission()');
-            const hasPermission = await settingsService.hasStoragePermission();
-            console.log('Main process - has-storage-permission: current status:', hasPermission);
-            return { hasPermission };
-        } catch (error) {
-            console.error('Main process - has-storage-permission: error checking permission:', error);
-            return { hasPermission: false, error: error instanceof Error ? error.message : 'Unknown error' };
-        }
-    });
+    // REMOVED: Duplicate service initialization (services already initialized above)
+    console.log('🔧 DEBUG: Other services initialization completed');
 
 
 
@@ -459,41 +492,7 @@ app.on('ready', async () => {
         }
     });
 
-    // IPC handlers for settings service methods
-    ipcMain.handle('settings-get', async (event, section: string) => {
-        if (!settingsService) {
-            throw new Error('SettingsService not initialized');
-        }
-
-        // Validate section is a valid settings section
-        const validSections = ['general', 'voice', 'llm', 'vault', 'research', 'privacy', 'system', 'database', 'profile'];
-        if (!validSections.includes(section)) {
-            throw new Error(`Invalid settings section: ${section}`);
-        }
-
-        return await settingsService.get(section as keyof Settings);
-    });
-
-    ipcMain.handle('settings-set', async (event, section: string, value: any) => {
-        if (!settingsService) {
-            throw new Error('SettingsService not initialized');
-        }
-
-        // Validate section is a valid settings section
-        const validSections = ['general', 'voice', 'llm', 'vault', 'research', 'privacy', 'system', 'database', 'profile'];
-        if (!validSections.includes(section)) {
-            throw new Error(`Invalid settings section: ${section}`);
-        }
-
-        return await settingsService.set(section as keyof Settings, value);
-    });
-
-    ipcMain.handle('settings-get-all', async () => {
-        if (!settingsService) {
-            throw new Error('SettingsService not initialized');
-        }
-        return await settingsService.getAll();
-    });
+    // Note: Settings IPC handlers are now set up in setupSettingsIPC() function called earlier
 
 
     // IPC handler for starting audio recording
@@ -596,18 +595,54 @@ app.on('ready', async () => {
                 preferences: {}
             });
 
+            let assistantContent = '';
+
             // Handle streaming response
             if (typeof response === 'object' && 'next' in response) {
                 // Stream chunks to renderer process
                 for await (const chunk of response as AsyncGenerator<string>) {
+                    assistantContent += chunk;
                     event.sender.send('stream-chunk', { chunk, conversationId });
                 }
+
+                // Save assistant message to ChatStorageService when streaming is complete
+                if (chatStorageService && assistantContent.trim()) {
+                    try {
+                        await chatStorageService.saveMessage({
+                            conversationId,
+                            role: 'assistant',
+                            content: assistantContent,
+                            timestamp: Date.now()
+                        });
+                        console.log('🔧 DEBUG: Assistant streaming message persisted to ChatStorageService');
+                    } catch (saveError) {
+                        console.error('🚨 DEBUG: Failed to persist assistant streaming message:', saveError);
+                    }
+                }
+
                 event.sender.send('stream-complete', { conversationId });
                 return ""; // Return empty string since we're streaming
             }
 
             // Return direct response for non-streaming case
-            event.sender.send('stream-chunk', { chunk: response as string, conversationId });
+            assistantContent = response as string;
+
+            // Save assistant message for non-streaming response
+            if (chatStorageService && assistantContent.trim()) {
+                try {
+                    await chatStorageService.saveMessage({
+                        conversationId,
+                        role: 'assistant',
+                        content: assistantContent,
+                        timestamp: Date.now()
+                    });
+                    console.log('🔧 DEBUG: Assistant non-streaming message persisted to ChatStorageService');
+                } catch (saveError) {
+                    console.error('🚨 DEBUG: Failed to persist assistant non-streaming message:', saveError);
+                }
+            }
+
+            event.sender.send('stream-chunk', { chunk: assistantContent, conversationId });
             event.sender.send('stream-complete', { conversationId });
             return "";
         } catch (error) {
@@ -664,16 +699,47 @@ app.on('ready', async () => {
         }
     });
 
-    ipcMain.handle('settings-save', async () => {
-        if (!settingsService) {
-            throw new Error('SettingsService not initialized');
+    // Note: settings-save IPC handler is now in setupSettingsIPC() function
+
+    // IPC handler for saving messages to ChatStorageService
+    ipcMain.handle('save-message', async (event, messageData) => {
+        console.log('🔧 DEBUG: Main process - save-message IPC called with:', messageData);
+        try {
+            if (!chatStorageService) {
+                console.error('🚨 DEBUG: Main process - save-message: chatStorageService not available');
+                return { success: false, error: 'Chat storage service not available' };
+            }
+
+            const messageId = await chatStorageService.saveMessage(messageData);
+            console.log('🔧 DEBUG: Main process - save-message: message saved with ID:', messageId);
+            return { success: true, messageId };
+        } catch (error) {
+            console.error('🚨 DEBUG: Main process - save-message: error saving message:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
         }
-        return await settingsService.save();
     });
 
-    // Create window and tray after setting up IPC handlers
+    // Create window and tray after all services are initialized
+    console.log('🔧 DEBUG: Creating window and tray after all services are ready');
     await createWindow();
     await createTray();
+
+    // Set global flag to indicate settings service is available to renderer
+    // Wait a moment for the window to be fully loaded
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        console.log('🔧 DEBUG: Waiting for window to be fully loaded before setting global flag');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        try {
+            await mainWindow.webContents.executeJavaScript(`
+                window.__electronSettingsService = true;
+                console.log('🔧 DEBUG: Global settings service flag set to true');
+            `);
+            console.log('🔧 DEBUG: Global settings service flag set successfully');
+        } catch (error) {
+            console.error('🚨 DEBUG: Failed to set global settings service flag:', error);
+        }
+    }
 
     // Set application menu
     const menu = CindyMenu.createMenu({
