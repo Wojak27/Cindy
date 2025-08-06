@@ -102,14 +102,16 @@ class SpeechToTextService extends EventEmitter {
         // Calculate total number of samples
         const totalSamples = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
 
-        // WAV header parameters
-        const sampleRate = 16000;
+        // WAV header parameters - whisper-node REQUIRES 16kHz
+        const sampleRate = 16000;  // whisper-node requirement: "Files must be .wav and 16Hz"
         const numChannels = 1;
         const bitsPerSample = 16;
         const byteRate = sampleRate * numChannels * bitsPerSample / 8;
         const blockAlign = numChannels * bitsPerSample / 8;
         const dataSize = totalSamples * 2; // 2 bytes per sample
         const riffChunkSize = 36 + dataSize;
+
+        console.log('DEBUG: Creating WAV with required 16kHz sample rate for whisper-node compatibility');
 
         // Create buffer for WAV file (RIFF header + data)
         const buffer = new ArrayBuffer(44 + dataSize);
@@ -388,10 +390,63 @@ class OfflineSTTEngine {
         }
 
         try {
+            // Additional WAV file validation
+            const wavBuffer = await require('fs').promises.readFile(tempFilePath);
+            console.log('DEBUG: WAV file first 16 bytes:', Array.from(wavBuffer.slice(0, 16)));
+
+            // Check if this is a valid audio duration
+            const wavHeader = wavBuffer.slice(0, 44);
+            const dataSize = wavHeader.readUInt32LE(40);
+            const duration = dataSize / (16000 * 2); // 16kHz, 16-bit (whisper-node requirement)
+            console.log('DEBUG: Audio duration:', duration, 'seconds');
+
+            // Analyze audio amplitude levels - process in chunks to avoid stack overflow
+            const audioSamples = wavBuffer.slice(44); // Skip WAV header
+            const samples = new Int16Array(audioSamples.buffer, audioSamples.byteOffset, audioSamples.byteLength / 2);
+
+            // Process amplitude calculation in chunks to avoid stack overflow
+            let maxAmplitude = 0;
+            let totalAmplitude = 0;
+            let nonSilentSamples = 0;
+
+            const chunkSize = 1024;
+            for (let i = 0; i < samples.length; i += chunkSize) {
+                const chunk = samples.slice(i, i + chunkSize);
+                for (const sample of chunk) {
+                    const abs = Math.abs(sample);
+                    maxAmplitude = Math.max(maxAmplitude, abs);
+                    totalAmplitude += abs;
+                    if (abs > 100) nonSilentSamples++;
+                }
+            }
+
+            const avgAmplitude = totalAmplitude / samples.length;
+            const nonSilentPercent = (nonSilentSamples / samples.length) * 100;
+
+            console.log('DEBUG: Audio analysis:');
+            console.log('  - Max amplitude:', maxAmplitude, '/ 32767 (', ((maxAmplitude / 32767) * 100).toFixed(1), '%)');
+            console.log('  - Average amplitude:', avgAmplitude.toFixed(1));
+            console.log('  - Non-silent samples:', nonSilentPercent.toFixed(1), '%');
+            console.log('  - Audio appears', maxAmplitude > 1000 ? 'LOUD enough' : 'TOO QUIET');
+
+            if (duration < 0.1) {
+                console.log('DEBUG: Audio too short (<0.1s), likely empty');
+                await require('fs').promises.unlink(tempFilePath);
+                return '';
+            }
+
+            // Copy WAV file to desktop for manual inspection
+            const desktopPath = require('path').join(require('os').homedir(), 'Desktop', `voice_debug_${Date.now()}.wav`);
+            await require('fs').promises.copyFile(tempFilePath, desktopPath);
+            console.log('DEBUG: Audio file copied to desktop for inspection:', desktopPath);
+
             // Transcribe using whisper-node function
             console.log('DEBUG: Calling whisper function with options:', {
                 modelPath: this.modelPath,
-                language: this.config.language,
+                language: 'en',
+                duration: duration + 's',
+                maxAmplitude,
+                avgAmplitude: avgAmplitude.toFixed(1),
                 fileExists: await require('fs').promises.access(this.modelPath).then(() => true).catch(() => false)
             });
 
@@ -401,17 +456,28 @@ class OfflineSTTEngine {
                 result = await this.whisperFunction(tempFilePath, {
                     modelPath: this.modelPath,
                     whisperOptions: {
-                        language: this.config.language,
+                        language: 'en',
                         word_timestamps: false,
                         gen_file_txt: false,
                         gen_file_vtt: false,
-                        gen_file_srt: false
+                        gen_file_srt: false,
+                        temperature: 0.8,           // Higher temperature for better detection
+                        beam_size: 5,               // Better search
+                        best_of: 5,                 // Multiple attempts
+                        fp16: false,                // Use fp32 for better accuracy
+                        no_speech_threshold: 0.4,   // Lower threshold (default 0.6)
+                        logprob_threshold: -1.0,    // Lower threshold (default -1.0)
+                        compression_ratio_threshold: 2.4  // Allow more compressed audio
                     }
                 });
             } catch (whisperError: any) {
                 // Handle specific parseTranscript error from whisper-node
-                if (whisperError.message && whisperError.message.includes('Cannot read properties of null')) {
-                    console.log('DEBUG: whisper-node parseTranscript error caught - whisper returned null (likely empty/silent audio)');
+                if (whisperError.message && (
+                    whisperError.message.includes('Cannot read properties of null') ||
+                    whisperError.message.includes("reading 'shift'") ||
+                    whisperError.message.includes('parseTranscript')
+                )) {
+                    console.log('DEBUG: whisper-node parseTranscript error caught - whisper returned null, trying alternative approach');
                     result = null;
                 } else {
                     // Re-throw other whisper errors
@@ -454,8 +520,19 @@ class OfflineSTTEngine {
                     });
                 });
 
-                const text = result.map(segment => segment?.speech || '').join(' ').trim();
+                const text = result
+                    .map(segment => segment?.speech || '')
+                    .filter(speech => speech && speech !== '[BLANK_AUDIO]') // Filter out blank audio markers
+                    .join(' ')
+                    .trim();
                 console.log('DEBUG: Extracted text:', text);
+
+                // If we only got blank audio, return empty string
+                if (!text || text === '[BLANK_AUDIO]') {
+                    console.log('DEBUG: Only blank audio detected - audio may be too quiet or unclear');
+                    return '';
+                }
+
                 return text;
             } else {
                 console.log('DEBUG: Unexpected result format, returning as string');

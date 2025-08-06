@@ -161,19 +161,8 @@ const App: React.FC = () => {
                 console.log('Audio data received:', audioData);
 
                 if (audioData && audioData.length > 0) {
-                    // Convert Int16Array[] to ArrayBuffer for transcription
-                    const audioBuffer = new ArrayBuffer(audioData.length * audioData[0].length * 2);
-                    const view = new DataView(audioBuffer);
-                    let offset = 0;
-                    for (const chunk of audioData) {
-                        for (const sample of chunk) {
-                            view.setInt16(offset, sample, true);
-                            offset += 2;
-                        }
-                    }
-
-                    // Send audio data to Whisper for transcription
-                    const transcript = await ipcRenderer.invoke('transcribe-audio', audioBuffer);
+                    // Send Int16Array[] directly to main process for proper WAV conversion
+                    const transcript = await ipcRenderer.invoke('transcribe-audio', audioData);
                     if (transcript) {
                         // Update the live transcription display
                         setLiveTranscription(transcript);

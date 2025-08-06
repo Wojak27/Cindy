@@ -560,8 +560,9 @@ app.on('ready', async () => {
     });
 
     // IPC handler for transcribing audio
-    ipcMain.handle('transcribe-audio', async (event, audioBuffer: ArrayBuffer) => {
-        console.log('DEBUG: Main process - transcribe-audio IPC called with buffer size:', audioBuffer.byteLength);
+    ipcMain.handle('transcribe-audio', async (event, audioData: Int16Array[] | ArrayBuffer) => {
+        console.log('DEBUG: Main process - transcribe-audio IPC called with data type:', Array.isArray(audioData) ? 'Int16Array[]' : 'ArrayBuffer');
+        console.log('DEBUG: Main process - transcribe-audio: data size:', Array.isArray(audioData) ? `${audioData.length} chunks` : `${audioData.byteLength} bytes`);
         try {
             if (!speechToTextService) {
                 console.error('DEBUG: Main process - transcribe-audio: speechToTextService not initialized');
@@ -569,7 +570,7 @@ app.on('ready', async () => {
             }
 
             console.log('DEBUG: Main process - transcribe-audio: calling speechToTextService.transcribe');
-            const transcription = await speechToTextService.transcribe(audioBuffer);
+            const transcription = await speechToTextService.transcribe(audioData);
             console.log('DEBUG: Main process - transcribe-audio: transcription result:', transcription);
             return transcription;
         } catch (error) {
