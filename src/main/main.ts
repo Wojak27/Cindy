@@ -5,6 +5,7 @@ import { SettingsService, Settings } from './services/SettingsService';
 import { TrayService } from './services/TrayService';
 import axios from 'axios';
 import { ChatStorageService } from './services/ChatStorageService';
+import { LLMRouterService } from './services/LLMRouterService';
 
 async function waitForDevServer(maxRetries = 10, delay = 1000): Promise<boolean> {
     for (let i = 0; i < maxRetries; i++) {
@@ -30,6 +31,7 @@ let mainWindow: BrowserWindow | null = null;
 let trayService: TrayService | null = null;
 let settingsService: SettingsService | null = null;
 let chatStorageService: ChatStorageService | null = null;
+let llmRouterService: LLMRouterService | null = null;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 
 const createWindow = async (): Promise<void> => {
@@ -99,7 +101,7 @@ const createWindow = async (): Promise<void> => {
 const createTray = async (): Promise<void> => {
     // Determine platform-appropriate icon format
     const getTrayIcon = (): string | NativeImage => {
-        const basePath = path.join(__dirname, '../../assets/icons/');
+        const basePath = path.join(__dirname, 'assets/icons/');
         if (process.platform === 'win32') {
             return path.join(basePath, 'tray-icon.ico');
         }
@@ -181,6 +183,28 @@ app.on('ready', async () => {
         await settingsService.initialize();
     }
 
+    // Initialize LLMRouterService
+    if (!llmRouterService) {
+        const settings = await settingsService?.get('llm');
+        if (settings) {
+            // Get the API key from secure storage
+            const apiKey = await settingsService?.getApiKey();
+
+            // Create a complete config with all required properties
+            const llmConfig = {
+                ...settings,
+                openai: {
+                    ...settings.openai,
+                    apiKey: apiKey || ''  // Provide empty string if no API key
+                },
+                streaming: true,
+                timeout: 30000
+            };
+            llmRouterService = new LLMRouterService(llmConfig);
+            await llmRouterService.initialize();
+        }
+    }
+
 
     // Initialize ChatStorageService
     try {
@@ -259,6 +283,24 @@ app.on('ready', async () => {
 
 
 
+
+    // IPC handler for getting available LLM models
+    ipcMain.handle('llm:get-available-models', async () => {
+        console.log('Main process - llm:get-available-models IPC called');
+        if (!llmRouterService) {
+            console.error('Main process - llm:get-available-models: llmRouterService not available');
+            return { success: false, error: 'LLM Router service not available' };
+        }
+        try {
+            console.log('Main process - llm:get-available-models: calling llmRouterService.getAvailableModels()');
+            const models = await llmRouterService.getAvailableModels();
+            console.log('Main process - llm:get-available-models: successfully retrieved models');
+            return { success: true, models };
+        } catch (error) {
+            console.error('Main process - llm:get-available-models: error retrieving models:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        }
+    });
 
     // IPC handlers for settings service methods
     ipcMain.handle('settings-get', async (event, section: string) => {
@@ -432,10 +474,24 @@ app.on('ready', async () => {
     // Set application menu
     const menu = CindyMenu.createMenu({
         showSettings: () => {
-            console.log('Show settings');
+            if (mainWindow) {
+                mainWindow.show();
+                mainWindow.webContents.send('open-settings');
+            } else {
+                createWindow().then(() => {
+                    mainWindow?.webContents.send('open-settings');
+                });
+            }
         },
         showAbout: () => {
-            console.log('Show about');
+            if (mainWindow) {
+                mainWindow.show();
+                mainWindow.webContents.send('open-about');
+            } else {
+                createWindow().then(() => {
+                    mainWindow?.webContents.send('open-about');
+                });
+            }
         },
         quit: () => {
             (app as any).quitting = true;

@@ -1,11 +1,11 @@
 import { EventEmitter } from 'events';
 import { PorcupineWrapper } from '../utils/PorcupineWrapper';
-import { AudioCaptureService } from './AudioCaptureService';
+import { audioCaptureService } from '../../renderer/services/AudioCaptureService';
 import { SettingsService } from './SettingsService';
 
 class WakeWordService extends EventEmitter {
     private porcupine: PorcupineWrapper;
-    private audioCapture: AudioCaptureService;
+    private audioCapture: typeof audioCaptureService;
     private settingsService: SettingsService;
     private isListening: boolean = false;
     private detectionInterval: NodeJS.Timeout | null = null;
@@ -15,7 +15,7 @@ class WakeWordService extends EventEmitter {
         super();
         this.settingsService = settingsService;
         this.porcupine = new PorcupineWrapper();
-        this.audioCapture = new AudioCaptureService();
+        this.audioCapture = audioCaptureService;
     }
 
     async startListening(): Promise<void> {
@@ -78,7 +78,8 @@ class WakeWordService extends EventEmitter {
 
     private async detectWakeWord(): Promise<void> {
         try {
-            const audioData = this.audioCapture.getAudioData();
+            const audioDataArray = await this.audioCapture.stopCapture();
+            const audioData = audioDataArray.length > 0 ? audioDataArray[audioDataArray.length - 1] : new Int16Array(0);
             const detected = await this.porcupine.process(audioData);
 
             if (detected) {
