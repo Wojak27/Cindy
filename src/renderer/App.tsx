@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
+import SoundReactiveCircle from './components/SoundReactiveCircle';
 import SettingsPanel from './components/SettingsPanel';
+import DatabasePanel from './components/DatabasePanel';
 import { getSettings } from '../store/actions';
 import { toggleSettings } from '../store/actions';
 import './styles/main.css';
+import './styles/database-sidebar.css';
 import { ipcRenderer } from 'electron';
 import ChatList from './components/ChatList';
 import {
@@ -14,14 +17,17 @@ import {
     ArrowUpward as SendIcon,
     ViewSidebar as ViewSidebarIcon,
     EditSquare as EditSquareIcon,
-    Settings as SettingsIcon
+    Settings as SettingsIcon,
+    Storage as DatabaseIcon
 } from '@mui/icons-material';
 
 const App: React.FC = () => {
     const dispatch = useDispatch();
     const showSettings = useSelector((state: any) => state.ui.showSettings);
+    const showDatabase = useSelector((state: any) => state.ui.showDatabase);
     const thinkingStartTime = useSelector((state: any) => state.ui.thinkingStartTime);
-    const settings = useSelector((state: any) => state.settings);
+    // settings is used in the welcome message, but we're replacing that with SoundReactiveCircle
+    // const settings = useSelector((state: any) => state.settings);
     const [isSpeaking, setIsSpeaking] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
     const [isListening, setIsListening] = useState(false);
@@ -133,21 +139,19 @@ const App: React.FC = () => {
     // Handle microphone button click for recording
     const handleMicClick = async () => {
         playSound('activation');
+        // Show visual feedback that recording is starting
+        setIsRecording(true);
+
+        // Send start-recording IPC to renderer service
+        ipcRenderer.send('start-recording');
 
         if (isRecording) {
             // Stop recording
             try {
                 // Stop recording - this will trigger audio data to be sent
-                await ipcRenderer.invoke('stop-recording');
-                // Wait for audio data from the AudioCaptureService
-                const audioData = await new Promise<Int16Array[]>((resolve) => {
-                    const handler = (event: any, data: Int16Array[]) => {
-                        resolve(data);
-                    };
-                    ipcRenderer.once('audio-data', handler);
-                });
+                const audioData = await ipcRenderer.invoke('stop-recording');
 
-                if (audioData) {
+                if (audioData && audioData.length > 0) {
                     // Convert Int16Array[] to ArrayBuffer for transcription
                     const audioBuffer = new ArrayBuffer(audioData.length * audioData[0].length * 2);
                     const view = new DataView(audioBuffer);
@@ -162,10 +166,29 @@ const App: React.FC = () => {
                     // Send audio data to Whisper for transcription
                     const transcript = await ipcRenderer.invoke('transcribe-audio', audioBuffer);
                     if (transcript) {
-                        // Handle the transcribed text (e.g., send as message)
-                        console.log('Transcription:', transcript);
-                        // TODO: Dispatch action to send message
-                        // For now, we'll just log it
+                        // First, set the transcribed text in the input field
+                        setInputValue(transcript);
+
+                        // Handle the transcribed text by sending it as a message
+                        if (transcript.trim()) {
+                            // Add user message to store
+                            dispatch({ type: 'ADD_MESSAGE', payload: { role: 'user', content: transcript, timestamp: new Date().toISOString() } });
+                            dispatch({ type: 'START_THINKING' });
+
+                            try {
+                                // Process message through agent with conversation ID
+                                const response = await ipcRenderer.invoke('process-message', transcript, currentConversationId);
+
+                                // Add assistant response to store
+                                dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: response, timestamp: new Date().toISOString() } });
+                            } catch (error) {
+                                console.error('Error processing message:', error);
+                                // Add error message
+                                dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: 'Sorry, I encountered an error processing your request.', timestamp: new Date().toISOString() } });
+                            } finally {
+                                dispatch({ type: 'STOP_THINKING' });
+                            }
+                        }
                     }
                 }
             } catch (error) {
@@ -308,6 +331,14 @@ const App: React.FC = () => {
                     </IconButton>
                     <div className="window-draggable-area"></div>
                     <IconButton
+                        className="database-button"
+                        onClick={() => dispatch({ type: 'TOGGLE_DATABASE_SIDEBAR' })}
+                        aria-label="Open database settings"
+                        size="small"
+                    >
+                        <DatabaseIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
                         className={`settings-button ${showSettings ? 'active' : ''}`}
                         onClick={() => dispatch(toggleSettings())}
                         aria-label={showSettings ? "Close settings" : "Open settings"}
@@ -320,12 +351,9 @@ const App: React.FC = () => {
                 <div className="chat-container">
                     <div className="chat-messages-container">
                         <div className="chat-messages">
-                            {/* Show welcome message if no messages and no current input */}
+                            {/* Show sound reactive circle when no messages and no current input */}
                             {messages.length === 0 && !inputValue && (
-                                <div className="welcome-message">
-                                    <h2>Welcome{settings?.profile?.name ? ` ${settings.profile.name}` : ''} to Cindy</h2>
-                                    <p>How can I help you today?</p>
-                                </div>
+                                <SoundReactiveCircle isActive={true} />
                             )}
                             {messages.map((msg: any, index: number) => {
                                 const messageClass = `message ${msg.role} ${isSpeaking && msg.role === 'assistant' ? 'speaking' : ''} ${isListening ? 'listening' : ''}`;
@@ -335,7 +363,7 @@ const App: React.FC = () => {
                                     if (!content) return '';
 
                                     // Replace thinking sections with expandable blocks
-                                    const regex = /<think>([\s\S]*?)<\/think>/gi;
+                                    const regex = /<tool_call>([\s\S]*?)<\/think>/gi;
                                     return content.split(regex).map((part, i) => {
                                         // Even indices are non-thinking content, odd indices are thinking content
                                         if (i % 2 === 1) {
@@ -438,6 +466,9 @@ const App: React.FC = () => {
                 </div>
                 <div className={`settings-sidebar-container ${showSettings ? 'open' : ''}`}>
                     <SettingsPanel />
+                </div>
+                <div className={`database-sidebar-container ${showDatabase ? 'open' : ''}`}>
+                    <DatabasePanel />
                 </div>
             </div>
         </div>

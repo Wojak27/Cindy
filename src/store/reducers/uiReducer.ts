@@ -3,6 +3,7 @@
 
 const initialState = {
   showSettings: false,
+  showDatabase: false,
   isSpeaking: false,
   isListening: false,
   thinkingStartTime: null
@@ -14,6 +15,11 @@ const uiReducer = (state = initialState, action: any) => {
       return {
         ...state,
         showSettings: !state.showSettings
+      };
+    case 'TOGGLE_DATABASE_SIDEBAR':
+      return {
+        ...state,
+        showDatabase: !state.showDatabase
       };
     case 'SET_SPEAKING':
       return {

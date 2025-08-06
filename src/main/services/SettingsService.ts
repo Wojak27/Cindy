@@ -72,11 +72,28 @@ interface Settings {
         autoUpdate: boolean;
     };
 
+    // Database settings
+    database: {
+        path: string;
+        embeddingModel: string;
+        chunkSize: number;
+        chunkOverlap: number;
+        autoIndex: boolean;
+    };
+
     // User profile settings
     profile: {
         name: string;
         surname: string;
         hasCompletedSetup: boolean;
+    };
+
+    // Storage permissions
+    storage: {
+        // Flag to track if storage permission has been granted
+        permissionGranted: boolean;
+        // Timestamp of when permission was granted
+        permissionGrantedAt: string | null;
     };
 }
 
@@ -97,20 +114,33 @@ class SettingsService extends EventEmitter {
         if (this.isInitialized) return;
 
         try {
+            console.log('Starting SettingsService initialization');
+            console.log('Config path:', this.configManager.getConfigPath());
+
             // Load settings from persistence
+            console.log('Attempting to load settings from config manager');
             const loadedSettings = await this.configManager.load();
+            console.log('ConfigManager.load() returned:', loadedSettings);
 
             if (loadedSettings) {
+                console.log('Merging loaded settings with defaults');
                 this.settings = this.mergeSettings(this.settings, loadedSettings);
+                console.log('Settings merged successfully');
+            } else {
+                console.log('No settings found, using defaults');
             }
 
             // Validate critical settings
+            console.log('Validating settings');
             await this.validateSettings();
+            console.log('Settings validation completed');
 
             this.isInitialized = true;
+            console.log('SettingsService initialization completed successfully');
             this.emit('initialized', this.settings);
         } catch (error) {
             console.error('Failed to initialize settings service:', error);
+            console.error('SettingsService initialization failed at:', new Error().stack);
             throw error;
         }
     }
@@ -145,7 +175,17 @@ class SettingsService extends EventEmitter {
         await this.validateSection(section);
 
         // Save to persistence
-        await this.save();
+        try {
+            console.log('SettingsService.set() - About to save settings');
+            console.log('SettingsService.set() - Current storage permission status:', this.settings.storage.permissionGranted);
+            console.log('SettingsService.set() - Settings object:', JSON.stringify(this.settings, null, 2));
+            await this.save();
+            console.log('SettingsService.set() - Settings saved successfully');
+        } catch (error) {
+            console.error('Failed to save settings after update:', error);
+            console.error('SettingsService.set() - Error details:', error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : error);
+            throw error;
+        }
 
         // Emit change event
         this.emit('settingsChanged', { section, value });
@@ -160,15 +200,30 @@ class SettingsService extends EventEmitter {
     }
 
     async save(): Promise<void> {
+        console.log('SettingsService.save() - Method called');
+        console.log('SettingsService.save() - Is initialized:', this.isInitialized);
         if (!this.isInitialized) {
+            console.log('SettingsService.save() - Service not initialized, initializing...');
             await this.initialize();
+            console.log('SettingsService.save() - Initialization completed');
         }
 
         try {
+            console.log('SettingsService.save() - Starting save process');
+            console.log('SettingsService.save() - Config path:', this.configManager.getConfigPath());
+            console.log('SettingsService.save() - Settings object keys:', Object.keys(this.settings));
+            console.log('SettingsService.save() - Attempting to save settings with length:', JSON.stringify(this.settings, null, 2).length);
+
             await this.configManager.save(this.settings);
+
+            console.log('SettingsService.save() - Settings saved successfully');
             this.emit('settingsSaved');
         } catch (error) {
-            console.error('Failed to save settings:', error);
+            console.error('SettingsService.save() - Failed to save settings:', error);
+            if (error instanceof Error) {
+                console.error('SettingsService.save() - Error name:', error.name);
+                console.error('SettingsService.save() - Error message:', error.message);
+            }
             throw error;
         }
     }
@@ -254,10 +309,23 @@ class SettingsService extends EventEmitter {
                 autoUpdate: true
             },
 
+            database: {
+                path: '',
+                embeddingModel: 'qwen3:8b',
+                chunkSize: 1000,
+                chunkOverlap: 200,
+                autoIndex: true
+            },
+
             profile: {
                 name: '',
                 surname: '',
                 hasCompletedSetup: false
+            },
+
+            storage: {
+                permissionGranted: false,
+                permissionGrantedAt: null
             }
         };
     }
@@ -321,6 +389,74 @@ class SettingsService extends EventEmitter {
     private isValidCron(expression: string): boolean {
         // Simple validation - in a real implementation, use a proper cron validator
         return expression.split(' ').length === 5;
+    }
+
+    /**
+     * Grant storage permission
+     */
+    async grantStoragePermission(): Promise<void> {
+        console.log('SettingsService.grantStoragePermission() - Method called');
+        if (!this.isInitialized) {
+            console.log('SettingsService.grantStoragePermission() - Service not initialized, initializing...');
+            await this.initialize();
+            console.log('SettingsService.grantStoragePermission() - Initialization completed');
+        }
+
+        this.settings.storage.permissionGranted = true;
+        this.settings.storage.permissionGrantedAt = new Date().toISOString();
+
+        // Save the updated settings
+        await this.save();
+
+        // Emit change event
+        this.emit('settingsChanged', {
+            section: 'storage',
+            value: {
+                permissionGranted: true,
+                permissionGrantedAt: this.settings.storage.permissionGrantedAt
+            }
+        });
+    }
+
+    /**
+     * Revoke storage permission
+     */
+    async revokeStoragePermission(): Promise<void> {
+        console.log('SettingsService.revokeStoragePermission() - Method called');
+        if (!this.isInitialized) {
+            console.log('SettingsService.revokeStoragePermission() - Service not initialized, initializing...');
+            await this.initialize();
+            console.log('SettingsService.revokeStoragePermission() - Initialization completed');
+        }
+
+        this.settings.storage.permissionGranted = false;
+        this.settings.storage.permissionGrantedAt = null;
+
+        // Save the updated settings
+        await this.save();
+
+        // Emit change event
+        this.emit('settingsChanged', {
+            section: 'storage',
+            value: {
+                permissionGranted: false,
+                permissionGrantedAt: null
+            }
+        });
+    }
+
+    /**
+     * Check if storage permission has been granted
+     */
+    async hasStoragePermission(): Promise<boolean> {
+        console.log('SettingsService.hasStoragePermission() - Method called');
+        if (!this.isInitialized) {
+            console.log('SettingsService.hasStoragePermission() - Service not initialized, initializing...');
+            await this.initialize();
+            console.log('SettingsService.hasStoragePermission() - Initialization completed');
+        }
+
+        return this.settings.storage.permissionGranted;
     }
 }
 

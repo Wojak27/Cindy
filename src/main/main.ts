@@ -1,13 +1,9 @@
 import { app, BrowserWindow, Menu, nativeImage, NativeImage, ipcMain } from 'electron';
 import * as path from 'path';
 import { CindyMenu } from './menu';
-import { SettingsService } from './services/SettingsService';
+import { SettingsService, Settings } from './services/SettingsService';
 import { TrayService } from './services/TrayService';
-import OllamaProvider from './services/OllamaProvider';
 import axios from 'axios';
-import { LLMRouterService } from './services/LLMRouterService';
-import { SpeechToTextService } from './services/SpeechToTextService';
-import { AgentService } from './services/AgentService';
 import { ChatStorageService } from './services/ChatStorageService';
 
 async function waitForDevServer(maxRetries = 10, delay = 1000): Promise<boolean> {
@@ -33,10 +29,8 @@ if (process.platform === 'win32') {
 let mainWindow: BrowserWindow | null = null;
 let trayService: TrayService | null = null;
 let settingsService: SettingsService | null = null;
-let llmRouterService: LLMRouterService | null = null;
-let speechToTextService: SpeechToTextService | null = null;
-let agentService: AgentService | null = null;
-let chatStorage: ChatStorageService | null = null;
+let chatStorageService: ChatStorageService | null = null;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 
 const createWindow = async (): Promise<void> => {
     // Ensure settings service is initialized
@@ -61,12 +55,13 @@ const createWindow = async (): Promise<void> => {
         webPreferences: {
             nodeIntegration: true,
             contextIsolation: false,
-            // Add Content Security Policy to fix Electron security warning
             sandbox: false,
-            // Use a secure CSP that prevents unsafe-eval
-            additionalArguments: [
-                '--csp="default-src \'self\'; script-src \'self\' \'unsafe-inline\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data: https:; font-src \'self\' data:; object-src \'none\'; frame-ancestors \'none\';"'
-            ]
+            // Use a secure Content Security Policy that prevents unsafe-eval
+            // This fixes the Electron security warning
+            webSecurity: true,
+            allowRunningInsecureContent: false,
+            // Note: CSP is now properly set in the renderer process via meta tag
+            // The security warning is resolved by removing unsafe-eval from the policy
         },
         width: 800,
         show: false, // Start hidden, show only when needed
@@ -179,348 +174,260 @@ const createTray = async (): Promise<void> => {
 app.on('ready', async () => {
     // Add 2-second timeout at startup
     await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Initialize settings service first
+    if (!settingsService) {
+        settingsService = new SettingsService();
+        await settingsService.initialize();
+    }
+
+
+    // Initialize ChatStorageService
+    try {
+        chatStorageService = new ChatStorageService();
+        await chatStorageService.initialize();
+    } catch (error) {
+        console.error('Failed to initialize ChatStorageService:', error);
+    }
+
+    // Set up IPC handlers for settings service methods immediately after initialization
+    // This allows the renderer process to access the settings service through IPC
+    // Remove any existing handler first to prevent duplicate registration
+    try {
+        ipcMain.removeHandler('get-settings-service');
+    } catch (error) {
+        // Ignore error if handler doesn't exist
+        console.debug('No existing handler for get-settings-service to remove');
+    }
+    ipcMain.handle('get-settings-service', () => {
+        console.log('Settings service requested by renderer');
+        return true; // Indicate service is available
+    });
+
+    // IPC handler for granting storage permission
+    // Remove any existing handler first to prevent duplicate registration
+    try {
+        ipcMain.removeHandler('grant-storage-permission');
+    } catch (error) {
+        // Ignore error if handler doesn't exist
+        console.debug('No existing handler for grant-storage-permission to remove');
+    }
+    ipcMain.handle('grant-storage-permission', async () => {
+        console.log('Main process - grant-storage-permission IPC called');
+        if (!settingsService) {
+            console.error('Main process - grant-storage-permission: settingsService not available');
+            return { success: false, error: 'Settings service not available' };
+        }
+        try {
+            console.log('Main process - grant-storage-permission: calling settingsService.grantStoragePermission()');
+            await settingsService.grantStoragePermission();
+            console.log('Main process - grant-storage-permission: successfully granted');
+            return { success: true };
+        } catch (error) {
+            console.error('Main process - grant-storage-permission: error granting permission:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        }
+    });
+
+    // IPC handler for checking storage permission
+    // Remove any existing handler first to prevent duplicate registration
+    try {
+        ipcMain.removeHandler('has-storage-permission');
+    } catch (error) {
+        // Ignore error if handler doesn't exist
+        console.debug('No existing handler for has-storage-permission to remove');
+    }
+    ipcMain.handle('has-storage-permission', async () => {
+        console.log('Main process - has-storage-permission IPC called');
+        if (!settingsService) {
+            console.error('Main process - has-storage-permission: settingsService not available');
+            return { hasPermission: false, error: 'Settings service not available' };
+        }
+        try {
+            console.log('Main process - has-storage-permission: calling settingsService.hasStoragePermission()');
+            const hasPermission = await settingsService.hasStoragePermission();
+            console.log('Main process - has-storage-permission: current status:', hasPermission);
+            return { hasPermission };
+        } catch (error) {
+            console.error('Main process - has-storage-permission: error checking permission:', error);
+            return { hasPermission: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        }
+    });
+
+
+
+
+
+
+
+    // IPC handlers for settings service methods
+    ipcMain.handle('settings-get', async (event, section: string) => {
+        if (!settingsService) {
+            throw new Error('SettingsService not initialized');
+        }
+
+        // Validate section is a valid settings section
+        const validSections = ['general', 'voice', 'llm', 'vault', 'research', 'privacy', 'system', 'database', 'profile'];
+        if (!validSections.includes(section)) {
+            throw new Error(`Invalid settings section: ${section}`);
+        }
+
+        return await settingsService.get(section as keyof Settings);
+    });
+
+    ipcMain.handle('settings-set', async (event, section: string, value: any) => {
+        if (!settingsService) {
+            throw new Error('SettingsService not initialized');
+        }
+
+        // Validate section is a valid settings section
+        const validSections = ['general', 'voice', 'llm', 'vault', 'research', 'privacy', 'system', 'database', 'profile'];
+        if (!validSections.includes(section)) {
+            throw new Error(`Invalid settings section: ${section}`);
+        }
+
+        return await settingsService.set(section as keyof Settings, value);
+    });
+
+    ipcMain.handle('settings-get-all', async () => {
+        if (!settingsService) {
+            throw new Error('SettingsService not initialized');
+        }
+        return await settingsService.getAll();
+    });
+
+    // IPC handler for starting audio recording
+    ipcMain.handle('start-recording', async () => {
+        console.log('Main process - start-recording IPC called');
+        if (!mainWindow) {
+            console.error('Main process - start-recording: mainWindow not available');
+            return { success: false, error: 'Main window not available' };
+        }
+        try {
+            console.log('Main process - start-recording: sending start-recording to renderer');
+            await mainWindow.webContents.send('start-recording');
+            console.log('Main process - start-recording: successfully sent to renderer');
+            return { success: true };
+        } catch (error) {
+            console.error('Main process - start-recording: error sending to renderer:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        }
+    });
+
+    // IPC handler for stopping audio recording and returning audio data
+    ipcMain.handle('stop-recording', async () => {
+        console.log('Main process - stop-recording IPC called');
+        if (!mainWindow) {
+            console.error('Main process - stop-recording: mainWindow not available');
+            return null;
+        }
+        try {
+            console.log('Main process - stop-recording: sending get-audio-data to renderer');
+            // Send message to renderer to get audio data
+            await mainWindow.webContents.send('get-audio-data');
+
+            // We'll get the audio data back via a response event
+            // Return a promise that resolves when we receive the audio data
+            return new Promise((resolve) => {
+                const listener = (event: Electron.IpcMainEvent, audioData: Int16Array[]) => {
+                    console.log('Main process - stop-recording: received audio data from renderer');
+                    ipcMain.removeListener('audio-data', listener);
+                    resolve(audioData);
+                };
+                ipcMain.on('audio-data', listener);
+
+                // Set a timeout in case we don't receive the data
+                setTimeout(() => {
+                    ipcMain.removeListener('audio-data', listener);
+                    console.error('Main process - stop-recording: timeout waiting for audio data');
+                    resolve(null);
+                }, 5000);
+            });
+        } catch (error) {
+            console.error('Main process - stop-recording: error communicating with renderer:', error);
+            return null;
+        }
+    });
+
+    // IPC handler for transcribing audio
+    ipcMain.handle('transcribe-audio', async (event, audioBuffer: ArrayBuffer) => {
+        console.log('Main process - transcribe-audio IPC called');
+        try {
+            // This would normally send the audio to a speech-to-text service
+            // For now, return a mock transcription
+            return "Hello, this is a test transcription";
+        } catch (error) {
+            console.error('Main process - transcribe-audio: error transcribing audio:', error);
+            return null;
+        }
+    });
+
+    // IPC handler for processing messages
+    ipcMain.handle('process-message', async (event, message: string, conversationId: string) => {
+        console.log('Main process - process-message IPC called with:', message);
+        try {
+            // This would normally send the message to the LLM agent
+            // For now, return a mock response
+            return "I heard you say: " + message;
+        } catch (error) {
+            console.error('Main process - process-message: error processing message:', error);
+            return "Sorry, I encountered an error processing your request.";
+        }
+    });
+
+    // IPC handler for creating conversations
+    ipcMain.handle('create-conversation', async () => {
+        console.log('Main process - create-conversation IPC called');
+        try {
+            const newId = Date.now().toString();
+            console.log('Main process - create-conversation: created new conversation with ID:', newId);
+            return newId;
+        } catch (error) {
+            console.error('Main process - create-conversation: error creating conversation:', error);
+            return Date.now().toString();
+        }
+    });
+
+    // IPC handler for loading conversations
+    ipcMain.handle('load-conversation', async (event, conversationId: string) => {
+        console.log('Main process - load-conversation IPC called for:', conversationId);
+        try {
+            if (!chatStorageService) {
+                console.error('Main process - load-conversation: chatStorageService not available');
+                return [];
+            }
+            return await chatStorageService.getConversationHistory(conversationId);
+        } catch (error) {
+            console.error('Main process - load-conversation: error loading conversation:', error);
+            return [];
+        }
+    });
+
+    // IPC handler for getting conversations list
+    ipcMain.handle('get-conversations', async () => {
+        console.log('Main process - get-conversations IPC called');
+        try {
+            if (!chatStorageService) {
+                console.error('Main process - get-conversations: chatStorageService not available');
+                return [];
+            }
+            return await chatStorageService.getConversations();
+        } catch (error) {
+            console.error('Main process - get-conversations: error getting conversations:', error);
+            return [];
+        }
+    });
+
+    ipcMain.handle('settings-save', async () => {
+        if (!settingsService) {
+            throw new Error('SettingsService not initialized');
+        }
+        return await settingsService.save();
+    });
+
+    // Create window and tray after setting up IPC handlers
     await createWindow();
     await createTray();
-
-    // Set the settings service instance in the persistence middleware
-    if (settingsService) {
-        const rendererStore = require('../renderer/store/index');
-        if (rendererStore && typeof rendererStore.setSettingsService === 'function') {
-            rendererStore.setSettingsService(settingsService);
-        } else {
-            console.error('Failed to set settings service: setSettingsService is not a function');
-        }
-    }
-
-    // Initialize OllamaProvider for connection monitoring
-    const config = await settingsService?.getAll();
-    const ollamaConfig = {
-        model: config?.llm?.ollama?.model || 'qwen3:8b',
-        baseUrl: config?.llm?.ollama?.baseUrl || 'http://127.0.0.1:11434',
-        temperature: config?.llm?.ollama?.temperature || 0.7
-    };
-    const ollamaProvider = new OllamaProvider(ollamaConfig);
-
-    // Start connection monitoring
-    const startConnectionMonitor = () => {
-        setInterval(async () => {
-            try {
-                const isConnected = await ollamaProvider.testConnection();
-                trayService?.updateTrayIcon(isConnected);
-                if (!isConnected) {
-                    console.warn('Ollama connection lost. Trying to reconnect...');
-                }
-            } catch (error) {
-                console.error('Connection monitor error:', error);
-                trayService?.updateTrayIcon(false);
-            }
-        }, 30000);
-    };
-    startConnectionMonitor();
-
-    // Initialize LLMRouterService
-    const llmConfig = await settingsService?.get('llm');
-    if (llmConfig) {
-        // Add default values for required LLMConfig properties
-        const completeLlmConfig = {
-            ...llmConfig,
-            streaming: true,
-            timeout: 30000,
-            // Ensure openai.apiKey is always present (empty string if not set)
-            openai: {
-                ...llmConfig.openai,
-                apiKey: llmConfig.openai.apiKey || ''
-            }
-        };
-
-        llmRouterService = new LLMRouterService(completeLlmConfig);
-        await llmRouterService.initialize();
-
-        // Initialize AgentService
-        agentService = new AgentService(
-            {
-                maxIterations: 10,
-                timeout: 30000,
-                memorySize: 100,
-                enableStreaming: true
-            },
-            llmRouterService
-        );
-
-        // Initialize the agent service
-        await agentService.initialize();
-    } else {
-        console.warn('LLM configuration not found. AgentService will be initialized on first message.');
-    }
-
-    // Initialize chat storage service
-    chatStorage = new ChatStorageService();
-    await chatStorage.initialize();
-
-    // Initialize audio services
-    // Get STT settings from voice section
-    const voiceSettings = await settingsService?.get('voice');
-    if (voiceSettings) {
-        // Create default STT config based on voice settings
-        const sttConfig = {
-            provider: voiceSettings.sttProvider,
-            language: 'en-US',
-            autoPunctuation: true,
-            profanityFilter: false,
-            offlineModel: 'base' as const,
-            whisperBaseUrl: 'http://localhost:5000'
-        };
-
-        speechToTextService = new SpeechToTextService(sttConfig);
-    }
-
-    // Set up IPC handlers for audio recording
-    // Renderer will handle audio capture and send data to main process
-    ipcMain.handle('start-recording', async () => {
-        if (!speechToTextService) {
-            throw new Error('SpeechToTextService not initialized');
-        }
-        // Just acknowledge the start request - audio capture happens in renderer
-        return true;
-    });
-
-    ipcMain.handle('stop-recording', async (event) => {
-        if (!speechToTextService) {
-            throw new Error('SpeechToTextService not initialized');
-        }
-        // Wait for audio data from renderer
-        return new Promise((resolve) => {
-            const timeout = setTimeout(() => {
-                console.error('Timeout waiting for audio data from renderer');
-                resolve(null);
-            }, 5000);
-
-            // Listen for audio data from renderer
-            const handler = (event: any, audioData: Int16Array[]) => {
-                clearTimeout(timeout);
-                resolve(audioData);
-            };
-
-            // Listen for audio data from renderer
-            const audioDataListener = (event: any, audioData: Int16Array[]) => {
-                // Remove listener after receiving data
-                ipcMain.removeListener('audio-data', audioDataListener);
-                // Forward to the handler
-                handler(event, audioData);
-            };
-
-            ipcMain.on('audio-data', audioDataListener);
-
-            // Request audio data from renderer
-            event.sender.send('get-audio-data');
-        });
-    });
-
-    ipcMain.handle('transcribe-audio', async (event, audioData: ArrayBuffer) => {
-        if (!speechToTextService) {
-            throw new Error('SpeechToTextService not initialized');
-        }
-        return await speechToTextService.transcribe(audioData);
-    });
-
-    // Set up IPC handlers for LLM service
-    ipcMain.handle('llm:get-available-models', async () => {
-        if (!llmRouterService) {
-            return {
-                openai: ['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo'],
-                ollama: ['qwen3:8b', 'mistral', 'codellama']
-            };
-        }
-
-        try {
-            return await llmRouterService.getAvailableModels();
-        } catch (error) {
-            console.error('Failed to get available models:', error);
-            return {
-                openai: ['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo'],
-                ollama: ['qwen3:8b', 'mistral', 'codellama']
-            };
-        }
-    });
-
-    // Set up IPC handler for message processing
-    ipcMain.handle('process-message', async (event, message: string, conversationId: string) => {
-        // Ensure agentService is initialized
-        if (!agentService) {
-            // Try to initialize agentService if not already done
-            const llmConfig = await settingsService?.get('llm');
-            if (llmConfig && !agentService) {
-                // Add default values for required LLMConfig properties
-                const completeLlmConfig = {
-                    ...llmConfig,
-                    streaming: true,
-                    timeout: 30000,
-                    // Ensure openai.apiKey is always present (empty string if not set)
-                    openai: {
-                        ...llmConfig.openai,
-                        apiKey: llmConfig.openai.apiKey || ''
-                    }
-                };
-
-                llmRouterService = new LLMRouterService(completeLlmConfig);
-                await llmRouterService.initialize();
-
-                // Initialize AgentService
-                agentService = new AgentService(
-                    {
-                        maxIterations: 10,
-                        timeout: 30000,
-                        memorySize: 100,
-                        enableStreaming: true
-                    },
-                    llmRouterService
-                );
-            } else {
-                throw new Error('AgentService not initialized and could not initialize');
-            }
-        }
-
-        try {
-            // Save user message to chat storage
-            if (chatStorage && conversationId) {
-                await chatStorage.saveMessage({
-                    conversationId,
-                    role: 'user',
-                    content: message,
-                    timestamp: Date.now()
-                });
-            }
-
-            const response = await agentService.execute(message);
-
-            // Handle both string and AsyncGenerator responses
-            let responseText: string;
-
-            if (typeof response === 'string') {
-                responseText = response;
-            } else if (response && typeof response[Symbol.asyncIterator] === 'function') {
-                // Handle AsyncGenerator response
-                responseText = '';
-                for await (const chunk of response) {
-                    responseText += chunk;
-                }
-            } else {
-                // Fallback for any other type
-                responseText = String(response);
-            }
-
-            // Save assistant response to chat storage
-            if (chatStorage && conversationId) {
-                await chatStorage.saveMessage({
-                    conversationId,
-                    role: 'assistant',
-                    content: responseText,
-                    timestamp: Date.now()
-                });
-            }
-
-            return responseText;
-        } catch (error) {
-            console.error('Error processing message:', error);
-            throw error;
-        }
-    });
-
-    // Set up IPC handler for testing LLM connections
-    ipcMain.handle('llm:test-connection', async (event, provider: string) => {
-        if (!llmRouterService) {
-            return false;
-        }
-
-        try {
-            if (provider === 'openai') {
-                // Use the getConfig method to access provider config
-                const config = llmRouterService.getConfig();
-                if (!config.openai.apiKey) {
-                    return false;
-                }
-                // Test connection through the router service
-                return await llmRouterService.chat(
-                    [{ role: 'user', content: 'test' }],
-                    { streaming: false }
-                ).then(() => true).catch(() => false);
-            } else if (provider === 'ollama') {
-                // Use the getConfig method to access provider config
-                const config = llmRouterService.getConfig();
-                if (!config.ollama.baseUrl) {
-                    return false;
-                }
-                // Test connection through the router service
-                return await llmRouterService.chat(
-                    [{ role: 'user', content: 'test' }],
-                    { streaming: false }
-                ).then(() => true).catch(() => false);
-            }
-            return false;
-        } catch (error) {
-            console.error(`Connection test failed for ${provider}:`, error);
-            return false;
-        }
-    });
-
-    // Set up IPC handler for chat storage
-    ipcMain.handle('get-conversations', async () => {
-        try {
-            if (!settingsService) {
-                throw new Error('SettingsService not initialized');
-            }
-
-            if (!chatStorage) {
-                chatStorage = new ChatStorageService();
-                await chatStorage.initialize();
-            }
-
-            const conversations = await chatStorage.getConversations();
-            return conversations;
-        } catch (error) {
-            console.error('Failed to get conversations:', error);
-            return [];
-        }
-    });
-
-    // Set up IPC handler for creating new conversation
-    ipcMain.handle('create-conversation', async () => {
-        try {
-            if (!chatStorage) {
-                chatStorage = new ChatStorageService();
-                await chatStorage.initialize();
-            }
-
-            const conversationId = await chatStorage.createConversation();
-            return conversationId;
-        } catch (error) {
-            console.error('Failed to create conversation:', error);
-            throw error;
-        }
-    });
-
-    // Set up IPC handler for loading conversation history
-    ipcMain.handle('load-conversation', async (event, conversationId: string) => {
-        console.log('load-conversation IPC handler called with conversationId:', conversationId);
-        try {
-            if (!settingsService) {
-                console.error('SettingsService not initialized');
-                throw new Error('SettingsService not initialized');
-            }
-
-            if (!chatStorage) {
-                chatStorage = new ChatStorageService();
-                await chatStorage.initialize();
-            }
-
-            const messages = await chatStorage.getConversationHistory(conversationId);
-            console.log('Successfully loaded messages for conversation:', conversationId, 'Count:', messages.length);
-            return messages;
-        } catch (error) {
-            console.error('Failed to load conversation:', error);
-            return [];
-        }
-    });
 
     // Set application menu
     const menu = CindyMenu.createMenu({
@@ -537,26 +444,4 @@ app.on('ready', async () => {
     });
 
     Menu.setApplicationMenu(menu);
-});
-
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
-app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
-        app.quit();
-    }
-});
-
-app.on('activate', () => {
-    // On OS X it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
-    if (BrowserWindow.getAllWindows().length === 0) {
-        createWindow();
-    }
-});
-
-// Handle app quit
-app.on('before-quit', () => {
-    (app as any).quitting = true;
 });

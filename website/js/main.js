@@ -204,22 +204,14 @@ if (typeof cookieconsent !== 'undefined') {
         dismissOnScroll: false,
         dismissOnTimeout: false,
         dismissOnWindowClick: false,
-        content: {
-            header: 'Cookies used on the website!',
-            message: 'We use cookies to enhance your experience, analyze site usage, and integrate with social media. By clicking "Allow", you consent to our use of cookies as described in our <a href="privacy.html" target="_blank">Privacy Policy</a>.',
-            allow: 'Allow',
-            deny: 'Decline',
-            link: 'Learn more',
-            href: 'privacy.html'
-        },
         onInitialise: function (status) {
             var type = this.options.type;
             var didConsent = this.hasConsent();
-            if (type == 'opt-in' && didConsent) {
+            if (type === 'opt-in' && didConsent) {
                 // Load cookies since user has consented
                 loadCookies();
             }
-            if (type == 'opt-out' && !didConsent) {
+            if (type === 'opt-out' && !didConsent) {
                 // Disable cookies since user has opted out
                 disableCookies();
             }
@@ -227,11 +219,11 @@ if (typeof cookieconsent !== 'undefined') {
         onStatusChange: function (status, chosenBefore) {
             var type = this.options.type;
             var didConsent = this.hasConsent();
-            if (type == 'opt-in' && didConsent) {
+            if (type === 'opt-in' && didConsent) {
                 // Load cookies since user has consented
                 loadCookies();
             }
-            if (type == 'opt-out' && !didConsent) {
+            if (type === 'opt-out' && !didConsent) {
                 // Disable cookies since user has opted out
                 disableCookies();
             }
@@ -280,3 +272,60 @@ function disableCookies() {
         document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
     }
 }
+// Technology Carousel Functionality
+document.addEventListener('DOMContentLoaded', function () {
+    const carousel = document.querySelector('.tech-carousel');
+    if (!carousel) return;
+
+    const track = carousel.querySelector('.carousel-track');
+    const cards = carousel.querySelectorAll('.tech-card');
+    const prevBtn = carousel.querySelector('.carousel-btn.prev');
+    const nextBtn = carousel.querySelector('.carousel-btn.next');
+    const cardWidth = 300;
+    const gap = 20;
+    const visibleCards = Math.floor(carousel.querySelector('.carousel-container').offsetWidth / (cardWidth + gap));
+    const totalCards = cards.length;
+    let currentIndex = 0;
+
+    // Update button states
+    function updateButtons() {
+        prevBtn.disabled = currentIndex === 0;
+        nextBtn.disabled = currentIndex >= totalCards - visibleCards;
+    }
+
+    // Move to specific slide
+    function goToSlide(index) {
+        if (index < 0 || index > totalCards - visibleCards) return;
+
+        currentIndex = index;
+        track.style.transform = `translateX(-${(cardWidth + gap) * currentIndex}px)`;
+        updateButtons();
+    }
+
+    // Event listeners for buttons
+    prevBtn.addEventListener('click', () => goToSlide(currentIndex - 1));
+    nextBtn.addEventListener('click', () => goToSlide(currentIndex + 1));
+
+    // Learn more buttons
+    const learnMoreBtns = carousel.querySelectorAll('.learn-more-btn');
+    learnMoreBtns.forEach(btn => {
+        btn.addEventListener('click', function () {
+            const details = this.nextElementSibling;
+            const isExpanded = this.getAttribute('aria-expanded') === 'true';
+
+            this.setAttribute('aria-expanded', !isExpanded);
+            details.hidden = isExpanded;
+        });
+    });
+
+    // Initialize
+    updateButtons();
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+        const newVisibleCards = Math.floor(carousel.querySelector('.carousel-container').offsetWidth / (cardWidth + gap));
+        if (newVisibleCards !== visibleCards) {
+            goToSlide(currentIndex);
+        }
+    });
+});

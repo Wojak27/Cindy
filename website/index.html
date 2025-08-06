@@ -5,9 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description"
-        content="Cindy is an always-on, cross-platform voice research assistant that helps you stay productive through natural voice conversations.">
-    <meta name="keywords"
-        content="voice assistant, research assistant, AI assistant, voice research, productivity tool">
+        content="Cindy is an always-on, cross-platform voice memory assistant that helps you remember everything through natural voice conversations.">
+    <meta name="keywords" content="voice assistant, memory assistant, AI assistant, voice memory, knowledge tool">
     <meta name="author" content="Cindy Team">
     <meta name="robots" content="index, follow">
 
@@ -16,7 +15,7 @@
     <meta property="og:url" content="https://cindy-ai.com/">
     <meta property="og:title" content="Cindy - Voice Research Assistant">
     <meta property="og:description"
-        content="Your always-on voice research assistant that helps you stay productive through natural conversations.">
+        content="Your always-on voice memory assistant that helps you remember everything through natural conversations.">
     <meta property="og:image" content="https://cindy-ai.com/assets/og-image.png">
 
     <!-- Twitter -->
@@ -24,12 +23,12 @@
     <meta property="twitter:url" content="https://cindy-ai.com/">
     <meta property="twitter:title" content="Cindy - Voice Research Assistant">
     <meta property="twitter:description"
-        content="Your always-on voice research assistant that helps you stay productive through natural conversations.">
+        content="Your always-on voice memory assistant that helps you remember everything through natural conversations.">
     <meta property="twitter:image" content="https://cindy-ai.com/assets/og-image.png">
 
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
         rel="stylesheet">
-    <title>Cindy - Voice Research Assistant</title>
+    <title>Cindy - Voice Memory Assistant</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="icon" href="assets/favicon.ico" type="image/x-icon">
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
@@ -40,10 +39,10 @@
 </head>
 
 <body>
-    <header class="hero">
+    <header class="hero" role="banner">
         <div class="container">
-            <nav class="main-nav">
-                <a href="index.html" class="nav-logo">Cindy</a>
+            <nav class="main-nav" style="display: flex;">
+                <a href="index.html" class="nav-logo" aria-label="Cindy Home">Cindy</a>
                 <ul class="nav-links">
                     <li><a href="index.html">Home</a></li>
                     <li><a href="product.html">Product</a></li>
@@ -53,139 +52,170 @@
                 </ul>
             </nav>
             <div class="hero-content">
-                <h1>Supercharge Your Research</h1>
-                <p>Cindy is your AI research partner that listens, understands, and delivers comprehensive insights
-                    through natural voice conversations. Get answers, summaries, and reports in seconds.</p>
+                <h1>Supercharge Your Memory</h1>
+                <p>Cindy is your AI memory partner that listens, understands, and organizes your knowledge
+                    through natural voice conversations. Get answers, summaries, and insights in seconds.</p>
                 <div class="cta-buttons">
-                    <a href="download.html" class="btn btn-primary btn-cta">Start Researching Free</a>
-                    <a href="product.html" class="btn btn-secondary">See How It Works</a>
+                    <a href="download.html" class="btn btn-primary btn-cta" aria-label="Start free research trial">Start
+                        Researching Free</a>
+                    <a href="product.html" class="btn btn-secondary" aria-label="Learn how Cindy works">See How It
+                        Works</a>
                 </div>
             </div>
-            <div class="hero-image">
-                <img src="assets/hero-image.png" alt="Cindy Voice Assistant Interface" loading="lazy">
+            <div class="chat-bubbles">
+                <div class="chat-bubble bubble-1">Remembering...</div>
+                <div class="chat-bubble bubble-2">Organizing memories...</div>
+                <div class="chat-bubble bubble-3">Connecting knowledge...</div>
             </div>
         </div>
     </header>
 
-    <section id="features" class="features">
-        <div class="container">
-            <h2>Why Researchers Love Cindy</h2>
-            <div class="features-grid">
-                <div class="feature-card">
-                    <div class="feature-icon">🎤</div>
-                    <h3>Conversational Intelligence</h3>
-                    <p>Engage in natural dialogues with your AI research assistant. Ask follow-up questions and dive
-                        deeper into topics without starting over.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon">🌐</div>
-                    <h3>Seamless Integration</h3>
-                    <p>Works across macOS, Windows, and Linux with cloud sync. Access your research and knowledge vault
-                        from any device.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon">🔒</div>
-                    <h3>Privacy by Design</h3>
-                    <p>Full control over your data with optional offline mode. Choose between cloud processing or
-                        completely local operation with open-source models.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon">📚</div>
-                    <h3>Personal Knowledge Vault</h3>
-                    <p>Build your private research library that learns from your interests. Cindy automatically
-                        organizes and connects your findings for future reference.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon">🔍</div>
-                    <h3>Comprehensive Research</h3>
-                    <p>Get detailed reports with verified sources and proper citations. Cindy analyzes multiple sources
-                        to provide balanced, comprehensive insights.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon">⏰</div>
-                    <h3>Automated Research</h3>
-                    <p>Schedule recurring research tasks and receive curated summaries at your preferred time. Never
-                        miss important updates in your field.</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <section class="how-it-works">
-        <div class="container">
-            <h2>Simple Workflow, Powerful Results</h2>
-            <div class="steps">
-                <div class="step">
-                    <div class="step-number">1</div>
-                    <div class="step-content">
-                        <h3>Ask</h3>
-                        <p>Activate with your custom phrase and ask any research question in natural language.</p>
+    <main>
+        <section id="features" class="features" role="region" aria-label="Features">
+            <div class="container">
+                <h2>Why People Love Cindy</h2>
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">🗣️</div>
+                        <h3>Conversational Intelligence</h3>
+                        <p>Engage in natural dialogues with your AI research assistant. Ask follow-up questions and dive
+                            deeper into topics without starting over.</p>
                     </div>
-                </div>
-                <div class="step">
-                    <div class="step-number">2</div>
-                    <div class="step-content">
-                        <h3>Research</h3>
-                        <p>Cindy searches trusted sources, analyzes content, and compiles relevant information with
-                            citations.</p>
+                    <div class="feature-card">
+                        <div class="feature-icon">🔗</div>
+                        <h3>Seamless Integration</h3>
+                        <p>Works across macOS, Windows, and Linux with cloud sync. Import information from your local
+                            drive, Outlook, Gmail calendar, and other sources. Access your research and knowledge vault
+                            from any device.</p>
                     </div>
-                </div>
-                <div class="step">
-                    <div class="step-number">3</div>
-                    <div class="step-content">
-                        <h3>Verify</h3>
-                        <p>Review comprehensive reports with source citations and explore related topics through
-                            follow-up questions.</p>
+                    <div class="feature-card">
+                        <div class="feature-icon">🔒</div>
+                        <h3>Privacy by Design</h3>
+                        <p>Full control over your data with optional offline mode. Choose between cloud processing or
+                            completely local operation with open-source models.</p>
                     </div>
-                </div>
-                <div class="step">
-                    <div class="step-number">4</div>
-                    <div class="step-content">
-                        <h3>Save & Build</h3>
-                        <p>Reports are automatically saved to your personal knowledge vault, building your research
-                            library over time.</p>
+                    <div class="feature-card">
+                        <div class="feature-icon">📚</div>
+                        <h3>Personal Memory Vault</h3>
+                        <p>Build your private knowledge library that learns from your interests. Cindy automatically
+                            organizes and connects your memories for future reference.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🔍</div>
+                        <h3>Comprehensive Research</h3>
+                        <p>Get detailed reports with verified sources and proper citations. Cindy analyzes multiple
+                            sources to provide balanced, comprehensive insights.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">⏰</div>
+                        <h3>Automated Research</h3>
+                        <p>Schedule recurring research tasks and receive curated summaries at your preferred time. Never
+                            miss important updates in your field.</p>
                     </div>
                 </div>
             </div>
-        </div>
-    </section>
+        </section>
 
-    <section id="download" class="download">
-        <div class="container">
-            <h2>Get Cindy Today</h2>
-            <p>Download Cindy for your platform and start your journey to more productive research.</p>
-            <div class="download-buttons">
-                <a href="#" class="download-btn mac">
-                    <div class="btn-icon">🍎</div>
-                    <div class="btn-text">
-                        <span class="btn-label">Download for</span>
-                        <span class="btn-platform">macOS</span>
+        <section class="how-it-works" role="region" aria-label="How It Works">
+            <div class="container">
+                <h2>Simple Workflow, Powerful Results</h2>
+                <div class="workflow-examples">
+                    <div class="workflow-card">
+                        <div class="workflow-icon">📧</div>
+                        <h3>Email Summarization</h3>
+                        <div class="workflow-example">
+                            <span class="workflow-command">"Summarize my unread emails"</span>
+                            <span class="arrow">→</span>
+                            <span class="workflow-result">Get concise overview of important messages</span>
+                        </div>
                     </div>
-                </a>
-                <a href="#" class="download-btn windows">
-                    <div class="btn-icon">🪟</div>
-                    <div class="btn-text">
-                        <span class="btn-label">Download for</span>
-                        <span class="btn-platform">Windows</span>
+                    <div class="workflow-card">
+                        <div class="workflow-icon">🧠</div>
+                        <h3>Memory Saving</h3>
+                        <div class="workflow-example">
+                            <span class="workflow-command">"Remember this meeting about Q3 goals"</span>
+                            <span class="arrow">→</span>
+                            <span class="workflow-result">Automatically saves and organizes key points</span>
+                        </div>
                     </div>
-                </a>
-                <a href="#" class="download-btn linux">
-                    <div class="btn-icon">🐧</div>
-                    <div class="btn-text">
-                        <span class="btn-label">Download for</span>
-                        <span class="btn-platform">Linux</span>
+                    <div class="workflow-card">
+                        <div class="workflow-icon">📊</div>
+                        <h3>Memory Graphs</h3>
+                        <div class="workflow-example">
+                            <span class="workflow-command">"Show connections between AI research papers"</span>
+                            <span class="arrow">→</span>
+                            <span class="workflow-result">Visual knowledge map with relationships</span>
+                        </div>
                     </div>
-                </a>
+                    <div class="workflow-card">
+                        <div class="workflow-icon">📚</div>
+                        <h3>Zotero Integration</h3>
+                        <div class="workflow-example">
+                            <span class="workflow-command">"Add this research to my 'Machine Learning'
+                                collection"</span>
+                            <span class="arrow">→</span>
+                            <span class="workflow-result">Syncs with Zotero library</span>
+                        </div>
+                    </div>
+                    <div class="workflow-card">
+                        <div class="workflow-icon">📅</div>
+                        <h3>Outlook Integration</h3>
+                        <div class="workflow-example">
+                            <span class="workflow-command">"Schedule a follow-up about the budget proposal"</span>
+                            <span class="arrow">→</span>
+                            <span class="workflow-result">Creates calendar event in Outlook</span>
+                        </div>
+                    </div>
+                </div>
             </div>
-        </div>
-    </section>
+        </section>
 
-    <footer>
+        <section id="download" class="download" role="region" aria-label="Download">
+            <div class="container">
+                <h2>Get Cindy Today</h2>
+                <p>Download Cindy for your platform and start your journey to better memory and knowledge.</p>
+                <div class="download-buttons">
+                    <a href="#" class="download-btn mac" aria-label="Download Cindy for macOS">
+                        <div class="btn-icon">
+                            <img style="height: 100px;" src="assets/icons/apple-173-svgrepo-com.svg" alt="macOS"
+                                class="platform-icon">
+                        </div>
+                        <div class="btn-text">
+                            <span class="btn-label">Download for</span>
+                            <span class="btn-platform">macOS</span>
+                        </div>
+                    </a>
+                    <a href="#" class="download-btn windows" aria-label="Download Cindy for Windows">
+                        <div class="btn-icon">
+                            <img style="height: 100px;" src="assets/icons/microsoft-windows-22-logo-svgrepo-com.svg"
+                                alt="Windows" class="platform-icon">
+                        </div>
+                        <div class="btn-text">
+                            <span class="btn-label">Download for</span>
+                            <span class="btn-platform">Windows</span>
+                        </div>
+                    </a>
+                    <a href="#" class="download-btn linux" aria-label="Download Cindy for Linux">
+                        <div class="btn-icon">
+                            <img style="height: 100px;" src="assets/icons/linux-svgrepo-com.svg" alt="Linux"
+                                class="platform-icon">
+                        </div>
+                        <div class="btn-text">
+                            <span class="btn-label">Download for</span>
+                            <span class="btn-platform">Linux</span>
+                        </div>
+                    </a>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer role="contentinfo">
         <div class="container">
             <div class="footer-content">
                 <div class="footer-logo">
                     <h3>Cindy</h3>
-                    <p>Always-on voice research assistant</p>
+                    <p>Always-on voice memory assistant</p>
                 </div>
                 <div class="footer-links">
                     <div class="footer-column">

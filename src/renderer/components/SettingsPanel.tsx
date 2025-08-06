@@ -14,9 +14,11 @@ import {
     Slider,
     Button,
     Divider,
-    IconButton
+    IconButton,
+    Alert
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import { ipcRenderer } from 'electron';
 
 const SettingsPanel: React.FC = () => {
     const dispatch = useDispatch();
@@ -41,6 +43,43 @@ const SettingsPanel: React.FC = () => {
     useEffect(() => {
         dispatch(getSettings());
     }, [dispatch]);
+
+    // State for storage permission
+    const [hasStoragePermission, setHasStoragePermission] = useState<boolean>(false);
+    const [checkingPermission, setCheckingPermission] = useState<boolean>(true);
+
+    // Check storage permission on component mount
+    useEffect(() => {
+        const checkPermission = async () => {
+            try {
+                const result = await ipcRenderer.invoke('has-storage-permission');
+                setHasStoragePermission(result.hasPermission);
+            } catch (error) {
+                console.error('Failed to check storage permission:', error);
+            } finally {
+                setCheckingPermission(false);
+            }
+        };
+
+        checkPermission();
+    }, []);
+
+    // Request storage permission
+    const requestStoragePermission = async () => {
+        setCheckingPermission(true);
+        try {
+            const result = await ipcRenderer.invoke('grant-storage-permission');
+            if (result.success) {
+                setHasStoragePermission(true);
+            } else {
+                console.error('Failed to grant storage permission:', result.error);
+            }
+        } catch (error) {
+            console.error('Failed to grant storage permission:', error);
+        } finally {
+            setCheckingPermission(false);
+        }
+    };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -87,162 +126,185 @@ const SettingsPanel: React.FC = () => {
                 </IconButton>
             </div>
             <div className="settings-content">
-                <Typography variant="subtitle1" gutterBottom>Profile</Typography>
-                <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1 }}>
-                    <FormControl fullWidth margin="normal">
-                        <TextField
-                            id="name"
-                            label="First Name"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            variant="outlined"
-                            size="small"
-                        />
-                    </FormControl>
-
-                    <FormControl fullWidth margin="normal">
-                        <TextField
-                            id="surname"
-                            label="Last Name"
-                            value={surname}
-                            onChange={(e) => setSurname(e.target.value)}
-                            variant="outlined"
-                            size="small"
-                        />
-                    </FormControl>
-
-                    <Divider sx={{ my: 3 }} />
-                    <Typography variant="subtitle1" gutterBottom>Voice Settings</Typography>
-
-                    <FormControl fullWidth margin="normal">
-                        <TextField
-                            id="activationPhrase"
-                            label="Activation Phrase"
-                            value={activationPhrase}
-                            onChange={(e) => setActivationPhrase(e.target.value)}
-                            variant="outlined"
-                            size="small"
-                        />
-                    </FormControl>
-
-                    <FormControl fullWidth margin="normal">
-                        <InputLabel id="sttProvider-label">Speech Recognition</InputLabel>
-                        <Select
-                            labelId="sttProvider-label"
-                            id="sttProvider"
-                            value={sttProvider}
-                            onChange={(e) => setSttProvider(e.target.value as 'online' | 'offline' | 'auto' | 'whisper')}
-                            label="Speech Recognition"
-                            size="small"
-                        >
-                            <MenuItem value="online">Online (Cloud)</MenuItem>
-                            <MenuItem value="offline">Offline (Whisper.cpp)</MenuItem>
-                            <MenuItem value="whisper">Whisper Local API</MenuItem>
-                            <MenuItem value="auto">Auto (Preferred)</MenuItem>
-                        </Select>
-                    </FormControl>
-
-                    <Divider sx={{ my: 3 }} />
-                    <Typography variant="subtitle1" gutterBottom>Language Model</Typography>
-
-                    <FormControl fullWidth margin="normal">
-                        <InputLabel id="llmProvider-label">Provider</InputLabel>
-                        <Select
-                            labelId="llmProvider-label"
-                            id="llmProvider"
-                            value={llmProvider}
-                            onChange={(e) => setLlmProvider(e.target.value as 'openai' | 'ollama' | 'auto')}
-                            label="Provider"
-                            size="small"
-                        >
-                            <MenuItem value="auto">Auto (Recommended)</MenuItem>
-                            <MenuItem value="openai">OpenAI</MenuItem>
-                            <MenuItem value="ollama">Ollama</MenuItem>
-                        </Select>
-                        <FormHelperText>Auto mode uses OpenAI when available, falling back to Ollama</FormHelperText>
-                    </FormControl>
-
-                    {llmProvider === 'openai' && (
-                        <div className="provider-settings openai">
+                {/* Storage Permission Section */}
+                {checkingPermission ? (
+                    <Alert severity="info">Checking storage permission...</Alert>
+                ) : !hasStoragePermission ? (
+                    <Alert
+                        severity="warning"
+                        action={
+                            <Button
+                                color="inherit"
+                                size="small"
+                                onClick={requestStoragePermission}
+                                disabled={checkingPermission}
+                            >
+                                Give Permission
+                            </Button>
+                        }
+                    >
+                        Storage access required. Click "Give Permission" to allow access to your files.
+                    </Alert>
+                ) : (
+                    <>
+                        <Typography variant="subtitle1" gutterBottom>Profile</Typography>
+                        <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1 }}>
                             <FormControl fullWidth margin="normal">
                                 <TextField
-                                    id="openaiApiKey"
-                                    label="OpenAI API Key"
-                                    type="password"
-                                    value={openaiApiKey}
-                                    onChange={(e) => setOpenaiApiKey(e.target.value)}
+                                    id="name"
+                                    label="First Name"
+                                    value={name}
+                                    onChange={(e) => setName(e.target.value)}
                                     variant="outlined"
                                     size="small"
-                                    placeholder="sk-..."
                                 />
                             </FormControl>
 
-                            <FormControl fullWidth margin="normal">
-                                <ModelPicker
-                                    provider="openai"
-                                    selectedModel={openaiModel}
-                                    onModelChange={setOpenaiModel}
-                                />
-                            </FormControl>
-                        </div>
-                    )}
-
-                    {llmProvider === 'ollama' && (
-                        <div className="provider-settings ollama">
                             <FormControl fullWidth margin="normal">
                                 <TextField
-                                    id="ollamaBaseUrl"
-                                    label="Ollama Base URL"
-                                    value={ollamaBaseUrl}
-                                    onChange={(e) => setOllamaBaseUrl(e.target.value)}
+                                    id="surname"
+                                    label="Last Name"
+                                    value={surname}
+                                    onChange={(e) => setSurname(e.target.value)}
                                     variant="outlined"
                                     size="small"
-                                    placeholder="http://127.0.0.1:11434"
+                                />
+                            </FormControl>
+
+                            <Divider sx={{ my: 3 }} />
+                            <Typography variant="subtitle1" gutterBottom>Voice Settings</Typography>
+
+                            <FormControl fullWidth margin="normal">
+                                <TextField
+                                    id="activationPhrase"
+                                    label="Activation Phrase"
+                                    value={activationPhrase}
+                                    onChange={(e) => setActivationPhrase(e.target.value)}
+                                    variant="outlined"
+                                    size="small"
                                 />
                             </FormControl>
 
                             <FormControl fullWidth margin="normal">
-                                <ModelPicker
-                                    provider="ollama"
-                                    selectedModel={ollamaModel}
-                                    onModelChange={setOllamaModel}
-                                />
+                                <InputLabel id="sttProvider-label">Speech Recognition</InputLabel>
+                                <Select
+                                    labelId="sttProvider-label"
+                                    id="sttProvider"
+                                    value={sttProvider}
+                                    onChange={(e) => setSttProvider(e.target.value as 'online' | 'offline' | 'auto' | 'whisper')}
+                                    label="Speech Recognition"
+                                    size="small"
+                                >
+                                    <MenuItem value="online">Online (Cloud)</MenuItem>
+                                    <MenuItem value="offline">Offline (Whisper.cpp)</MenuItem>
+                                    <MenuItem value="whisper">Whisper Local API</MenuItem>
+                                    <MenuItem value="auto">Auto (Preferred)</MenuItem>
+                                </Select>
                             </FormControl>
-                        </div>
-                    )}
 
-                    <Divider sx={{ my: 3 }} />
-                    <Typography variant="subtitle1" gutterBottom>Common Settings</Typography>
-                    <FormControl fullWidth margin="normal">
-                        <Typography id="temperature-slider" gutterBottom>
-                            Temperature: {temperature}
-                        </Typography>
-                        <Slider
-                            aria-labelledby="temperature-slider"
-                            value={temperature}
-                            onChange={(e, newValue) => setTemperature(newValue as number)}
-                            step={0.1}
-                            min={0}
-                            max={1}
-                            valueLabelDisplay="auto"
-                        />
-                        <FormHelperText>The creativity of the model's responses. Higher values = more creative.</FormHelperText>
-                    </FormControl>
+                            <Divider sx={{ my: 3 }} />
+                            <Typography variant="subtitle1" gutterBottom>Language Model</Typography>
 
-                    <FormControl fullWidth margin="normal">
-                        <TextField
-                            id="maxTokens"
-                            label="Max Tokens"
-                            type="number"
-                            value={maxTokens}
-                            onChange={(e) => setMaxTokens(parseInt(e.target.value))}
-                            variant="outlined"
-                            size="small"
-                            InputProps={{ inputProps: { min: 1, max: 4096 } }}
-                        />
-                        <FormHelperText>The maximum number of tokens in the response.</FormHelperText>
-                    </FormControl>
-                </Box>
+                            <FormControl fullWidth margin="normal">
+                                <InputLabel id="llmProvider-label">Provider</InputLabel>
+                                <Select
+                                    labelId="llmProvider-label"
+                                    id="llmProvider"
+                                    value={llmProvider}
+                                    onChange={(e) => setLlmProvider(e.target.value as 'openai' | 'ollama' | 'auto')}
+                                    label="Provider"
+                                    size="small"
+                                >
+                                    <MenuItem value="auto">Auto (Recommended)</MenuItem>
+                                    <MenuItem value="openai">OpenAI</MenuItem>
+                                    <MenuItem value="ollama">Ollama</MenuItem>
+                                </Select>
+                                <FormHelperText>Auto mode uses OpenAI when available, falling back to Ollama</FormHelperText>
+                            </FormControl>
+
+                            {llmProvider === 'openai' && (
+                                <div className="provider-settings openai">
+                                    <FormControl fullWidth margin="normal">
+                                        <TextField
+                                            id="openaiApiKey"
+                                            label="OpenAI API Key"
+                                            type="password"
+                                            value={openaiApiKey}
+                                            onChange={(e) => setOpenaiApiKey(e.target.value)}
+                                            variant="outlined"
+                                            size="small"
+                                            placeholder="sk-..."
+                                        />
+                                    </FormControl>
+
+                                    <FormControl fullWidth margin="normal">
+                                        <ModelPicker
+                                            provider="openai"
+                                            selectedModel={openaiModel}
+                                            onModelChange={setOpenaiModel}
+                                        />
+                                    </FormControl>
+                                </div>
+                            )}
+
+                            {llmProvider === 'ollama' && (
+                                <div className="provider-settings ollama">
+                                    <FormControl fullWidth margin="normal">
+                                        <TextField
+                                            id="ollamaBaseUrl"
+                                            label="Ollama Base URL"
+                                            value={ollamaBaseUrl}
+                                            onChange={(e) => setOllamaBaseUrl(e.target.value)}
+                                            variant="outlined"
+                                            size="small"
+                                            placeholder="http://127.0.0.1:11434"
+                                        />
+                                    </FormControl>
+
+                                    <FormControl fullWidth margin="normal">
+                                        <ModelPicker
+                                            provider="ollama"
+                                            selectedModel={ollamaModel}
+                                            onModelChange={setOllamaModel}
+                                        />
+                                    </FormControl>
+                                </div>
+                            )}
+
+                            <Divider sx={{ my: 3 }} />
+                            <Typography variant="subtitle1" gutterBottom>Common Settings</Typography>
+                            <FormControl fullWidth margin="normal">
+                                <Typography id="temperature-slider" gutterBottom>
+                                    Temperature: {temperature}
+                                </Typography>
+                                <Slider
+                                    aria-labelledby="temperature-slider"
+                                    value={temperature}
+                                    onChange={(e, newValue) => setTemperature(newValue as number)}
+                                    step={0.1}
+                                    min={0}
+                                    max={1}
+                                    valueLabelDisplay="auto"
+                                />
+                                <FormHelperText>The creativity of the model's responses. Higher values = more creative.</FormHelperText>
+                            </FormControl>
+
+                            <FormControl fullWidth margin="normal">
+                                <TextField
+                                    id="maxTokens"
+                                    label="Max Tokens"
+                                    type="number"
+                                    value={maxTokens}
+                                    onChange={(e) => setMaxTokens(parseInt(e.target.value))}
+                                    variant="outlined"
+                                    size="small"
+                                    InputProps={{ inputProps: { min: 1, max: 4096 } }}
+                                />
+                                <FormHelperText>The maximum number of tokens in the response.</FormHelperText>
+                            </FormControl>
+                        </Box>
+                    </>
+                )}
             </div>
             <div className="settings-footer">
                 <Button
