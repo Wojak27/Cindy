@@ -55,46 +55,47 @@ export const persistenceMiddleware = () => (next: any) => async (action: any) =>
 
     // Handle settings updates
     if (action.type === 'UPDATE_SETTINGS') {
+        // IMMEDIATELY save to localStorage for persistence
         try {
-            // Extract settings sections from the action payload
+            localStorage.setItem('voice-assistant-settings', JSON.stringify(action.payload));
+            console.log('Settings saved to localStorage:', action.payload);
+        } catch (localStorageError) {
+            console.error('Failed to save settings to localStorage:', localStorageError);
+        }
+
+        // Also save to main process (background, non-blocking)
+        try {
             const { llm, ...generalSettings } = action.payload;
 
             // Use IPC to persist settings to main process
-            try {
-                // Retry mechanism for ipcRenderer
-                const invokeWithRetry = async (channel: string, ...args: any[]) => {
-                    const maxRetries = 3;
-                    for (let i = 0; i < maxRetries; i++) {
-                        try {
-                            if (ipcRenderer) {
-                                return await ipcRenderer.invoke(channel, ...args);
-                            } else {
-                                throw new Error('ipcRenderer not available');
-                            }
-                        } catch (error) {
-                            if (i === maxRetries - 1) throw error;
-                            // Wait before retry
-                            await new Promise(resolve => setTimeout(resolve, 100 * (i + 1)));
+            const invokeWithRetry = async (channel: string, ...args: any[]) => {
+                const maxRetries = 3;
+                for (let i = 0; i < maxRetries; i++) {
+                    try {
+                        if (ipcRenderer) {
+                            return await ipcRenderer.invoke(channel, ...args);
+                        } else {
+                            throw new Error('ipcRenderer not available');
                         }
+                    } catch (error) {
+                        if (i === maxRetries - 1) throw error;
+                        await new Promise(resolve => setTimeout(resolve, 100 * (i + 1)));
                     }
-                };
-
-                // Update general settings
-                if (Object.keys(generalSettings).length > 0) {
-                    await invokeWithRetry('settings-set', 'general', generalSettings);
                 }
+            };
 
-                // Update LLM settings
-                if (llm) {
-                    await invokeWithRetry('settings-set', 'llm', llm);
-                }
-            } catch (error) {
-                console.error('Failed to persist settings:', error);
-                throw error; // Re-throw to propagate the error
+            // Update general settings
+            if (Object.keys(generalSettings).length > 0) {
+                await invokeWithRetry('settings-set', 'general', generalSettings);
+            }
+
+            // Update LLM settings
+            if (llm) {
+                await invokeWithRetry('settings-set', 'llm', llm);
             }
         } catch (error) {
-            console.error('Failed to persist settings:', error);
-            throw error; // Re-throw to propagate the error
+            console.error('Failed to persist settings to main process:', error);
+            // Don't throw here - localStorage already succeeded
         }
     }
 
@@ -104,36 +105,48 @@ export const persistenceMiddleware = () => (next: any) => async (action: any) =>
 /**
  * Load initial settings from SettingsService into Redux store
  */
-export const loadInitialSettings = async () => {
-    try {
-        // Wait for settings service to be available
-        const serviceAvailable = await waitForSettingsService();
+const getDefaultSettings = () => ({
+    theme: 'light',
+    voice: 'cindy',
+    wakeWord: 'cindy',
+    autoStart: false,
+    notifications: true,
+    llm: {
+        provider: 'ollama',
+        ollama: {
+            model: 'qwen3:8b',
+            baseUrl: 'http://127.0.0.1:11434',
+            temperature: 0.7
+        },
+        openai: {
+            model: 'gpt-3.5-turbo',
+            apiKey: '',
+            temperature: 0.7
+        }
+    }
+});
 
+export const loadInitialSettings = async () => {
+    // FIRST: Try to load from localStorage (fastest and most reliable)
+    try {
+        const localStorageSettings = localStorage.getItem('voice-assistant-settings');
+        if (localStorageSettings) {
+            const parsedSettings = JSON.parse(localStorageSettings);
+            console.log('Loaded settings from localStorage:', parsedSettings);
+            return parsedSettings;
+        }
+    } catch (localStorageError) {
+        console.warn('Failed to load settings from localStorage:', localStorageError);
+    }
+
+    // FALLBACK: Try to load from main process
+    try {
+        const serviceAvailable = await waitForSettingsService();
         if (!serviceAvailable) {
             console.error('Timeout waiting for settings service');
-            return {
-                theme: 'light',
-                voice: 'cindy',
-                wakeWord: 'cindy',
-                autoStart: false,
-                notifications: true,
-                llm: {
-                    provider: 'ollama',
-                    ollama: {
-                        model: 'qwen3:8b',
-                        baseUrl: 'http://127.0.0.1:11434',
-                        temperature: 0.7
-                    },
-                    openai: {
-                        model: 'gpt-3.5-turbo',
-                        apiKey: '',
-                        temperature: 0.7
-                    }
-                }
-            };
+            return getDefaultSettings();
         }
 
-        // Use IPC to get settings from main process with retry mechanism
         const invokeWithRetry = async (channel: string, ...args: any[]) => {
             const maxRetries = 3;
             for (let i = 0; i < maxRetries; i++) {
@@ -145,7 +158,6 @@ export const loadInitialSettings = async () => {
                     }
                 } catch (error) {
                     if (i === maxRetries - 1) throw error;
-                    // Wait before retry
                     await new Promise(resolve => setTimeout(resolve, 100 * (i + 1)));
                 }
             }
@@ -153,58 +165,40 @@ export const loadInitialSettings = async () => {
 
         const settings = await invokeWithRetry('settings-get-all');
 
-        // Transform Settings interface to match Redux store structure
-        return {
-            theme: 'light', // Theme is not in the Settings interface
+        const transformedSettings = {
+            theme: 'light',
             voice: settings.voice?.activationPhrase || 'cindy',
             wakeWord: settings.voice?.activationPhrase || 'cindy',
-            autoStart: settings.general.startAtLogin || false,
-            notifications: settings.general.notifications || true,
+            autoStart: settings.general?.startAtLogin || false,
+            notifications: settings.general?.notifications || true,
             llm: {
-                provider: settings.llm.provider || 'ollama',
+                provider: settings.llm?.provider || 'ollama',
                 ollama: {
-                    model: settings.llm.ollama?.model || 'qwen3:8b',
-                    baseUrl: settings.llm.ollama?.baseUrl || 'http://127.0.0.1:11434',
-                    temperature: settings.llm.ollama?.temperature || 0.7
+                    model: settings.llm?.ollama?.model || 'qwen3:8b',
+                    baseUrl: settings.llm?.ollama?.baseUrl || 'http://127.0.0.1:11434',
+                    temperature: settings.llm?.ollama?.temperature || 0.7
                 },
                 openai: {
-                    model: settings.llm.openai?.model || 'gpt-3.5-turbo',
-                    apiKey: settings.llm.openai?.apiKey || '',
-                    temperature: settings.llm.openai?.temperature || 0.7
+                    model: settings.llm?.openai?.model || 'gpt-3.5-turbo',
+                    apiKey: settings.llm?.openai?.apiKey || '',
+                    temperature: settings.llm?.openai?.temperature || 0.7
                 }
             },
-            // Include other settings sections that might be needed
-            general: {
-                ...settings.general
-            },
-            privacy: {
-                ...settings.privacy
-            },
-            system: {
-                ...settings.system
-            }
+            general: { ...settings.general },
+            privacy: { ...settings.privacy },
+            system: { ...settings.system }
         };
+
+        // Save to localStorage for future use
+        try {
+            localStorage.setItem('voice-assistant-settings', JSON.stringify(transformedSettings));
+        } catch (localStorageError) {
+            console.warn('Failed to save settings to localStorage:', localStorageError);
+        }
+
+        return transformedSettings;
     } catch (error) {
         console.error('Failed to load initial settings:', error);
-        return {
-            theme: 'light',
-            voice: 'cindy',
-            wakeWord: 'cindy',
-            autoStart: false,
-            notifications: true,
-            llm: {
-                provider: 'ollama',
-                ollama: {
-                    model: 'qwen3:8b',
-                    baseUrl: 'http://127.0.0.1:11434',
-                    temperature: 0.7
-                },
-                openai: {
-                    model: 'gpt-3.5-turbo',
-                    apiKey: '',
-                    temperature: 0.7
-                }
-            }
-        };
+        return getDefaultSettings();
     }
 };

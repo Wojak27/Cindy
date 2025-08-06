@@ -46,7 +46,15 @@ export class ThinkingTokenHandler {
      * @returns Processed content with thinking blocks separated
      */
     public processChunk(chunk: string, conversationId: string): ProcessedContent {
+        console.log('🐛 DEBUG - ThinkingTokenHandler.processChunk called:', {
+            chunkLength: chunk?.length || 0,
+            chunkPreview: chunk?.substring(0, 100) + '...',
+            conversationId,
+            currentStackDepth: this.thinkingStack.length
+        });
+
         if (!chunk) {
+            console.log('🐛 DEBUG - ThinkingTokenHandler: Empty chunk, returning empty result');
             return {
                 displayContent: '',
                 thinkingBlocks: [],
@@ -89,13 +97,22 @@ export class ThinkingTokenHandler {
             // Handle the token
             if (token === this.THINKING_START_TOKEN) {
                 // Start of thinking block
+                console.log('🐛 DEBUG - ThinkingTokenHandler: Found THINKING_START_TOKEN, starting new block');
                 this.thinkingStack.push('');
                 inThinkingBlock = true;
             } else if (token === this.THINKING_END_TOKEN) {
                 // End of thinking block
+                console.log('🐛 DEBUG - ThinkingTokenHandler: Found THINKING_END_TOKEN, finishing block');
                 if (this.thinkingStack.length > 0) {
                     const thinkingContent = this.thinkingStack.pop() || '';
                     const blockId = `thinking-${conversationId}-${this.currentBlockId++}`;
+
+                    console.log('🐛 DEBUG - ThinkingTokenHandler: Created thinking block:', {
+                        blockId,
+                        contentLength: thinkingContent.length,
+                        contentPreview: thinkingContent.substring(0, 50) + '...',
+                        startTime: Date.now()
+                    });
 
                     result.thinkingBlocks.push({
                         id: blockId,
@@ -118,6 +135,14 @@ export class ThinkingTokenHandler {
         }
 
         result.displayContent = displayContent;
+
+        console.log('🐛 DEBUG - ThinkingTokenHandler.processChunk result:', {
+            displayContentLength: result.displayContent.length,
+            displayContentPreview: result.displayContent.substring(0, 50) + '...',
+            thinkingBlocksCount: result.thinkingBlocks.length,
+            finalStackDepth: this.thinkingStack.length
+        });
+
         return result;
     }
 

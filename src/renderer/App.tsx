@@ -10,7 +10,7 @@ import SettingsPanel from './components/SettingsPanel';
 import DatabasePanel from './components/DatabasePanel';
 import { getSettings } from '../store/actions';
 import { toggleSettings } from '../store/actions';
-import { appendToLastMessage, streamComplete, streamError } from '../store/actions';
+import { streamError } from '../store/actions';
 import './styles/main.css';
 import './styles/database-sidebar.css';
 import { ipcRenderer } from 'electron';
@@ -74,29 +74,20 @@ const App: React.FC = () => {
         dispatch(getSettings());
     }, [dispatch]);
 
-    // Initialize audio context and load sounds
+    // Initialize audio context for recording activation sound only
     useEffect(() => {
         const initAudio = async () => {
             try {
                 audioContext.current = new AudioContext();
 
-                // Preload sound effects
-                const soundFiles = [
-                    { name: 'activation', path: '/assets/sounds/activation.wav' },
-                    { name: 'processing', path: '/assets/sounds/processing.wav' },
-                    { name: 'complete', path: '/assets/sounds/complete.wav' },
-                    { name: 'error', path: '/assets/sounds/error.wav' }
-                ];
-
-                for (const file of soundFiles) {
-                    try {
-                        const response = await fetch(file.path);
-                        const arrayBuffer = await response.arrayBuffer();
-                        const audioBuffer = await audioContext.current.decodeAudioData(arrayBuffer);
-                        sounds.current[file.name] = audioBuffer;
-                    } catch (error) {
-                        console.warn(`Failed to load sound: ${file.path}`, error);
-                    }
+                // Only load activation sound for recording
+                try {
+                    const response = await fetch('/assets/sounds/activation.wav');
+                    const arrayBuffer = await response.arrayBuffer();
+                    const audioBuffer = await audioContext.current.decodeAudioData(arrayBuffer);
+                    sounds.current['activation'] = audioBuffer;
+                } catch (error) {
+                    console.warn('Failed to load activation sound:', error);
                 }
             } catch (error) {
                 console.warn('Failed to initialize audio context', error);
@@ -128,28 +119,23 @@ const App: React.FC = () => {
     };
 
     useEffect(() => {
-        // Detect when Cindy is speaking
+        // Detect when Cindy is speaking (no sound effects except for recording)
         const lastMessage = messages[messages.length - 1];
-        if (lastMessage && lastMessage.role === 'assistant') {
-            // Only play sound if this is a new assistant message
-            const lastMessageId = lastMessage.timestamp;
-            if (!lastMessageId || lastMessageId !== localStorage.getItem('lastAssistantMessage')) {
-                playSound('complete');
-                localStorage.setItem('lastAssistantMessage', lastMessageId);
-            }
+        if (lastMessage && lastMessage.role === 'assistant' && !lastMessage.isStreaming) {
             setIsSpeaking(true);
             const timer = setTimeout(() => setIsSpeaking(false), 2000);
             return () => clearTimeout(timer);
         }
-        return undefined; // Explicitly return undefined when condition is not met
-    }, [messages, playSound]);
+        return undefined;
+    }, [messages]);
 
 
     // Handle microphone button click for recording
     const handleMicClick = async () => {
-        console.log('DEBUG: Mic click handler called, isRecording:', isRecording);
-        console.log('DEBUG: About to play activation sound');
-        playSound('activation');
+        // Only play activation sound for recording (as requested)
+        if (!isRecording) {
+            playSound('activation');
+        }
 
         if (isRecording) {
             console.log('DEBUG: Stopping recording...');
@@ -171,21 +157,33 @@ const App: React.FC = () => {
 
                         // Handle the transcribed text by sending it as a message
                         if (transcript.trim()) {
-                            // Add user message to store
-                            dispatch({ type: 'ADD_MESSAGE', payload: { role: 'user', content: transcript, timestamp: new Date().toISOString() } });
+                            // Add user message to store with unique ID
+                            const userMessage = {
+                                id: `user-${Date.now()}`,
+                                role: 'user',
+                                content: transcript,
+                                timestamp: new Date().toISOString()
+                            };
+                            dispatch({ type: 'ADD_MESSAGE', payload: userMessage });
+
+                            // Create assistant message placeholder for streaming
+                            const assistantMessage = {
+                                id: `assistant-${Date.now()}`,
+                                role: 'assistant',
+                                content: '',
+                                timestamp: new Date().toISOString(),
+                                isStreaming: true
+                            };
+                            dispatch({ type: 'ADD_MESSAGE', payload: assistantMessage });
                             dispatch({ type: 'START_THINKING' });
 
                             try {
                                 // Process message through agent with conversation ID
-                                const response = await ipcRenderer.invoke('process-message', transcript, currentConversationId);
-
-                                // Add assistant response to store
-                                dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: response, timestamp: new Date().toISOString() } });
+                                await ipcRenderer.invoke('process-message', transcript, currentConversationId);
                             } catch (error) {
                                 console.error('Error processing message:', error);
-                                // Add error message
-                                dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: 'Sorry, I encountered an error processing your request.', timestamp: new Date().toISOString() } });
-                            } finally {
+                                // Update the assistant message with error
+                                dispatch({ type: 'UPDATE_LAST_ASSISTANT_MESSAGE', payload: 'Sorry, I encountered an error processing your request.' });
                                 dispatch({ type: 'STOP_THINKING' });
                             }
                         }
@@ -195,7 +193,7 @@ const App: React.FC = () => {
                 }
             } catch (error) {
                 console.error('Error during recording/transcription:', error);
-                playSound('error');
+                // Removed error sound effect
             } finally {
                 setIsRecording(false);
                 // Clear live transcription after a delay
@@ -269,28 +267,48 @@ const App: React.FC = () => {
             ipcRenderer.off('wake-word-detected', handleWakeWordDetected);
             ipcRenderer.off('wake-word-timeout', handleWakeWordTimeout);
         };
-    }, [playSound]);
+    }, []);
 
     // Handle send button click
     const handleSendClick = async () => {
         if (inputValue.trim()) {
-            playSound('processing');
-            // Add user message to store
-            dispatch({ type: 'ADD_MESSAGE', payload: { role: 'user', content: inputValue, timestamp: new Date().toISOString() } });
+            // Only play recording activation sound, no other sound effects
+
+            // Add user message to store with unique ID
+            const userMessage = {
+                id: `user-${Date.now()}`,
+                role: 'user',
+                content: inputValue,
+                timestamp: new Date().toISOString()
+            };
+            dispatch({ type: 'ADD_MESSAGE', payload: userMessage });
+
+            // Create assistant message placeholder for streaming
+            const assistantMessage = {
+                id: `assistant-${Date.now()}`,
+                role: 'assistant',
+                content: '',
+                timestamp: new Date().toISOString(),
+                isStreaming: true
+            };
+            dispatch({ type: 'ADD_MESSAGE', payload: assistantMessage });
             dispatch({ type: 'START_THINKING' });
+
+            // Clear input immediately for better UX
+            const messageToProcess = inputValue;
+            setInputValue('');
 
             // Create new AbortController for this request
             streamController.current = new AbortController();
 
             try {
                 // Process message through agent with conversation ID
-                await ipcRenderer.invoke('process-message', inputValue, currentConversationId);
+                await ipcRenderer.invoke('process-message', messageToProcess, currentConversationId);
             } catch (error) {
                 console.error('Error processing message:', error);
-                // Add error message
-                dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: 'Sorry, I encountered an error processing your request.', timestamp: new Date().toISOString() } });
+                // Update the assistant message with error
+                dispatch({ type: 'UPDATE_LAST_ASSISTANT_MESSAGE', payload: 'Sorry, I encountered an error processing your request.' });
                 dispatch({ type: 'STOP_THINKING' });
-                setInputValue('');
             }
         }
     };
@@ -311,14 +329,20 @@ const App: React.FC = () => {
                 // Process the chunk for thinking tokens
                 const processed = thinkingTokenHandler.processChunk(data.chunk, currentConversationId);
 
-                // Add any extracted thinking blocks to Redux
+                // Add any extracted thinking blocks to Redux with proper association
                 processed.thinkingBlocks.forEach(block => {
-                    dispatch({ type: 'ADD_THINKING_BLOCK', payload: block });
+                    // Associate thinking block with the current assistant message
+                    const enhancedBlock = {
+                        ...block,
+                        messageId: `assistant-${Date.now()}`, // Will be updated to actual message ID
+                        conversationId: currentConversationId
+                    };
+                    dispatch({ type: 'ADD_THINKING_BLOCK', payload: enhancedBlock });
                 });
 
-                // Append the display content to the message
+                // Append the display content to the current assistant message
                 if (processed.displayContent) {
-                    dispatch(appendToLastMessage(processed.displayContent));
+                    dispatch({ type: 'APPEND_TO_LAST_ASSISTANT_MESSAGE', payload: processed.displayContent });
                 }
             }
         };
@@ -333,9 +357,9 @@ const App: React.FC = () => {
                     dispatch({ type: 'UPDATE_THINKING_BLOCK', payload: block });
                 });
 
-                dispatch(streamComplete());
+                // Mark assistant message as complete
+                dispatch({ type: 'COMPLETE_ASSISTANT_MESSAGE' });
                 dispatch({ type: 'STOP_THINKING' });
-                setInputValue('');
             }
         };
 
@@ -343,8 +367,7 @@ const App: React.FC = () => {
             if (data.conversationId === currentConversationId) {
                 dispatch(streamError(data.error));
                 dispatch({ type: 'STOP_THINKING' });
-                dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: `Sorry, I encountered an error: ${data.error}`, timestamp: new Date().toISOString() } });
-                setInputValue('');
+                dispatch({ type: 'UPDATE_LAST_ASSISTANT_MESSAGE', payload: `Sorry, I encountered an error: ${data.error}` });
             }
         };
 
@@ -466,36 +489,45 @@ const App: React.FC = () => {
                                 </div>
                             )}
                             {messages.map((msg: any, index: number) => {
-                                const messageClass = `message ${msg.role} ${isSpeaking && msg.role === 'assistant' ? 'speaking' : ''} ${isListening ? 'listening' : ''}`;
+                                const messageClass = `message ${msg.role} ${msg.isStreaming ? 'streaming' : ''} ${isSpeaking && msg.role === 'assistant' ? 'speaking' : ''} ${isListening ? 'listening' : ''}`;
+
+                                // Get thinking blocks associated with this specific message
+                                const associatedBlocks = thinkingBlocks.filter((block: any) =>
+                                    block.messageId === msg.id ||
+                                    (!block.messageId && msg.role === 'assistant' && index === messages.length - 1)
+                                );
 
                                 return (
                                     <div
-                                        key={index}
+                                        key={msg.id || index}
                                         className={messageClass}
                                     >
+                                        <div className="message-avatar">
+                                            {msg.role === 'user' ? '👤' : '🤖'}
+                                        </div>
                                         <div className="message-content">
-                                            {msg.content && typeof msg.content === 'string' ? (
+                                            {msg.role === 'assistant' && (
                                                 <>
-                                                    {/* Render thinking blocks from Redux state */}
-                                                    {thinkingBlocks
-                                                        .filter((block: any) => block.startTime >= msg.timestamp)
-                                                        .map((block: any) => (
-                                                            <ThinkingBlock
-                                                                key={block.id}
-                                                                id={block.id}
-                                                                content={block.content}
-                                                                startTime={block.startTime}
-                                                                endTime={block.endTime}
-                                                                duration={block.duration}
-                                                                defaultOpen={false}
-                                                            />
-                                                        ))}
-                                                    {/* Display the message content */}
-                                                    {msg.content}
+                                                    {/* Render thinking blocks before assistant content */}
+                                                    {associatedBlocks.map((block: any) => (
+                                                        <ThinkingBlock
+                                                            key={block.id}
+                                                            id={block.id}
+                                                            content={block.content}
+                                                            startTime={block.startTime}
+                                                            endTime={block.endTime}
+                                                            duration={block.duration}
+                                                            defaultOpen={false}
+                                                        />
+                                                    ))}
                                                 </>
-                                            ) : (
-                                                msg.content
                                             )}
+
+                                            {/* Display the message content */}
+                                            <div className="message-text">
+                                                {msg.content || (msg.isStreaming ? '...' : '')}
+                                                {msg.isStreaming && <span className="streaming-cursor">▋</span>}
+                                            </div>
                                         </div>
                                     </div>
                                 );
@@ -509,23 +541,15 @@ const App: React.FC = () => {
                             placeholder="Type your message..."
                             className="message-input"
                             value={inputValue}
-                            style={{
-                                flex: 1,
-                                padding: '12px 16px',
-                                borderRadius: '8px',
-                                border: '1px solid #e5e5e5',
-                                fontSize: '14px',
-                                outline: 'none'
-                            }}
                             onChange={handleInputChange}
                             onKeyPress={handleKeyPress}
+                            disabled={isRecording}
                         />
                         <div className="button-group">
                             <IconButton
-                                className={`mic-button ${isListening ? 'is-listening' : ''}`}
+                                className={`mic-button ${isRecording ? 'is-recording' : ''} ${isListening ? 'is-listening' : ''}`}
                                 onClick={handleMicClick}
-                                aria-label="Activate voice assistant"
-                                color={isListening ? "error" : "primary"}
+                                aria-label={isRecording ? "Stop recording" : "Start recording"}
                                 size="small"
                             >
                                 <MicIcon fontSize="small" />
@@ -534,8 +558,8 @@ const App: React.FC = () => {
                                 className="send-button"
                                 onClick={handleSendClick}
                                 aria-label="Send message"
-                                color="primary"
                                 size="small"
+                                disabled={!inputValue.trim() || isRecording}
                             >
                                 <SendIcon fontSize="small" />
                             </IconButton>

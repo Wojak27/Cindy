@@ -1,60 +1,63 @@
 .thinking-block {
     margin: 12px 0;
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
     overflow: hidden;
-    background-color: #f8f9fa;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    background: var(--surface-secondary);
+    box-shadow: var(--shadow-sm);
 }
 
 .thinking-toggle {
     width: 100%;
     padding: 12px 16px;
-    background-color: #f0f2f5;
+    background: var(--surface);
     border: none;
-    border-bottom: 1px solid #e0e0e0;
+    border-bottom: 1px solid var(--border);
     text-align: left;
     cursor: pointer;
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
-    color: #1a1a1a;
-    transition: all 0.2s ease;
+    color: var(--text-primary);
+    transition: var(--transition);
+    font-family: inherit;
 }
 
 .thinking-toggle:hover {
-    background-color: #e6e8eb;
+    background: var(--surface-secondary);
 }
 
 .thinking-toggle.open {
-    border-bottom: 1px solid #e0e0e0;
+    border-bottom: 1px solid var(--border);
 }
 
 .thinking-toggle .thinking-icon {
-    font-size: 16px;
+    font-size: 14px;
 }
 
 .thinking-toggle .thinking-label {
     font-weight: 600;
-    color: #1a73e8;
+    color: var(--primary);
 }
 
 .thinking-toggle .thinking-duration {
-    color: #5f6368;
-    font-family: 'Courier New', monospace;
+    color: var(--text-secondary);
+    font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
     margin-left: auto;
+    font-size: 12px;
 }
 
 .thinking-toggle .thinking-arrow {
-    color: #5f6368;
+    color: var(--text-secondary);
     margin-left: 8px;
     transition: transform 0.2s ease;
+    font-size: 12px;
 }
 
 .thinking-toggle.open .thinking-arrow {
-    transform: rotate(180deg);
+    transform: rotate(90deg);
 }
 
 .thinking-content {
@@ -70,49 +73,20 @@
 }
 
 .thinking-content-inner {
-    line-height: 1.5;
-    color: #3c4043;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    font-size: 13px;
 }
 
 .thinking-paragraph {
     margin: 8px 0;
-    line-height: 1.5;
+    line-height: 1.6;
 }
 
-/* Dark mode support */
-@media (prefers-color-scheme: dark) {
-    .thinking-block {
-        background-color: #2d2d2d;
-        border-color: #3c3c3c;
-    }
+.thinking-paragraph:first-child {
+    margin-top: 0;
+}
 
-    .thinking-toggle {
-        background-color: #3c3c3c;
-        color: #e0e0e0;
-        border-color: #3c3c3c;
-    }
-
-    .thinking-toggle:hover {
-        background-color: #4a4a4a;
-    }
-
-    .thinking-toggle .thinking-label {
-        color: #8ab4f8;
-    }
-
-    .thinking-toggle .thinking-duration {
-        color: #b0b0b0;
-    }
-
-    .thinking-toggle .thinking-arrow {
-        color: #b0b0b0;
-    }
-
-    .thinking-content-inner {
-        color: #e0e0e0;
-    }
-
-    .thinking-paragraph {
-        color: #e0e0e0;
-    }
+.thinking-paragraph:last-child {
+    margin-bottom: 0;
 }
