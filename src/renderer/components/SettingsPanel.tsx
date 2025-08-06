@@ -31,7 +31,7 @@ const SettingsPanel: React.FC = () => {
     // LLM settings state
     const [llmProvider, setLlmProvider] = useState(settings?.llm?.provider || 'ollama');
     const [openaiModel, setOpenaiModel] = useState(settings?.llm?.openai?.model || 'gpt-3.5-turbo');
-    const [ollamaModel, setOllamaModel] = useState(settings?.llm?.ollama?.model || 'qwen3:8b');
+    const [ollamaModel, setOllamaModel] = useState(settings?.llm?.ollama?.model || 'qwen3:4b');
     const [openaiApiKey, setOpenaiApiKey] = useState(settings?.llm?.openai?.apiKey || '');
     const [ollamaBaseUrl, setOllamaBaseUrl] = useState(settings?.llm?.ollama?.baseUrl || 'http://127.0.0.1:11434');
     const [temperature, setTemperature] = useState(settings?.llm?.openai?.temperature || 0.7);

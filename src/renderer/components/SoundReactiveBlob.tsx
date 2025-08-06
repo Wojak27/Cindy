@@ -1,52 +1,73 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createNoise3D, NoiseFunction3D } from 'simplex-noise';
 import { audioCaptureService } from '../services/AudioCaptureService';
 import { useSettings } from '../hooks/useSettings';
 
-interface SoundReactiveBlobProps {
-    isActive: boolean;
-}
+interface Props { isActive: boolean }
 
-const NUM_POINTS = 32;
+const NUM_POINTS = 64;
 const NOISE_STEP = 0.006;
 const NOISE_SCALE = 15;
+const FALLBACK_SIDE = 200;    // px – safe default
 
-const SoundReactiveBlob: React.FC<SoundReactiveBlobProps> = ({ isActive }) => {
+export default function SoundReactiveBlob({ isActive }: Props) {
+    /* ─────────────────────────── Refs & state ────────────────────────── */
     const svgRef = useRef<SVGSVGElement>(null);
     const pathRef = useRef<SVGPathElement>(null);
     const animationRef = useRef<number | null>(null);
-    const analyserRef = useRef<AnalyserNode | null>(null);
-    const dataArrayRef = useRef<Uint8Array | null>(null);
 
+    const analyserRef = useRef<AnalyserNode | null>(null);
+    const dataRef = useRef<Uint8Array | null>(null);
+    const localCtxRef = useRef<AudioContext | null>(null);          // so we can close it
     const noise3DRef = useRef<NoiseFunction3D>(createNoise3D());
     const zOff = useRef(0);
 
-    const [size, setSize] = useState({ w: 0, h: 0 });
+    const [side, setSide] = useState<number>(FALLBACK_SIDE);
     const { blobSensitivity = 0.5, blobStyle = 'moderate' } = useSettings();
 
-    /* Resize observer */
+    /* ───────────────────────────── Resize ────────────────────────────── */
+    useLayoutEffect(() => {
+        if (!svgRef.current) return () => { };
+        const ro = new ResizeObserver(([e]) => {
+            const s = Math.max(e.contentRect.width, e.contentRect.height);
+            setSide(s || FALLBACK_SIDE);
+        });
+        ro.observe(svgRef.current);
+        return () => ro.disconnect();
+    }, []);
+
+    /* ──────────────────────── Audio analyser setup ───────────────────── */
     useEffect(() => {
-        const update = () => {
-            if (!svgRef.current) return;
-            const rect = svgRef.current.getBoundingClientRect();
-            const side = Math.min(rect.width, rect.height);
-            setSize({ w: side, h: side });
+        let cancelled = false;
+
+        (async () => {
+            if ((audioCaptureService as any)?.analyser) {
+                analyserRef.current = (audioCaptureService as any).analyser as AnalyserNode;
+            } else {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                if (cancelled) return;
+
+                const ctx = new AudioContext();
+                localCtxRef.current = ctx;
+                const src = ctx.createMediaStreamSource(stream);
+                const analyser = ctx.createAnalyser();
+                analyser.fftSize = 256;
+                src.connect(analyser);
+                analyserRef.current = analyser;
+            }
+
+            if (analyserRef.current)
+                dataRef.current = new Uint8Array(analyserRef.current.frequencyBinCount) as Uint8Array<ArrayBuffer>;
+        })().catch(err => console.error('Audio init failed:', err));
+
+        return () => {
+            cancelled = true;
+            localCtxRef.current?.close();
         };
-        update();
-        window.addEventListener('resize', update);
-        return () => window.removeEventListener('resize', update);
     }, []);
 
-    /* WebAudio analyser hookup */
-    useEffect(() => {
-        if ((audioCaptureService as any)?.analyser) {
-            analyserRef.current = (audioCaptureService as any).analyser as AnalyserNode;
-            dataArrayRef.current = new Uint8Array(analyserRef.current.frequencyBinCount) as Uint8Array<ArrayBuffer>;
-        }
-    }, []);
-
-    /* Cardinal spline util */
-    const toSmoothPath = (pts: { x: number; y: number }[]) => {
+    /* ─────────────── Catmull–Rom → cubic Bézier spline ──────────────── */
+    const smoothPath = (pts: { x: number; y: number }[]) => {
         const n = pts.length;
         let d = `M ${pts[0].x} ${pts[0].y}`;
         for (let i = 0; i < n; i++) {
@@ -63,7 +84,7 @@ const SoundReactiveBlob: React.FC<SoundReactiveBlobProps> = ({ isActive }) => {
         return d + ' Z';
     };
 
-    /* Animation loop */
+    /* ────────────────────────── Animation loop ──────────────────────── */
     useEffect(() => {
         if (!isActive) {
             if (animationRef.current) cancelAnimationFrame(animationRef.current);
@@ -71,59 +92,73 @@ const SoundReactiveBlob: React.FC<SoundReactiveBlobProps> = ({ isActive }) => {
         }
 
         const animate = () => {
-            const { w, h } = size;
-            if (!w || !h || !pathRef.current) {
+            if (!pathRef.current) {
                 animationRef.current = requestAnimationFrame(animate);
                 return;
             }
 
-            /* 1. audio RMS */
+            /* 1. volume RMS (0‒1) */
             let rms = 0;
-            if (analyserRef.current && dataArrayRef.current) {
-                analyserRef.current.getByteTimeDomainData(dataArrayRef.current as Uint8Array<ArrayBuffer>);
-                const arr = dataArrayRef.current;
+            if (analyserRef.current && dataRef.current) {
+                analyserRef.current.getByteTimeDomainData(dataRef.current as Uint8Array<ArrayBuffer>);
                 let sum = 0;
-                for (let i = 0; i < arr.length; i++) {
-                    const v = (arr[i] - 128) / 128;
+                for (let i = 0; i < dataRef.current.length; i++) {
+                    const v = (dataRef.current[i] - 128) / 128;
                     sum += v * v;
                 }
-                rms = Math.sqrt(sum / arr.length);
+                rms = Math.sqrt(sum / dataRef.current.length);
             }
 
-            /* 2. points via simplex noise */
-            const cx = w / 2;
-            const cy = h / 2;
-            const baseRadius = w * 0.4;
+            /* 2. build points */
+            const cx = side / 2;
+            const cy = side / 2;
+            const baseR = side * 0.4;
             zOff.current += NOISE_STEP;
 
-            const pts = [];
+            let intensity = NOISE_SCALE;
+            if (blobStyle === 'subtle') intensity *= 0.4;
+            if (blobStyle === 'intense') intensity *= 2;
+
+            const amp = 1 + rms * blobSensitivity * 3;
+            const pts: { x: number; y: number }[] = [];
+
             for (let i = 0; i < NUM_POINTS; i++) {
                 const theta = (Math.PI * 2 * i) / NUM_POINTS;
-                const noiseVal = noise3DRef.current(
-                    Math.cos(theta) + 1,
-                    Math.sin(theta) + 1,
-                    zOff.current
-                ); // -1..1
-
-                let intensity = NOISE_SCALE;
-                if (blobStyle === 'subtle') intensity *= 0.4;
-                if (blobStyle === 'intense') intensity *= 2;
-
-                const audioBoost = 1 + rms * blobSensitivity * 2;
-                const r = baseRadius + noiseVal * intensity * audioBoost;
+                const n = noise3DRef.current(Math.cos(theta) + 1, Math.sin(theta) + 1, zOff.current);
+                const r = baseR + n * intensity * amp;
                 pts.push({ x: cx + Math.cos(theta) * r, y: cy + Math.sin(theta) * r });
             }
 
-            pathRef.current.setAttribute('d', toSmoothPath(pts));
+            /* 3. update DOM */
+            pathRef.current.setAttribute('d', smoothPath(pts));
+
+            // ───── colour logic ─────────
+            // timeHue  : slow 360° sweep (one full cycle ≈ 50 s)
+            // rmsBoost : ±120° punch when you make a sound
+            const timeHue = (performance.now() * 0.02) % 360;   // 0-359
+            const hue = (timeHue + rms * 120) % 360;        // mix in volume
+            pathRef.current.setAttribute('fill', `hsl(${hue} 100% 60% / 0.9)`);
+
+            /* 4. loop */
             animationRef.current = requestAnimationFrame(animate);
         };
+
+        /* draw an initial circle so nothing looks broken */
+        if (pathRef.current) {
+            const r = side / 2.5;
+            pathRef.current.setAttribute(
+                'd',
+                `M ${side / 2 - r},${side / 2} a ${r},${r} 0 1,0 ${r * 2},0 a ${r},${r} 0 1,0 -${r * 2},0 Z`
+            );
+        }
 
         animationRef.current = requestAnimationFrame(animate);
         return () => {
             if (animationRef.current) cancelAnimationFrame(animationRef.current);
         };
-    }, [isActive, size, blobSensitivity, blobStyle]);
+    }, [isActive, side, blobSensitivity, blobStyle]);
 
+    /* ───────────────────────────── Render ───────────────────────────── */
     return (
         <div style={{
             position: 'absolute',
@@ -136,26 +171,21 @@ const SoundReactiveBlob: React.FC<SoundReactiveBlobProps> = ({ isActive }) => {
         }}>
             <svg
                 ref={svgRef}
-                width="100%"
-                height="100%"
-                viewBox={`0 0 ${size.w} ${size.h}`}
-                style={{ maxWidth: 200, maxHeight: 200, filter: 'drop-shadow(0 0 10px rgba(0,123,255,.5))' }}
+                width="100%" height="100%"
+                viewBox={`0 0 ${side} ${side}`}
+                style={{
+                    maxWidth: FALLBACK_SIDE,
+                    maxHeight: FALLBACK_SIDE,
+                    filter: 'drop-shadow(0 0 10px rgba(0,0,0,.4))'
+                }}
             >
-                <defs>
-                    <radialGradient id="blobGradient" cx="50%" cy="50%" r="50%">
-                        <stop offset="0%" stopColor="rgba(0,123,255,0.8)" />
-                        <stop offset="100%" stopColor="rgba(0,123,255,0.3)" />
-                    </radialGradient>
-                </defs>
                 <path
                     ref={pathRef}
-                    fill="url(#blobGradient)"
-                    stroke="rgba(0,123,255,0.5)"
+                    fill="hsl(210 100% 60% / 0.9)"
+                    stroke="hsla(210,100%,40%,0.6)"
                     strokeWidth="2"
                 />
             </svg>
         </div>
     );
-};
-
-export default SoundReactiveBlob;
+}

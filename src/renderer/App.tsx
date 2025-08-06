@@ -359,8 +359,15 @@ const App: React.FC = () => {
                     <div className="chat-messages-container">
                         <div className="chat-messages">
                             {/* Show sound reactive circle when no messages and no current input */}
-                            {messages.length === 0 && !inputValue && (
-                                <SoundReactiveBlob isActive={true} />
+                            {messages.length === 0 && (
+                                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                                    <div style={{ position: "relative", width: "200px", height: "200px" }}>
+                                        <SoundReactiveBlob isActive={true} />
+                                    </div>
+                                    <div className="welcome-message">
+                                        <h2>How can I assist you today?</h2>
+                                    </div>
+                                </div>
                             )}
                             {messages.map((msg: any, index: number) => {
                                 const messageClass = `message ${msg.role} ${isSpeaking && msg.role === 'assistant' ? 'speaking' : ''} ${isListening ? 'listening' : ''}`;
