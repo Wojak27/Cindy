@@ -56,7 +56,7 @@ class SimpleLiveTranscriptionService {
         this.mediaRecorder = new MediaRecorder(this.mediaStream, options);
 
         this.mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0) {
+            if (event.data && event.data.size > 0) {
                 this.recordedChunks.push(event.data);
                 this.lastAudioActivity = Date.now();
                 
@@ -64,6 +64,9 @@ class SimpleLiveTranscriptionService {
                 if (this.recordedChunks.length >= 2 && !this.isProcessing) {
                     this.processAudioChunks();
                 }
+            } else if (event.data && event.data.size === 0) {
+                // Skip empty chunks but don't log unless debugging
+                console.log('SimpleLiveTranscriptionService: Received empty chunk, skipping');
             }
         };
 
@@ -107,8 +110,18 @@ class SimpleLiveTranscriptionService {
         this.recordedChunks = []; // Clear for next collection
 
         try {
-            // Skip processing if chunks are too small (likely incomplete audio)
+            // Skip processing if chunks are empty or too small (likely incomplete audio)
+            if (chunksToProcess.length === 0) {
+                console.log('SimpleLiveTranscriptionService: No chunks to process');
+                return;
+            }
+            
             const totalSize = chunksToProcess.reduce((sum, chunk) => sum + chunk.size, 0);
+            if (totalSize === 0) {
+                console.log('SimpleLiveTranscriptionService: Skipping empty chunks');
+                return;
+            }
+            
             if (totalSize < 5000) { // Skip if less than 5KB
                 console.log('SimpleLiveTranscriptionService: Skipping small audio chunk:', totalSize, 'bytes');
                 return;
@@ -123,6 +136,11 @@ class SimpleLiveTranscriptionService {
             const arrayBuffer = await audioBlob.arrayBuffer();
             
             // Skip if array buffer is empty or too small
+            if (arrayBuffer.byteLength === 0) {
+                console.log('SimpleLiveTranscriptionService: Skipping empty array buffer');
+                return;
+            }
+            
             if (arrayBuffer.byteLength < 1000) {
                 console.log('SimpleLiveTranscriptionService: Skipping small array buffer:', arrayBuffer.byteLength, 'bytes');
                 return;
@@ -169,7 +187,7 @@ class SimpleLiveTranscriptionService {
                 }
             } catch (decodeError) {
                 // Log decode errors less frequently but still log them for debugging
-                if (Math.random() < 0.3) { // Log 30% of decode errors
+                if (Math.random() < 0.05) { // Log only 5% of decode errors to reduce spam
                     console.warn('SimpleLiveTranscriptionService: Audio decode error (sampled):', decodeError.message, 'Size:', arrayBuffer.byteLength);
                 }
             } finally {
