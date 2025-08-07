@@ -40,7 +40,8 @@ const getDefaultState = () => ({
     },
     messages: {
         messages: [],
-        thinkingBlocks: []
+        thinkingBlocks: [],
+        toolCalls: []
     },
     ui: {
         showSettings: false,

@@ -199,7 +199,8 @@ const setupDatabaseIPC = () => {
     const handlersToRemove = [
         'validate-path',
         'show-directory-dialog',
-        'create-vector-store'
+        'create-vector-store',
+        'vector-store:get-indexed-items'
     ];
 
     handlersToRemove.forEach(handler => {
@@ -263,7 +264,7 @@ const setupDatabaseIPC = () => {
         }
     });
 
-    // Create vector store handler (placeholder)
+    // Create vector store handler
     ipcMain.handle('create-vector-store', async (event, options) => {
         console.log('[IPC] Creating vector store with options:', options);
         try {
@@ -286,13 +287,51 @@ const setupDatabaseIPC = () => {
                 return { success: false, message: 'Error accessing path or directory not writable' };
             }
 
-            // TODO: Implement actual vector store creation
-            // For now, just return success if path is valid
-            console.log('[IPC] Vector store creation simulated successfully');
-            return { success: true, message: 'Vector store created successfully (placeholder)' };
+            // Create and initialize vector store service
+            const vectorStore = new VectorStoreService(options);
+            await vectorStore.initialize();
+            
+            // Set up progress event forwarding
+            vectorStore.on('progress', (data) => {
+                if (mainWindow) {
+                    mainWindow.webContents.send('vector-store:indexing-progress', data);
+                }
+            });
+            
+            // Start indexing
+            const result = await vectorStore.indexDirectory();
+            
+            if (result.success) {
+                console.log('[IPC] Vector store creation completed successfully');
+                return { 
+                    success: true, 
+                    message: `Vector store created successfully. Indexed ${result.indexedFiles.length} files.`,
+                    indexedFiles: result.indexedFiles
+                };
+            } else {
+                return { success: false, message: result.error || 'Indexing failed' };
+            }
         } catch (error) {
             console.error('[IPC] Error creating vector store:', error);
-            return { success: false, message: error.message };
+            return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
+        }
+    });
+    
+    // Get indexed items handler
+    ipcMain.handle('vector-store:get-indexed-items', async (event, databasePath) => {
+        console.log('[IPC] Getting indexed items for path:', databasePath);
+        try {
+            // In a real implementation, this would query the actual vector database
+            // For now, return empty array or cached results
+            const indexFile = path.join(databasePath, '.vector_store', 'index.json');
+            if (fs.existsSync(indexFile)) {
+                const indexData = JSON.parse(fs.readFileSync(indexFile, 'utf-8'));
+                return { success: true, items: indexData.files || [] };
+            }
+            return { success: true, items: [] };
+        } catch (error) {
+            console.error('[IPC] Error getting indexed items:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
         }
     });
 

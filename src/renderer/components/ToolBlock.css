@@ -1,0 +1,252 @@
+.tool-block {
+    margin: 12px 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--surface-secondary);
+    box-shadow: var(--shadow-sm);
+}
+
+.tool-toggle {
+    width: 100%;
+    padding: 12px 16px;
+    background: var(--surface);
+    border: none;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    transition: var(--transition);
+    font-family: inherit;
+}
+
+.tool-toggle:hover {
+    background: var(--surface-secondary);
+}
+
+.tool-toggle.open {
+    border-bottom: 1px solid var(--border);
+}
+
+.tool-toggle .tool-icon {
+    font-size: 14px;
+}
+
+.tool-toggle .tool-name {
+    font-weight: 600;
+    color: var(--primary);
+    font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
+}
+
+.tool-toggle .tool-status {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.05);
+}
+
+.tool-toggle .tool-retry-count {
+    font-size: 11px;
+    opacity: 0.8;
+    margin-left: 4px;
+}
+
+.tool-toggle .tool-duration {
+    color: var(--text-secondary);
+    font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
+    margin-left: auto;
+    font-size: 12px;
+}
+
+.tool-toggle .tool-arrow {
+    color: var(--text-secondary);
+    margin-left: 8px;
+    transition: transform 0.2s ease;
+    font-size: 12px;
+}
+
+.tool-toggle.open .tool-arrow {
+    transform: rotate(90deg);
+}
+
+.tool-content {
+    padding: 0;
+    transition: all 0.3s ease;
+    max-height: 0;
+    overflow: hidden;
+}
+
+.tool-content.expanded {
+    max-height: 2000px;
+    padding: 16px;
+}
+
+.tool-content-inner {
+    line-height: 1.6;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+.tool-section {
+    margin-bottom: 16px;
+}
+
+.tool-section:last-child {
+    margin-bottom: 0;
+}
+
+.tool-section-header {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.tool-section-header.error {
+    color: var(--error);
+}
+
+.tool-code-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.tool-error {
+    background: rgba(var(--error-rgb), 0.1);
+    border: 1px solid var(--error);
+    border-radius: 6px;
+    padding: 12px;
+    color: var(--error);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.tool-metadata {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+    margin-top: 16px;
+}
+
+.tool-metadata-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+}
+
+.tool-metadata-label {
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.tool-metadata-value {
+    font-weight: 600;
+    font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
+    color: var(--text-primary);
+}
+
+/* Light mode styling for tool blocks */
+[data-theme="light"] .tool-block {
+    background: #f8f9fa;
+    border-color: #e5e7eb;
+}
+
+[data-theme="light"] .tool-toggle {
+    background: #ffffff;
+    color: #1f2937;
+    border-bottom-color: #e5e7eb;
+}
+
+[data-theme="light"] .tool-toggle:hover {
+    background: #f8f9fa;
+}
+
+[data-theme="light"] .tool-toggle .tool-name {
+    color: #059669;
+}
+
+[data-theme="light"] .tool-toggle .tool-status {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .tool-toggle .tool-duration {
+    color: #6b7280;
+}
+
+[data-theme="light"] .tool-toggle .tool-arrow {
+    color: #6b7280;
+}
+
+[data-theme="light"] .tool-content-inner {
+    color: #4b5563;
+}
+
+[data-theme="light"] .tool-section-header {
+    color: #1f2937;
+}
+
+[data-theme="light"] .tool-code-block {
+    background: #ffffff;
+    border-color: #e5e7eb;
+    color: #1f2937;
+}
+
+[data-theme="light"] .tool-error {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: #ef4444;
+    color: #dc2626;
+}
+
+[data-theme="light"] .tool-metadata {
+    border-top-color: #e5e7eb;
+}
+
+[data-theme="light"] .tool-metadata-label {
+    color: #6b7280;
+}
+
+[data-theme="light"] .tool-metadata-value {
+    color: #1f2937;
+}
+
+/* Status-specific colors */
+.tool-toggle .tool-status[style*="var(--warning)"] {
+    background: rgba(251, 191, 36, 0.2);
+}
+
+.tool-toggle .tool-status[style*="var(--primary)"] {
+    background: rgba(59, 130, 246, 0.2);
+}
+
+.tool-toggle .tool-status[style*="var(--info)"] {
+    background: rgba(14, 165, 233, 0.2);
+}
+
+.tool-toggle .tool-status[style*="var(--success)"] {
+    background: rgba(34, 197, 94, 0.2);
+}
+
+.tool-toggle .tool-status[style*="var(--error)"] {
+    background: rgba(239, 68, 68, 0.2);
+}

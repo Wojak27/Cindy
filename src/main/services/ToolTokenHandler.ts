@@ -490,6 +490,93 @@ export class ToolTokenHandler {
     }
 
     /**
+     * Get incomplete tool calls that are currently being processed
+     * This allows showing tool calls before the closing </tool> tag
+     * @param conversationId - The conversation ID for generating tool call IDs
+     * @returns Array of incomplete tool calls
+     */
+    public getIncompleteToolCalls(conversationId: string): ToolCall[] {
+        const incompleteToolCalls: ToolCall[] = [];
+        
+        // Process current tool stack content
+        this.toolStack.forEach((toolContent, index) => {
+            if (toolContent.trim()) {
+                try {
+                    // Try to parse partial JSON to extract tool name and parameters
+                    const partialToolCall = this.parsePartialToolCall(toolContent, conversationId, index);
+                    if (partialToolCall) {
+                        incompleteToolCalls.push(partialToolCall);
+                    }
+                } catch (error) {
+                    // If parsing fails, create a basic incomplete tool call
+                    incompleteToolCalls.push({
+                        id: `incomplete-tool-${conversationId}-${index}`,
+                        name: 'parsing...',
+                        parameters: {},
+                        status: 'pending',
+                        startTime: Date.now()
+                    });
+                }
+            }
+        });
+
+        return incompleteToolCalls;
+    }
+
+    /**
+     * Parse partial tool call JSON content
+     * @param content - Partial tool call content
+     * @param conversationId - Conversation ID
+     * @param index - Stack index for unique ID
+     * @returns Partial tool call or null if not parseable
+     */
+    private parsePartialToolCall(content: string, conversationId: string, index: number): ToolCall | null {
+        try {
+            // Clean up content
+            let cleanContent = content.trim();
+            
+            // Try to extract name from partial JSON
+            let toolName = 'parsing...';
+            let toolParameters = {};
+            
+            // Look for name field
+            const nameMatch = cleanContent.match(/"name"\s*:\s*"([^"]+)"/);
+            if (nameMatch) {
+                toolName = nameMatch[1];
+            }
+            
+            // Look for parameters field
+            const parametersMatch = cleanContent.match(/"parameters"\s*:\s*(\{[^}]*\}?)/);
+            if (parametersMatch) {
+                try {
+                    const paramStr = parametersMatch[1];
+                    // Try to parse parameters, adding closing brace if needed
+                    let completeParamStr = paramStr;
+                    if (!paramStr.endsWith('}')) {
+                        completeParamStr = paramStr + '}';
+                    }
+                    toolParameters = JSON.parse(completeParamStr);
+                } catch (paramError) {
+                    // Parameters not fully formed yet
+                    toolParameters = { parsing: 'in progress...' };
+                }
+            }
+            
+            return {
+                id: `incomplete-tool-${conversationId}-${index}`,
+                name: toolName,
+                parameters: toolParameters,
+                status: 'pending',
+                startTime: Date.now()
+            };
+            
+        } catch (error) {
+            console.log('🔧 Tool Handler: Could not parse partial tool call:', error);
+            return null;
+        }
+    }
+
+    /**
      * Check if pending content represents a meaningful incomplete tool block
      * vs just partial tag starts that should be ignored
      */

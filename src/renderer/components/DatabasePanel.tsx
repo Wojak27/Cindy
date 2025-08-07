@@ -15,9 +15,25 @@ import {
     Divider,
     IconButton,
     Switch,
-    FormControlLabel
+    FormControlLabel,
+    Accordion,
+    AccordionSummary,
+    AccordionDetails,
+    List,
+    ListItem,
+    ListItemText,
+    ListItemIcon,
+    CircularProgress,
+    Chip,
+    Alert,
+    Snackbar
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import FolderIcon from '@mui/icons-material/Folder';
+import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import ErrorIcon from '@mui/icons-material/Error';
 import { ipcRenderer } from 'electron';
 
 const DatabasePanel: React.FC = () => {
@@ -31,6 +47,15 @@ const DatabasePanel: React.FC = () => {
     const [chunkOverlap, setChunkOverlap] = useState(settings?.database?.chunkOverlap || 200);
     const [autoIndex, setAutoIndex] = useState(settings?.database?.autoIndex || true);
     const [pathValidation, setPathValidation] = useState<{ valid: boolean; message?: string } | null>(null);
+    
+    // Indexing state
+    const [isIndexing, setIsIndexing] = useState(false);
+    const [indexingProgress, setIndexingProgress] = useState(0);
+    const [indexedItems, setIndexedItems] = useState<any[]>([]);
+    const [expandedAccordion, setExpandedAccordion] = useState<string | false>(false);
+    const [showNotification, setShowNotification] = useState(false);
+    const [notificationMessage, setNotificationMessage] = useState('');
+    const [notificationSeverity, setNotificationSeverity] = useState<'success' | 'error' | 'info'>('success');
 
     useEffect(() => {
         dispatch(getSettings());
@@ -60,11 +85,13 @@ const DatabasePanel: React.FC = () => {
         }));
     };
 
-    // Auto-save when settings change
+    // Auto-save when settings change (always save to persist current state)
     useEffect(() => {
-        if (databasePath || embeddingModel !== 'qwen3:8b' || chunkSize !== 1000 || chunkOverlap !== 200 || !autoIndex) {
+        const timeoutId = setTimeout(() => {
             autoSaveSettings();
-        }
+        }, 500); // Debounce to avoid too many saves
+        
+        return () => clearTimeout(timeoutId);
     }, [databasePath, embeddingModel, chunkSize, chunkOverlap, autoIndex]);
 
     const handleBrowse = async () => {
@@ -93,6 +120,10 @@ const DatabasePanel: React.FC = () => {
 
     const createVectorStore = async () => {
         try {
+            setIsIndexing(true);
+            setIndexingProgress(0);
+            setIndexedItems([]);
+            
             const options = {
                 databasePath,
                 embeddingModel,
@@ -101,9 +132,35 @@ const DatabasePanel: React.FC = () => {
                 autoIndex
             };
 
+            // Listen for indexing progress updates
+            const progressHandler = (_event: any, data: any) => {
+                if (data.type === 'progress') {
+                    setIndexingProgress(data.progress);
+                } else if (data.type === 'file') {
+                    setIndexedItems(prev => [...prev, data.file]);
+                }
+            };
+            
+            ipcRenderer.on('vector-store:indexing-progress', progressHandler);
+
             const result = await ipcRenderer.invoke('create-vector-store', options);
+            
+            // Clean up listener
+            ipcRenderer.removeListener('vector-store:indexing-progress', progressHandler);
+            
             if (result.success) {
                 console.log('Vector store created successfully');
+                
+                // Get indexed items
+                if (result.indexedFiles) {
+                    setIndexedItems(result.indexedFiles);
+                }
+                
+                // Show success notification
+                setNotificationMessage(`Successfully indexed ${result.indexedFiles?.length || 0} files`);
+                setNotificationSeverity('success');
+                setShowNotification(true);
+                
                 // Update settings
                 dispatch(updateSettings({
                     database: {
@@ -114,14 +171,59 @@ const DatabasePanel: React.FC = () => {
                         autoIndex
                     }
                 }));
-                // Close the panel
-                dispatch({ type: 'TOGGLE_DATABASE_SIDEBAR' });
+                
+                // Don't close panel immediately - let user see results
+                setTimeout(() => {
+                    dispatch({ type: 'TOGGLE_DATABASE_SIDEBAR' });
+                }, 3000);
             } else {
                 console.error('Failed to create vector store:', result.message);
+                setNotificationMessage(`Failed to create vector store: ${result.message}`);
+                setNotificationSeverity('error');
+                setShowNotification(true);
             }
         } catch (error) {
             console.error('Error creating vector store:', error);
+            setNotificationMessage(`Error: ${error}`);
+            setNotificationSeverity('error');
+            setShowNotification(true);
+        } finally {
+            setIsIndexing(false);
+            setIndexingProgress(100);
         }
+    };
+    
+    // Load existing indexed items when component mounts or path changes
+    useEffect(() => {
+        const loadIndexedItems = async () => {
+            if (databasePath) {
+                try {
+                    const result = await ipcRenderer.invoke('vector-store:get-indexed-items', databasePath);
+                    if (result.success && result.items) {
+                        setIndexedItems(result.items);
+                    }
+                } catch (error) {
+                    console.error('Failed to load indexed items:', error);
+                }
+            }
+        };
+        
+        loadIndexedItems();
+    }, [databasePath]);
+    
+    const handleAccordionChange = (panel: string) => (_event: React.SyntheticEvent, isExpanded: boolean) => {
+        setExpandedAccordion(isExpanded ? panel : false);
+    };
+    
+    const getFileIcon = (fileName: string) => {
+        const ext = fileName.split('.').pop()?.toLowerCase();
+        if (['pdf'].includes(ext || '')) return '📄';
+        if (['doc', 'docx'].includes(ext || '')) return '📃';
+        if (['txt', 'md', 'mdx'].includes(ext || '')) return '📝';
+        if (['js', 'ts', 'jsx', 'tsx', 'py', 'java', 'cpp', 'c', 'cs'].includes(ext || '')) return '💻';
+        if (['html', 'css', 'json', 'xml', 'yml', 'yaml'].includes(ext || '')) return '🌐';
+        if (['jpg', 'jpeg', 'png', 'gif', 'svg'].includes(ext || '')) return '🖼️';
+        return '📁';
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -260,6 +362,100 @@ const DatabasePanel: React.FC = () => {
 
                     <Divider sx={{ my: 3 }} />
 
+                    {databasePath && (
+                        <Box sx={{ mb: 2 }}>
+                            <Button
+                                variant="outlined"
+                                color="secondary"
+                                onClick={createVectorStore}
+                                fullWidth
+                                sx={{ mb: 2 }}
+                                disabled={isIndexing}
+                                startIcon={isIndexing ? <CircularProgress size={20} /> : null}
+                            >
+                                {isIndexing ? 'Indexing...' : 'Create Vector Store from Directory'}
+                            </Button>
+                            <FormHelperText>
+                                This will index PDF, Word documents (.doc/.docx), text, markdown, and code files in the selected directory for RAG queries.
+                            </FormHelperText>
+                            
+                            {/* Progress bar during indexing */}
+                            {isIndexing && (
+                                <Box sx={{ width: '100%', mt: 2 }}>
+                                    <Typography variant="body2" color="text.secondary">
+                                        Indexing progress: {indexingProgress}%
+                                    </Typography>
+                                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                        <Box sx={{ width: '100%', mr: 1 }}>
+                                            <CircularProgress variant="determinate" value={indexingProgress} />
+                                        </Box>
+                                    </Box>
+                                </Box>
+                            )}
+                            
+                            {/* Expandable view of indexed items */}
+                            {indexedItems.length > 0 && (
+                                <Accordion 
+                                    expanded={expandedAccordion === 'indexed'} 
+                                    onChange={handleAccordionChange('indexed')}
+                                    sx={{ mt: 2 }}
+                                >
+                                    <AccordionSummary
+                                        expandIcon={<ExpandMoreIcon />}
+                                        aria-controls="indexed-content"
+                                        id="indexed-header"
+                                    >
+                                        <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                                            <CheckCircleIcon color="success" sx={{ mr: 1 }} />
+                                            <Typography>Indexed Items ({indexedItems.length})</Typography>
+                                        </Box>
+                                    </AccordionSummary>
+                                    <AccordionDetails>
+                                        <List dense>
+                                            {indexedItems.map((item, index) => (
+                                                <ListItem key={index}>
+                                                    <ListItemIcon>
+                                                        {item.type === 'folder' ? (
+                                                            <FolderIcon fontSize="small" />
+                                                        ) : (
+                                                            <InsertDriveFileIcon fontSize="small" />
+                                                        )}
+                                                    </ListItemIcon>
+                                                    <ListItemText 
+                                                        primary={
+                                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                                <span>{getFileIcon(item.name)} {item.name}</span>
+                                                                {item.chunks && (
+                                                                    <Chip 
+                                                                        label={`${item.chunks} chunks`} 
+                                                                        size="small" 
+                                                                        variant="outlined" 
+                                                                    />
+                                                                )}
+                                                            </Box>
+                                                        }
+                                                        secondary={
+                                                            <Box>
+                                                                {item.path && <Typography variant="caption" color="text.secondary">{item.path}</Typography>}
+                                                                {item.size && <Typography variant="caption" color="text.secondary"> • {formatFileSize(item.size)}</Typography>}
+                                                                {item.error && (
+                                                                    <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5 }}>
+                                                                        <ErrorIcon color="error" fontSize="small" sx={{ mr: 0.5 }} />
+                                                                        <Typography variant="caption" color="error">{item.error}</Typography>
+                                                                    </Box>
+                                                                )}
+                                                            </Box>
+                                                        }
+                                                    />
+                                                </ListItem>
+                                            ))}
+                                        </List>
+                                    </AccordionDetails>
+                                </Accordion>
+                            )}
+                        </Box>
+                    )}
+
                     <div className="database-footer">
                         <Button
                             type="submit"
@@ -279,8 +475,33 @@ const DatabasePanel: React.FC = () => {
                     </div>
                 </Box>
             </div>
+            
+            {/* Notification Snackbar */}
+            <Snackbar
+                open={showNotification}
+                autoHideDuration={6000}
+                onClose={() => setShowNotification(false)}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+            >
+                <Alert 
+                    onClose={() => setShowNotification(false)} 
+                    severity={notificationSeverity}
+                    sx={{ width: '100%' }}
+                >
+                    {notificationMessage}
+                </Alert>
+            </Snackbar>
         </div>
     );
+};
+
+// Helper function to format file sizes
+const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
 };
 
 export default DatabasePanel;

@@ -3,7 +3,8 @@
 
 const initialState = {
   messages: [],
-  thinkingBlocks: []
+  thinkingBlocks: [],
+  toolCalls: []
 };
 
 const messagesReducer = (state = initialState, action: any) => {
@@ -29,7 +30,8 @@ const messagesReducer = (state = initialState, action: any) => {
       return {
         ...state,
         messages: [],
-        thinkingBlocks: []
+        thinkingBlocks: [],
+        toolCalls: []
       };
     case 'APPEND_TO_LAST_MESSAGE':
       // This should only append to the last assistant message, never user messages
@@ -206,6 +208,95 @@ const messagesReducer = (state = initialState, action: any) => {
         ...state,
         thinkingBlocks: []
       };
+
+    // Tool Call Actions
+    case 'ADD_TOOL_CALL':
+      // Prevent duplicate tool calls
+      const toolCallExists = state.toolCalls.some(call => call.id === action.payload.id);
+      if (toolCallExists) {
+        console.warn('Preventing duplicate tool call:', action.payload.id);
+        return state;
+      }
+
+      // Associate tool call with the current assistant message if available
+      const currentAssistantMsg = state.messages.length > 0 && state.messages[state.messages.length - 1].role === 'assistant'
+        ? state.messages[state.messages.length - 1]
+        : null;
+
+      const enhancedToolCall = currentAssistantMsg
+        ? { ...action.payload, messageId: currentAssistantMsg.id }
+        : action.payload;
+
+      return {
+        ...state,
+        toolCalls: [...state.toolCalls, enhancedToolCall]
+      };
+
+    case 'UPDATE_TOOL_CALL':
+      return {
+        ...state,
+        toolCalls: state.toolCalls.map(call =>
+          call.id === action.payload.id ? { ...call, ...action.payload } : call
+        )
+      };
+
+    case 'COMPLETE_TOOL_CALL':
+      return {
+        ...state,
+        toolCalls: state.toolCalls.map(call =>
+          call.id === action.payload.toolId
+            ? { ...call, status: 'completed', result: action.payload.result, endTime: Date.now() }
+            : call
+        )
+      };
+
+    case 'FAIL_TOOL_CALL':
+      return {
+        ...state,
+        toolCalls: state.toolCalls.map(call =>
+          call.id === action.payload.toolId
+            ? { ...call, status: 'failed', error: action.payload.error, endTime: Date.now() }
+            : call
+        )
+      };
+
+    case 'LOAD_TOOL_CALLS':
+      // Batch load tool calls
+      return {
+        ...state,
+        toolCalls: action.payload || []
+      };
+
+    case 'CLEAR_TOOL_CALLS':
+      return {
+        ...state,
+        toolCalls: []
+      };
+
+    case 'ADD_INCOMPLETE_TOOL_CALLS':
+      // Add incomplete tool calls (for showing before </tool> tag)
+      const incompleteCalls = action.payload || [];
+      const newToolCalls = incompleteCalls.filter(incompleteCall => 
+        !state.toolCalls.some(existingCall => existingCall.id === incompleteCall.id)
+      );
+
+      if (newToolCalls.length > 0) {
+        return {
+          ...state,
+          toolCalls: [...state.toolCalls, ...newToolCalls]
+        };
+      }
+      return state;
+
+    case 'REMOVE_INCOMPLETE_TOOL_CALLS':
+      // Remove incomplete tool calls when they're completed or replaced
+      return {
+        ...state,
+        toolCalls: state.toolCalls.filter(call => 
+          !call.id.startsWith('incomplete-tool-')
+        )
+      };
+
     default:
       return state;
   }

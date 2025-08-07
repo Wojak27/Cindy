@@ -209,17 +209,28 @@ const SettingsPanel: React.FC = () => {
         try {
             const action = wakeWordEnabled ? 'wake-word:stop' : 'wake-word:start';
             const result = await ipcRenderer.invoke(action);
-            if (result.success) {
+            if (result && result.success) {
                 setWakeWordEnabled(!wakeWordEnabled);
                 setWakeWordStatus(!wakeWordEnabled ? 'Active' : 'Inactive');
             } else {
-                console.error('Failed to toggle wake word:', result.error);
-                setWakeWordStatus('Error');
+                console.error('Failed to toggle wake word:', result?.error || 'Service not available');
+                setWakeWordStatus('Service not available');
+                // Show user-friendly error
+                alert('Wake word service is not available. Please restart the application.');
             }
         } catch (error) {
             console.error('Failed to toggle wake word:', error);
             setWakeWordStatus('Error');
         }
+    };
+
+    const testWakeWord = () => {
+        // Simulate wake word detection for testing
+        console.log('Testing wake word detection...');
+        // Dispatch a test wake word event
+        document.dispatchEvent(new CustomEvent('test-wake-word'));
+        // Also trigger via IPC for full test
+        ipcRenderer.send('wake-word-detected');
     };
 
     const updateWakeWordKeyword = async () => {
@@ -400,6 +411,15 @@ const SettingsPanel: React.FC = () => {
                                     size="small"
                                 >
                                     {wakeWordEnabled ? "Stop Wake Word" : "Start Wake Word"}
+                                </Button>
+                                <Button
+                                    variant="outlined"
+                                    color="secondary"
+                                    onClick={testWakeWord}
+                                    size="small"
+                                    sx={{ ml: 1 }}
+                                >
+                                    Test Wake Word
                                 </Button>
                                 <Typography variant="body2" color={wakeWordStatus === 'Active' ? 'success.main' : 'text.secondary'}>
                                     Status: {wakeWordStatus}

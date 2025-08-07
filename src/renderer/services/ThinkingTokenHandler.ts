@@ -190,6 +190,29 @@ export class ThinkingTokenHandler {
         this.thinkingStack = [];
         this.currentBlockId = 0;
     }
+
+    /**
+     * Get incomplete thinking blocks that are currently being processed
+     * This allows showing thinking blocks before the closing </think> tag
+     * @param conversationId - The conversation ID for generating block IDs
+     * @returns Array of incomplete thinking blocks
+     */
+    public getIncompleteThinkingBlocks(conversationId: string): ThinkingBlock[] {
+        const incompleteBlocks: ThinkingBlock[] = [];
+        
+        // Process current thinking stack content
+        this.thinkingStack.forEach((thinkingContent, index) => {
+            if (thinkingContent.trim()) {
+                incompleteBlocks.push({
+                    id: `incomplete-thinking-${conversationId}-${index}`,
+                    content: thinkingContent,
+                    startTime: Date.now()
+                });
+            }
+        });
+
+        return incompleteBlocks;
+    }
 }
 
 // Export singleton instance

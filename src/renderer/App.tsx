@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { thinkingTokenHandler } from './services/ThinkingTokenHandler';
+import { toolTokenHandler } from './services/ToolTokenHandler';
 import ThinkingBlock from './components/ThinkingBlock';
+import ToolBlock from './components/ToolBlock';
 import ContentProcessor from './utils/contentProcessor';
 // SoundReactiveCircle was imported but not used in the component
 // The component now uses SoundReactiveBlob instead
@@ -40,6 +42,7 @@ const App: React.FC = () => {
     const showDatabase = useSelector((state: any) => state.ui.showDatabase);
     // const thinkingStartTime = useSelector((state: any) => state.ui.thinkingStartTime);
     const thinkingBlocks = useSelector((state: any) => state.messages?.thinkingBlocks || []);
+    const toolCalls = useSelector((state: any) => state.messages?.toolCalls || []);
     const settings = useSelector((state: any) => state.settings);
     const [isSpeaking, setIsSpeaking] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
@@ -57,6 +60,21 @@ const App: React.FC = () => {
     const streamController = useRef<AbortController | null>(null);
     const speechTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+    // Memoize welcome message to prevent re-calculation on every render
+    const welcomeMessage = useMemo(() => {
+        if (settings?.profile?.name) {
+            return getWelcomeMessage(settings.profile.name);
+        }
+        return null;
+    }, [settings?.profile?.name]);
+
+    const personalizedGreeting = useMemo(() => {
+        if (settings?.profile?.name) {
+            return getPersonalizedMessage(settings.profile.name, 'greeting');
+        }
+        return "How can I assist you today?";
+    }, [settings?.profile?.name]);
+
     // Load conversation history when conversation changes
     useEffect(() => {
         const loadConversationHistory = async () => {
@@ -67,9 +85,14 @@ const App: React.FC = () => {
                 const messages = await ipcRenderer.invoke('load-conversation', currentConversationId);
                 console.log('🔧 DEBUG: Loaded messages from ChatStorageService:', messages.length, 'messages');
 
-                // Clear current messages and thinking blocks
+                // Clear current messages, thinking blocks, and tool calls
                 dispatch({ type: 'CLEAR_MESSAGES' });
                 dispatch({ type: 'CLEAR_THINKING_BLOCKS' });
+                dispatch({ type: 'CLEAR_TOOL_CALLS' });
+                
+                // Reset token handlers
+                thinkingTokenHandler.reset();
+                toolTokenHandler.reset();
                 
                 // Process existing messages for thinking tokens and code blocks
                 const { updatedMessages, extractedThinkingBlocks } = ContentProcessor.processExistingMessages(
@@ -515,10 +538,10 @@ const App: React.FC = () => {
         const handleStreamChunk = (_: any, data: { chunk: string, conversationId: string }) => {
             if (data.conversationId === currentConversationId) {
                 // Process the chunk for thinking tokens
-                const processed = thinkingTokenHandler.processChunk(data.chunk, currentConversationId);
+                const processedThinking = thinkingTokenHandler.processChunk(data.chunk, currentConversationId);
 
                 // Add any extracted thinking blocks to Redux with proper association
-                processed.thinkingBlocks.forEach(block => {
+                processedThinking.thinkingBlocks.forEach(block => {
                     // Associate thinking block with the current assistant message
                     const enhancedBlock = {
                         ...block,
@@ -528,15 +551,36 @@ const App: React.FC = () => {
                     dispatch({ type: 'ADD_THINKING_BLOCK', payload: enhancedBlock });
                 });
 
+                // Process the chunk for tool calls after thinking tokens
+                const processedTools = toolTokenHandler.processChunk(processedThinking.displayContent, currentConversationId);
+
+                // Add any extracted tool calls to Redux
+                processedTools.toolCalls.forEach(toolCall => {
+                    const enhancedToolCall = {
+                        ...toolCall,
+                        messageId: `assistant-${Date.now()}`, // Will be updated to actual message ID
+                        conversationId: currentConversationId
+                    };
+                    dispatch({ type: 'ADD_TOOL_CALL', payload: enhancedToolCall });
+                });
+
+                // Don't add incomplete blocks - they cause infinite loops
+                // Incomplete blocks will be visible through the token handlers' internal state
+                // and will be properly added when the closing tags are found
+
                 // Append the display content to the current assistant message
-                if (processed.displayContent) {
-                    dispatch({ type: 'APPEND_TO_LAST_ASSISTANT_MESSAGE', payload: processed.displayContent });
+                if (processedTools.displayContent) {
+                    dispatch({ type: 'APPEND_TO_LAST_ASSISTANT_MESSAGE', payload: processedTools.displayContent });
                 }
             }
         };
 
         const handleStreamComplete = (_: any, data: { conversationId: string }) => {
             if (data.conversationId === currentConversationId) {
+                // Reset token handlers after stream completes
+                thinkingTokenHandler.reset();
+                toolTokenHandler.reset();
+                
                 // Finalize any open thinking blocks
                 const finalizedBlocks = thinkingTokenHandler.finalizeThinkingBlocks(
                     thinkingBlocks.filter((block: any) => !block.endTime)
@@ -594,15 +638,24 @@ const App: React.FC = () => {
             }
         };
 
+        const handleToolExecutionUpdate = (_: any, data: { toolCall: any, conversationId: string }) => {
+            if (data.conversationId === currentConversationId) {
+                // Update existing tool call or add new one
+                dispatch({ type: 'UPDATE_TOOL_CALL', payload: data.toolCall });
+            }
+        };
+
         ipcRenderer.on('stream-chunk', handleStreamChunk);
         ipcRenderer.on('stream-complete', handleStreamComplete);
         ipcRenderer.on('stream-error', handleStreamError);
+        ipcRenderer.on('tool-execution-update', handleToolExecutionUpdate);
 
         // Cleanup listeners on unmount
         return () => {
             ipcRenderer.off('stream-chunk', handleStreamChunk);
             ipcRenderer.off('stream-complete', handleStreamComplete);
             ipcRenderer.off('stream-error', handleStreamError);
+            ipcRenderer.off('tool-execution-update', handleToolExecutionUpdate);
             if (streamController.current) {
                 streamController.current.abort();
             }
@@ -710,6 +763,9 @@ const App: React.FC = () => {
                             setCurrentConversationId(newId);
                             // Clear messages for the new conversation
                             dispatch({ type: 'CLEAR_MESSAGES' });
+                            // Reset token handlers for new conversation
+                            thinkingTokenHandler.reset();
+                            toolTokenHandler.reset();
                         } catch (error) {
                             console.error('Failed to create new conversation:', error);
                             // Fallback to local ID generation if IPC fails
@@ -749,6 +805,9 @@ const App: React.FC = () => {
                                 setCurrentConversationId(newId);
                                 // Clear messages for the new conversation
                                 dispatch({ type: 'CLEAR_MESSAGES' });
+                                // Reset token handlers for new conversation
+                                thinkingTokenHandler.reset();
+                                toolTokenHandler.reset();
                             } catch (error) {
                                 console.error('Failed to create new conversation:', error);
                                 // Fallback to local ID generation if IPC fails
@@ -822,13 +881,11 @@ const App: React.FC = () => {
                                             <div>
                                                 <h2 style={{ marginBottom: '10px' }}>Welcome!</h2>
                                                 <p style={{ fontSize: '16px', lineHeight: '1.5', color: 'var(--text-secondary)' }}>
-                                                    {getWelcomeMessage(settings.profile.name)}
+                                                    {welcomeMessage}
                                                 </p>
                                             </div>
-                                        ) : settings?.profile?.name ? (
-                                            <h2>{getPersonalizedMessage(settings.profile.name, 'greeting')}</h2>
                                         ) : (
-                                            <h2>How can I assist you today?</h2>
+                                            <h2>{personalizedGreeting}</h2>
                                         )}
                                         {isLiveListening && (
                                             <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '10px' }}>
@@ -876,6 +933,39 @@ const App: React.FC = () => {
                                     return !block.messageId && msg.role === 'assistant' && msg.isStreaming;
                                 });
 
+                                // Get tool calls associated with this specific message
+                                const associatedToolCalls = toolCalls.filter((toolCall: any) => {
+                                    // Direct association by messageId
+                                    if (toolCall.messageId === msg.id) {
+                                        return true;
+                                    }
+                                    
+                                    // For assistant messages without direct association, use timestamp-based matching
+                                    if (msg.role === 'assistant' && !toolCall.messageId) {
+                                        const msgTime = new Date(msg.timestamp).getTime();
+                                        const toolTime = new Date(toolCall.startTime).getTime();
+                                        const timeDiff = Math.abs(msgTime - toolTime);
+                                        
+                                        // Associate if within 30 seconds and no other assistant message is closer
+                                        if (timeDiff <= 30000) { // 30 seconds
+                                            const otherAssistantMessages = messages.filter((m: any) => 
+                                                m.role === 'assistant' && m.id !== msg.id && m.timestamp
+                                            );
+                                            
+                                            const isClosest = otherAssistantMessages.every((otherMsg: any) => {
+                                                const otherMsgTime = new Date(otherMsg.timestamp).getTime();
+                                                const otherTimeDiff = Math.abs(otherMsgTime - toolTime);
+                                                return timeDiff <= otherTimeDiff;
+                                            });
+                                            
+                                            return isClosest;
+                                        }
+                                    }
+                                    
+                                    // Fallback: associate with current streaming message (for live messages)
+                                    return !toolCall.messageId && msg.role === 'assistant' && msg.isStreaming;
+                                });
+
                                 return (
                                     <div
                                         key={msg.id || index}
@@ -896,6 +986,15 @@ const App: React.FC = () => {
                                                             startTime={block.startTime}
                                                             endTime={block.endTime}
                                                             duration={block.duration}
+                                                            defaultOpen={false}
+                                                        />
+                                                    ))}
+
+                                                    {/* Render tool calls after thinking blocks */}
+                                                    {associatedToolCalls.map((toolCall: any) => (
+                                                        <ToolBlock
+                                                            key={toolCall.id}
+                                                            toolCall={toolCall}
                                                             defaultOpen={false}
                                                         />
                                                     ))}

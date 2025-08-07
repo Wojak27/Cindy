@@ -83,7 +83,9 @@ const ChatList: React.FC<{
                 ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
                         <div style={{ flex: 1 }}></div>
-                        {conversations.map((conversation) => (
+                        {conversations
+                            .sort((a, b) => b.lastMessageAt - a.lastMessageAt) // Sort by most recent first
+                            .map((conversation) => (
                         <div
                             key={conversation.id}
                             className={`chat-item ${conversation.id === currentConversationId ? 'active' : ''}`}

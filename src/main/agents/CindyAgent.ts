@@ -2,6 +2,7 @@ import { LLMRouterService } from '../services/LLMRouterService';
 import { MemoryService } from '../services/MemoryService';
 import { ToolExecutorService } from '../services/ToolExecutorService';
 import { toolTokenHandler, ToolCall } from '../services/ToolTokenHandler';
+import { BrowserWindow } from 'electron';
 
 interface AgentContext {
     conversationId: string;
@@ -191,6 +192,15 @@ class CindyAgent {
             for (const toolCall of processed.toolCalls) {
                 console.log(`🤖 CindyAgent: Executing tool: ${toolCall.name}`);
                 
+                // Send tool execution start event to renderer
+                const mainWindow = BrowserWindow.getAllWindows()[0];
+                if (mainWindow) {
+                    mainWindow.webContents.send('tool-execution-update', {
+                        toolCall: { ...toolCall, status: 'executing' },
+                        conversationId
+                    });
+                }
+                
                 // Execute the tool call with retry configuration
                 const executedTool = await toolTokenHandler.executeToolCall(
                     toolCall,
@@ -202,6 +212,14 @@ class CindyAgent {
                         retryableErrors: ['timeout', 'network', 'rate limit', 'temporary', 'connection', 'ECONNRESET', 'ETIMEDOUT']
                     }
                 );
+                
+                // Send tool execution complete event to renderer
+                if (mainWindow) {
+                    mainWindow.webContents.send('tool-execution-update', {
+                        toolCall: executedTool,
+                        conversationId
+                    });
+                }
                 
                 executedTools.push(executedTool);
                 

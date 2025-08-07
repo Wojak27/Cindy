@@ -437,10 +437,8 @@ class OfflineSTTEngine {
                 return '';
             }
 
-            // Copy WAV file to desktop for manual inspection
-            const desktopPath = require('path').join(require('os').homedir(), 'Desktop', `voice_debug_${Date.now()}.wav`);
-            await require('fs').promises.copyFile(tempFilePath, desktopPath);
-            console.log('DEBUG: Audio file copied to desktop for inspection:', desktopPath);
+            // Debug logging removed - no longer saving files to desktop
+            console.log('DEBUG: Processing audio file at:', tempFilePath);
 
             // DIAGNOSTIC: Test model corruption - try re-downloading if transcription fails
             console.log('DEBUG: ===== MODEL CORRUPTION TEST =====');
