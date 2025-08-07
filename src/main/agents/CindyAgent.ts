@@ -156,11 +156,18 @@ class CindyAgent {
         }
 
         // Handle any incomplete tool blocks (error recovery)
-        if (toolTokenHandler.isProcessingTool()) {
+        const isProcessing = toolTokenHandler.isProcessingTool();
+        console.log('🤖 CindyAgent: Checking for incomplete tools - isProcessingTool():', isProcessing);
+        
+        if (isProcessing) {
             const pending = toolTokenHandler.finalize();
+            console.log('🤖 CindyAgent: finalize() returned:', pending, 'length:', pending.length);
+            
             if (pending) {
                 console.warn('🤖 CindyAgent: Incomplete tool block detected:', pending);
                 yield '\n\n[Note: An incomplete tool call was detected and could not be executed]';
+            } else {
+                console.log('🤖 CindyAgent: isProcessingTool() was true but finalize() returned empty - this was a false positive');
             }
         }
     }

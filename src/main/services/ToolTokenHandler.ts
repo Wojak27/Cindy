@@ -119,25 +119,27 @@ export class ToolTokenHandler {
                 inToolBlock = true;
             } else if (token === this.TOOL_END_TOKEN) {
                 // End of tool block
-                console.log('🔧 Tool Handler: Found TOOL_END_TOKEN, finishing block');
+                console.log('🔧 Tool Handler: Found TOOL_END_TOKEN, finishing block, stack length:', this.toolStack.length);
                 if (this.toolStack.length > 0) {
                     const toolContent = this.toolStack.pop() || '';
+                    console.log('🔧 Tool Handler: Tool content to parse:', toolContent);
                     const toolCall = this.parseToolCall(toolContent, conversationId);
                     
                     if (toolCall) {
-                        console.log('🔧 Tool Handler: Parsed tool call:', {
+                        console.log('🔧 Tool Handler: Successfully parsed tool call:', {
                             id: toolCall.id,
                             name: toolCall.name,
                             parameters: toolCall.parameters
                         });
                         result.toolCalls.push(toolCall);
                     } else {
-                        console.warn('🔧 Tool Handler: Failed to parse tool call:', toolContent);
+                        console.warn('🔧 Tool Handler: Failed to parse tool call, content was:', toolContent);
                         // If parsing fails, treat it as display content
                         displayContent += this.TOOL_START_TOKEN + toolContent + this.TOOL_END_TOKEN;
                     }
                 }
                 inToolBlock = this.toolStack.length > 0;
+                console.log('🔧 Tool Handler: After processing TOOL_END_TOKEN, inToolBlock:', inToolBlock, 'stack length:', this.toolStack.length);
             }
 
             lastIndex = this.TOKEN_REGEX.lastIndex;
@@ -181,7 +183,9 @@ export class ToolTokenHandler {
             displayContentLength: result.displayContent.length,
             toolCallsCount: result.toolCalls.length,
             finalStackDepth: this.toolStack.length,
-            pendingContentLength: this.pendingContent.length
+            pendingContentLength: this.pendingContent.length,
+            pendingContent: this.pendingContent,
+            finalInToolBlock: this.toolStack.length > 0
         });
 
         return result;
