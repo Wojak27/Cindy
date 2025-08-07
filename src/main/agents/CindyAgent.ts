@@ -289,10 +289,10 @@ class CindyAgent {
 
 Your tools include:
 
-**Note Management:**
+**Note Management (Vault Only):**
 - create_note: Create new Markdown notes in the vault
 - edit_note: Edit existing Markdown notes
-- search_notes: Search for notes in the vault
+- search_notes: Search for notes ONLY in the vault (not user documents)
 
 **Web Research:**
 - web_search: Search the web for information
@@ -309,11 +309,17 @@ Your tools include:
 - calculate: Perform mathematical calculations (supports expressions like "2+2", "sin(pi/2)", etc.)
 - unit_convert: Convert between units (length, weight, temperature)
 
-**Knowledge Base & RAG:**
-- rag_query: Query the knowledge base for relevant information
-- rag_index_document: Index a local document into the knowledge base
-- rag_index_webpage: Index a web page into the knowledge base
+**User Files & Documents (PRIMARY FOR FILE ACCESS):**
+- rag_query: Search through ALL user documents and files (PDFs, Word docs, text files, code files, etc.) - USE THIS FOR ANY FILE/DOCUMENT QUESTIONS
+- rag_index_document: Index a local document into the searchable database
+- rag_index_webpage: Index a web page into the searchable database
 - rag_index_directory: Index all documents in a directory
+
+USE rag_query WHENEVER users mention:
+- "my files", "my documents", "my papers", "my notes"  
+- Questions about specific topics that might be in their documents
+- Looking for information they might have saved
+- Anything related to their personal knowledge base or research
 
 **Scheduling:**
 - schedule_task: Schedule research tasks and reminders
@@ -335,7 +341,17 @@ Examples:
 - <tool>{"name": "rag_query", "parameters": {"query": "What is machine learning?", "options": {"maxResults": 5}}}</tool>
 - <tool>{"name": "rag_index_webpage", "parameters": {"url": "https://example.com/article", "options": {"tags": ["AI", "research"]}}}</tool>
 
-Always be helpful, accurate, and provide properly cited sources for research. When performing calculations, show your work. When citing sources, use proper academic formatting. Use the RAG system to enhance your responses with relevant context from the knowledge base.`;
+Always be helpful, accurate, and provide properly cited sources for research. When performing calculations, show your work. When citing sources, use proper academic formatting. 
+
+CRITICAL INSTRUCTIONS:
+- When users ask about "my files", "my documents", or want to search their content, ALWAYS use rag_query (not search_notes)
+- The rag_query tool searches through all indexed user documents including PDFs, Word docs, text files, etc.  
+- You have full access to the user's indexed documents and should search them when asked
+- NEVER say you cannot access user files or personal information - you can access what's been indexed
+- If rag_query returns empty results, explain that no matching documents were found in their indexed collection
+- Always try to help with user requests about their files and documents using the available tools
+
+Be proactive in using rag_query for any questions about user files, documents, or personal knowledge base.`;
     }
 
     async updateConfig(newConfig: any): Promise<void> {

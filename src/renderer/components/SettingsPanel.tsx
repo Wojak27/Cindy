@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { getSettings, updateSettings, toggleSettings } from '../../store/actions';
 import ModelPicker from './ModelPicker';
@@ -56,13 +56,74 @@ const SettingsPanel: React.FC = () => {
     // Theme settings state
     const [, setTheme] = useState(settings?.theme || 'system');
 
+    // Auto-save functionality (similar to DatabasePanel)
+    const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const isUpdatingFromRedux = useRef(false);
+
+    // Auto-save function
+    const autoSaveSettings = useCallback(() => {
+        if (isUpdatingFromRedux.current) {
+            return; // Don't save if updating from Redux
+        }
+
+        dispatch(updateSettings({
+            voice: {
+                activationPhrase,
+                sttProvider,
+                wakeWordSensitivity,
+                audioThreshold
+            },
+            llm: {
+                provider: llmProvider,
+                openai: {
+                    model: openaiModel,
+                    apiKey: openaiApiKey,
+                    temperature,
+                    maxTokens
+                },
+                ollama: {
+                    model: ollamaModel,
+                    baseUrl: ollamaBaseUrl,
+                    temperature: 0.7
+                }
+            },
+            profile: {
+                name,
+                surname,
+                hasCompletedSetup: true
+            }
+        }));
+    }, [dispatch, activationPhrase, sttProvider, wakeWordSensitivity, audioThreshold, llmProvider, openaiModel, openaiApiKey, temperature, maxTokens, ollamaModel, ollamaBaseUrl, name, surname]);
+
+    // Debounced auto-save effect
+    useEffect(() => {
+        if (isUpdatingFromRedux.current) {
+            return () => {}; // Don't trigger auto-save if updating from Redux
+        }
+
+        // Clear existing timeout
+        if (saveTimeoutRef.current) {
+            clearTimeout(saveTimeoutRef.current);
+        }
+
+        // Set new timeout
+        saveTimeoutRef.current = setTimeout(() => {
+            autoSaveSettings();
+        }, 1000); // 1 second debounce
+
+        return () => {
+            if (saveTimeoutRef.current) {
+                clearTimeout(saveTimeoutRef.current);
+            }
+        };
+    }, [activationPhrase, sttProvider, wakeWordSensitivity, audioThreshold, llmProvider, openaiModel, openaiApiKey, temperature, maxTokens, ollamaModel, ollamaBaseUrl, name, surname, autoSaveSettings]);
+
     // Update local state when settings change in the store
     useEffect(() => {
-        console.log('🔧 DEBUG: SettingsPanel settings changed:', settings);
-        console.log('🔧 DEBUG: Profile data structure:', settings?.profile);
-        console.log('🔧 DEBUG: Profile name specifically:', settings?.profile?.name);
 
         if (settings) {
+            isUpdatingFromRedux.current = true;
+            
             setActivationPhrase(settings?.voice?.activationPhrase || 'Hi Cindy!');
             setSttProvider(settings?.voice?.sttProvider || 'auto');
             setWakeWordSensitivity(settings?.voice?.wakeWordSensitivity || 0.5);
@@ -79,6 +140,11 @@ const SettingsPanel: React.FC = () => {
             setTheme(settings?.theme || 'system');
 
             console.log('🔧 DEBUG: Set name to:', settings?.profile?.name || '');
+            
+            // Reset the flag after a brief delay to allow state updates to complete
+            setTimeout(() => {
+                isUpdatingFromRedux.current = false;
+            }, 100);
         }
     }, [settings]);
 
@@ -293,14 +359,6 @@ const SettingsPanel: React.FC = () => {
                                     value={name}
                                     onChange={(e) => {
                                         setName(e.target.value);
-                                        // Auto-save name changes
-                                        dispatch(updateSettings({
-                                            profile: {
-                                                name: e.target.value,
-                                                surname,
-                                                hasCompletedSetup: true
-                                            }
-                                        }));
                                     }}
                                     variant="outlined"
                                     size="small"
@@ -314,14 +372,6 @@ const SettingsPanel: React.FC = () => {
                                     value={surname}
                                     onChange={(e) => {
                                         setSurname(e.target.value);
-                                        // Auto-save surname changes
-                                        dispatch(updateSettings({
-                                            profile: {
-                                                name,
-                                                surname: e.target.value,
-                                                hasCompletedSetup: true
-                                            }
-                                        }));
                                     }}
                                     variant="outlined"
                                     size="small"

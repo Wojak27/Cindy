@@ -80,6 +80,7 @@ interface Settings {
         chunkSize: number;
         chunkOverlap: number;
         autoIndex: boolean;
+        notesPath: string;
     };
 
     // User profile settings
@@ -316,7 +317,8 @@ class SettingsService extends EventEmitter {
                 embeddingModel: 'qwen3:8b',
                 chunkSize: 1000,
                 chunkOverlap: 200,
-                autoIndex: true
+                autoIndex: true,
+                notesPath: ''
             },
 
             profile: {

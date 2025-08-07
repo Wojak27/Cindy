@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { getSettings, updateSettings } from '../../store/actions';
 import {
@@ -42,11 +42,13 @@ const DatabasePanel: React.FC = () => {
 
     // Database settings state
     const [databasePath, setDatabasePath] = useState(settings?.database?.path || '');
+    const [notesPath, setNotesPath] = useState(settings?.database?.notesPath || '');
     const [embeddingModel, setEmbeddingModel] = useState(settings?.database?.embeddingModel || 'qwen3:8b');
     const [chunkSize, setChunkSize] = useState(settings?.database?.chunkSize || 1000);
     const [chunkOverlap, setChunkOverlap] = useState(settings?.database?.chunkOverlap || 200);
     const [autoIndex, setAutoIndex] = useState(settings?.database?.autoIndex || true);
     const [pathValidation, setPathValidation] = useState<{ valid: boolean; message?: string } | null>(null);
+    const [notesPathValidation, setNotesPathValidation] = useState<{ valid: boolean; message?: string } | null>(null);
     
     // Indexing state
     const [isIndexing, setIsIndexing] = useState(false);
@@ -65,6 +67,7 @@ const DatabasePanel: React.FC = () => {
     useEffect(() => {
         if (settings?.database) {
             setDatabasePath(settings.database.path || '');
+            setNotesPath(settings.database.notesPath || '');
             setEmbeddingModel(settings.database.embeddingModel || 'qwen3:8b');
             setChunkSize(settings.database.chunkSize || 1000);
             setChunkOverlap(settings.database.chunkOverlap || 200);
@@ -72,27 +75,19 @@ const DatabasePanel: React.FC = () => {
         }
     }, [settings]);
 
-    // Auto-save function (like SettingsPanel)
-    const autoSaveSettings = () => {
+    // Manual save function
+    const saveSettings = useCallback(() => {
         dispatch(updateSettings({
             database: {
                 path: databasePath,
+                notesPath,
                 embeddingModel,
                 chunkSize,
                 chunkOverlap,
                 autoIndex
             }
         }));
-    };
-
-    // Auto-save when settings change (always save to persist current state)
-    useEffect(() => {
-        const timeoutId = setTimeout(() => {
-            autoSaveSettings();
-        }, 500); // Debounce to avoid too many saves
-        
-        return () => clearTimeout(timeoutId);
-    }, [databasePath, embeddingModel, chunkSize, chunkOverlap, autoIndex]);
+    }, [dispatch, databasePath, notesPath, embeddingModel, chunkSize, chunkOverlap, autoIndex]);
 
     const handleBrowse = async () => {
         try {
@@ -100,6 +95,40 @@ const DatabasePanel: React.FC = () => {
             if (result) {
                 setDatabasePath(result);
                 validatePath(result);
+                // Auto-save when path is changed via browse
+                dispatch(updateSettings({
+                    database: {
+                        path: result,
+                        notesPath,
+                        embeddingModel,
+                        chunkSize,
+                        chunkOverlap,
+                        autoIndex
+                    }
+                }));
+            }
+        } catch (error) {
+            console.error('Error showing directory dialog:', error);
+        }
+    };
+
+    const handleNotesBrowse = async () => {
+        try {
+            const result = await ipcRenderer.invoke('show-directory-dialog', notesPath);
+            if (result) {
+                setNotesPath(result);
+                validateNotesPath(result);
+                // Auto-save when notes path is changed via browse
+                dispatch(updateSettings({
+                    database: {
+                        path: databasePath,
+                        notesPath: result,
+                        embeddingModel,
+                        chunkSize,
+                        chunkOverlap,
+                        autoIndex
+                    }
+                }));
             }
         } catch (error) {
             console.error('Error showing directory dialog:', error);
@@ -114,6 +143,18 @@ const DatabasePanel: React.FC = () => {
         } catch (error) {
             console.error('Error validating path:', error);
             setPathValidation({ valid: false, message: 'Error validating path' });
+            return false;
+        }
+    };
+
+    const validateNotesPath = async (path: string) => {
+        try {
+            const validation = await ipcRenderer.invoke('validate-path', path);
+            setNotesPathValidation(validation);
+            return validation.valid;
+        } catch (error) {
+            console.error('Error validating notes path:', error);
+            setNotesPathValidation({ valid: false, message: 'Error validating notes path' });
             return false;
         }
     };
@@ -299,6 +340,34 @@ const DatabasePanel: React.FC = () => {
                     </FormControl>
 
                     <FormControl fullWidth margin="normal">
+                        <TextField
+                            id="notes-path"
+                            label="Notes Path"
+                            value={notesPath}
+                            onChange={(e) => setNotesPath(e.target.value)}
+                            variant="outlined"
+                            size="small"
+                            placeholder="Select notes directory for search_nodes tool"
+                            InputProps={{
+                                endAdornment: (
+                                    <Button
+                                        variant="outlined"
+                                        size="small"
+                                        onClick={handleNotesBrowse}
+                                        sx={{ ml: 1 }}
+                                    >
+                                        Browse
+                                    </Button>
+                                )
+                            }}
+                        />
+                        {notesPathValidation && !notesPathValidation.valid && (
+                            <FormHelperText error>{notesPathValidation.message}</FormHelperText>
+                        )}
+                        <FormHelperText>Select the directory where Cindy's notes are stored for the search_nodes tool.</FormHelperText>
+                    </FormControl>
+
+                    <FormControl fullWidth margin="normal">
                         <InputLabel id="embedding-model-label">Embedding Model</InputLabel>
                         <Select
                             labelId="embedding-model-label"
@@ -364,17 +433,26 @@ const DatabasePanel: React.FC = () => {
 
                     {databasePath && (
                         <Box sx={{ mb: 2 }}>
-                            <Button
-                                variant="outlined"
-                                color="secondary"
-                                onClick={createVectorStore}
-                                fullWidth
-                                sx={{ mb: 2 }}
-                                disabled={isIndexing}
-                                startIcon={isIndexing ? <CircularProgress size={20} /> : null}
-                            >
-                                {isIndexing ? 'Indexing...' : 'Create Vector Store from Directory'}
-                            </Button>
+                            <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                                <Button
+                                    variant="outlined"
+                                    color="primary"
+                                    onClick={saveSettings}
+                                    sx={{ minWidth: '120px' }}
+                                >
+                                    Save Settings
+                                </Button>
+                                <Button
+                                    variant="outlined"
+                                    color="secondary"
+                                    onClick={createVectorStore}
+                                    fullWidth
+                                    disabled={isIndexing}
+                                    startIcon={isIndexing ? <CircularProgress size={20} /> : null}
+                                >
+                                    {isIndexing ? 'Indexing...' : 'Create Vector Store from Directory'}
+                                </Button>
+                            </Box>
                             <FormHelperText>
                                 This will index PDF, Word documents (.doc/.docx), text, markdown, and code files in the selected directory for RAG queries.
                             </FormHelperText>
@@ -423,7 +501,7 @@ const DatabasePanel: React.FC = () => {
                                                     </ListItemIcon>
                                                     <ListItemText 
                                                         primary={
-                                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                                 <span>{getFileIcon(item.name)} {item.name}</span>
                                                                 {item.chunks && (
                                                                     <Chip 
@@ -432,19 +510,19 @@ const DatabasePanel: React.FC = () => {
                                                                         variant="outlined" 
                                                                     />
                                                                 )}
-                                                            </Box>
+                                                            </span>
                                                         }
                                                         secondary={
-                                                            <Box>
-                                                                {item.path && <Typography variant="caption" color="text.secondary">{item.path}</Typography>}
-                                                                {item.size && <Typography variant="caption" color="text.secondary"> • {formatFileSize(item.size)}</Typography>}
+                                                            <span>
+                                                                {item.path && <Typography variant="caption" color="text.secondary" component="span">{item.path}</Typography>}
+                                                                {item.size && <Typography variant="caption" color="text.secondary" component="span"> • {formatFileSize(item.size)}</Typography>}
                                                                 {item.error && (
-                                                                    <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5 }}>
-                                                                        <ErrorIcon color="error" fontSize="small" sx={{ mr: 0.5 }} />
-                                                                        <Typography variant="caption" color="error">{item.error}</Typography>
-                                                                    </Box>
+                                                                    <span style={{ display: 'flex', alignItems: 'center', marginTop: '4px' }}>
+                                                                        <ErrorIcon color="error" fontSize="small" style={{ marginRight: '4px' }} />
+                                                                        <Typography variant="caption" color="error" component="span">{item.error}</Typography>
+                                                                    </span>
                                                                 )}
-                                                            </Box>
+                                                            </span>
                                                         }
                                                     />
                                                 </ListItem>

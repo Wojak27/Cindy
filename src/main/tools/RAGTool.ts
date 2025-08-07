@@ -53,6 +53,7 @@ export class RAGTool {
     async queryKnowledge(query: string, options: RAGOptions = {}): Promise<RAGResult> {
         try {
             console.log('🔍 RAG: Querying knowledge base for:', query);
+            console.log('🔍 RAG: Options:', JSON.stringify(options, null, 2));
 
             const {
                 maxResults = 5,
@@ -82,9 +83,10 @@ export class RAGTool {
                 .slice(0, maxResults);
 
             if (relevantSources.length === 0) {
+                console.log('🔍 RAG: No relevant sources found for query:', query);
                 return {
                     success: true,
-                    context: [],
+                    context: [`No documents found matching the query "${query}". The user may need to index more documents or try a different search term.`],
                     sources: [],
                 };
             }
@@ -150,7 +152,7 @@ export class RAGTool {
 
             // Create document object
             const document: DocumentContent = {
-                id: `file_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                id: `file_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
                 title,
                 content: processedContent,
                 path: filePath,
@@ -204,7 +206,7 @@ export class RAGTool {
 
             // Create document object
             const document: DocumentContent = {
-                id: `web_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                id: `web_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
                 title: browserResult.title || 'Untitled Web Page',
                 content: browserResult.content || '',
                 path: url,

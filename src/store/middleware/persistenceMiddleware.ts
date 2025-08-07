@@ -72,23 +72,12 @@ export const persistenceMiddleware = () => (next: any) => async (action: any) =>
 
     // Handle settings updates
     if (action.type === 'UPDATE_SETTINGS') {
-        console.log('🔧 DEBUG: UPDATE_SETTINGS action detected at:', new Date().toISOString());
-        console.log('🔧 DEBUG: UPDATE_SETTINGS payload:', action.payload);
-        console.log('🔧 DEBUG: UPDATE_SETTINGS payload size:', JSON.stringify(action.payload).length, 'chars');
+        console.log('🔧 DEBUG: UPDATE_SETTINGS action detected');
 
         // IMMEDIATELY save to localStorage for persistence
         try {
-            console.log('🔧 DEBUG: Saving settings to localStorage...');
             localStorage.setItem('voice-assistant-settings', JSON.stringify(action.payload));
             console.log('🔧 DEBUG: Settings saved to localStorage successfully');
-
-            // Verify the save worked
-            const verification = localStorage.getItem('voice-assistant-settings');
-            if (verification) {
-                console.log('🔧 DEBUG: localStorage save verification successful, size:', verification.length, 'chars');
-            } else {
-                console.error('🚨 DEBUG: localStorage save verification failed - nothing found after save');
-            }
         } catch (localStorageError) {
             console.error('🚨 DEBUG: Failed to save settings to localStorage:', localStorageError);
             console.error('🚨 DEBUG: localStorage error details:', {
@@ -99,7 +88,6 @@ export const persistenceMiddleware = () => (next: any) => async (action: any) =>
         }
 
         // Also save to main process (background, non-blocking)
-        console.log('🔧 DEBUG: Attempting to save settings to main process via IPC...');
         try {
             // Transform UI format to SettingsService format
             const transformedForService = {
@@ -112,6 +100,7 @@ export const persistenceMiddleware = () => (next: any) => async (action: any) =>
                 voice: {
                     activationPhrase: action.payload.voice || action.payload.wakeWord || 'cindy',
                     wakeWordSensitivity: 0.5,
+                    audioThreshold: 0.01,
                     voiceSpeed: 1.0,
                     voicePitch: 1.0,
                     sttProvider: 'auto',
@@ -126,9 +115,36 @@ export const persistenceMiddleware = () => (next: any) => async (action: any) =>
                     },
                     openai: {
                         model: 'gpt-3.5-turbo',
+                        organizationId: '',
                         apiKey: '',
-                        temperature: 0.7
+                        temperature: 0.7,
+                        maxTokens: 1500
                     }
+                },
+                vault: {
+                    path: '',
+                    autoIndex: true,
+                    indexSchedule: '0 * * * *'
+                },
+                research: {
+                    enabled: true,
+                    maxConcurrentTasks: 3,
+                    dailySummaryTime: '0 9 * * *',
+                    researchInterval: '0 0 * * 1',
+                    maxSourcesPerResearch: 10,
+                    outputPath: './Research'
+                },
+                privacy: {
+                    offlineOnlyMode: false,
+                    autoDeleteHistory: false,
+                    autoDeleteHistoryAfterDays: 30,
+                    encryptLocalStorage: true,
+                    disableAnalytics: false
+                },
+                system: {
+                    maxMemoryUsage: 1024,
+                    logLevel: 'info',
+                    autoUpdate: true
                 },
                 profile: {
                     name: action.payload.profile?.name || '',
@@ -140,7 +156,12 @@ export const persistenceMiddleware = () => (next: any) => async (action: any) =>
                     embeddingModel: action.payload.database?.embeddingModel || 'qwen3:8b',
                     chunkSize: action.payload.database?.chunkSize || 1000,
                     chunkOverlap: action.payload.database?.chunkOverlap || 200,
-                    autoIndex: action.payload.database?.autoIndex || true
+                    autoIndex: action.payload.database?.autoIndex || true,
+                    notesPath: action.payload.database?.notesPath || ''
+                },
+                storage: {
+                    permissionGranted: action.payload.storage?.permissionGranted || false,
+                    permissionGrantedAt: action.payload.storage?.permissionGrantedAt || null
                 }
             };
 
@@ -175,26 +196,29 @@ export const persistenceMiddleware = () => (next: any) => async (action: any) =>
                 throw lastError;
             };
 
-            // Update settings in proper format
-            console.log('🔧 DEBUG: Saving general settings to main process');
-            await invokeWithRetry('settings-set', 'general', transformedForService.general);
+            // Try to save all settings at once using new IPC method, fallback to old method
+            try {
+                await invokeWithRetry('settings-set-all', transformedForService);
+                console.log('🔧 DEBUG: Settings saved successfully using atomic method');
+            } catch (newMethodError) {
+                console.log('🔧 DEBUG: Falling back to individual IPC calls');
+                
+                // Fallback: Update settings in individual sections (old method)
+                await invokeWithRetry('settings-set', 'general', transformedForService.general);
+                await invokeWithRetry('settings-set', 'voice', transformedForService.voice);
+                await invokeWithRetry('settings-set', 'llm', transformedForService.llm);
+                await invokeWithRetry('settings-set', 'profile', transformedForService.profile);
+                await invokeWithRetry('settings-set', 'database', transformedForService.database);
+                await invokeWithRetry('settings-set', 'vault', transformedForService.vault);
+                await invokeWithRetry('settings-set', 'research', transformedForService.research);
+                await invokeWithRetry('settings-set', 'privacy', transformedForService.privacy);
+                await invokeWithRetry('settings-set', 'system', transformedForService.system);
+                // Storage section temporarily disabled until app restart
 
-            console.log('🔧 DEBUG: Saving voice settings to main process');
-            await invokeWithRetry('settings-set', 'voice', transformedForService.voice);
-
-            console.log('🔧 DEBUG: Saving LLM settings to main process');
-            await invokeWithRetry('settings-set', 'llm', transformedForService.llm);
-
-            console.log('🔧 DEBUG: Saving profile settings to main process');
-            await invokeWithRetry('settings-set', 'profile', transformedForService.profile);
-
-            console.log('🔧 DEBUG: Saving database settings to main process');
-            await invokeWithRetry('settings-set', 'database', transformedForService.database);
-
-            // Force a save to ensure persistence to disk
-            console.log('🔧 DEBUG: Forcing settings save to disk via main process');
-            await invokeWithRetry('settings-save');
-            console.log('🔧 DEBUG: Settings save to disk completed successfully');
+                // Force save to disk
+                await invokeWithRetry('settings-save');
+                console.log('🔧 DEBUG: Settings saved successfully using individual calls');
+            }
 
         } catch (error) {
             console.error('🚨 DEBUG: CRITICAL - Failed to persist settings to main process after all retries:', error);
@@ -435,7 +459,8 @@ export const loadInitialSettings = async () => {
                 embeddingModel: settings.database?.embeddingModel || 'qwen3:8b',
                 chunkSize: settings.database?.chunkSize || 1000,
                 chunkOverlap: settings.database?.chunkOverlap || 200,
-                autoIndex: settings.database?.autoIndex || true
+                autoIndex: settings.database?.autoIndex || true,
+                notesPath: settings.database?.notesPath || ''
             },
             // Include all other sections
             general: { ...settings.general },

@@ -5,6 +5,7 @@ import { rootReducer } from '../../store/reducers';
 import { MemoryService } from './MemoryService';
 import { ToolExecutorService } from './ToolExecutorService';
 import { LLMRouterService } from './LLMRouterService';
+import { VectorStoreService } from './VectorStoreService';
 import { CindyAgent } from '../agents/CindyAgent';
 
 interface AgentConfig {
@@ -24,7 +25,8 @@ export class AgentService extends EventEmitter {
 
     constructor(
         config: AgentConfig,
-        llmRouter: LLMRouterService
+        llmRouter: LLMRouterService,
+        vectorStoreService?: VectorStoreService
     ) {
         super();
         this.config = config;
@@ -38,7 +40,7 @@ export class AgentService extends EventEmitter {
 
         // Initialize services
         this.memoryService = new MemoryService(this.store);
-        this.toolExecutor = new ToolExecutorService();
+        this.toolExecutor = new ToolExecutorService(vectorStoreService);
         this.agent = new CindyAgent({
             store: this.store,
             config: this.config,

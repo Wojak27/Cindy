@@ -5,6 +5,8 @@ import { toolTokenHandler } from './services/ToolTokenHandler';
 import ThinkingBlock from './components/ThinkingBlock';
 import ToolBlock from './components/ToolBlock';
 import ContentProcessor from './utils/contentProcessor';
+import { renderTextWithLinks, hasLinks } from './utils/linkParser';
+import { renderMarkdown, hasMarkdown } from './utils/markdownRenderer';
 // SoundReactiveCircle was imported but not used in the component
 // The component now uses SoundReactiveBlob instead
 import SoundReactiveBlob from './components/SoundReactiveBlob';
@@ -1032,7 +1034,17 @@ const App: React.FC = () => {
                                                 ) : msg.hasCodeBlocks ? (
                                                     <div dangerouslySetInnerHTML={{ __html: msg.content || '' }} />
                                                 ) : (
-                                                    msg.content || (msg.isStreaming ? '...' : '')
+                                                    // Enhanced rendering for AI messages with markdown and link support
+                                                    msg.role === 'assistant' && msg.content && hasMarkdown(msg.content) ? (
+                                                        // Full markdown rendering with link previews for AI responses
+                                                        renderMarkdown(msg.content)
+                                                    ) : msg.content && hasLinks(msg.content) ? (
+                                                        // Simple link preview for messages with links but no markdown
+                                                        renderTextWithLinks(msg.content)
+                                                    ) : (
+                                                        // Plain text or streaming content
+                                                        msg.content || (msg.isStreaming ? '...' : '')
+                                                    )
                                                 )}
                                                 {msg.isStreaming && <span className="streaming-cursor">▋</span>}
                                                 {msg.retryCount > 0 && !msg.failed && !msg.isStreaming && (

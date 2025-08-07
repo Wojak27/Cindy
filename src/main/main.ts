@@ -15,6 +15,7 @@ import { ToolExecutorService } from './services/ToolExecutorService';
 import { VectorStoreService } from './services/VectorStoreService';
 import { SpeechToTextService } from './services/SpeechToTextService';
 import RealTimeTranscriptionService from './services/RealTimeTranscriptionService';
+import { LinkPreviewService } from './services/LinkPreviewService';
 
 // Function to set up all settings-related IPC handlers
 const setupSettingsIPC = () => {
@@ -29,10 +30,12 @@ const setupSettingsIPC = () => {
         'settings-set',
         'settings-get-all',
         'settings-save',
+        'settings-set-all',
         'wake-word:start',
         'wake-word:stop',
         'wake-word:update-keyword',
-        'wake-word:status'
+        'wake-word:status',
+        'get-link-preview'
     ];
 
     handlersToRemove.forEach(handler => {
@@ -91,7 +94,7 @@ const setupSettingsIPC = () => {
             throw new Error('SettingsService not initialized');
         }
 
-        const validSections = ['general', 'voice', 'llm', 'vault', 'research', 'privacy', 'system', 'database', 'profile'];
+        const validSections = ['general', 'voice', 'llm', 'vault', 'research', 'privacy', 'system', 'database', 'profile', 'storage'];
         if (!validSections.includes(section)) {
             throw new Error(`Invalid settings section: ${section}`);
         }
@@ -104,7 +107,7 @@ const setupSettingsIPC = () => {
             throw new Error('SettingsService not initialized');
         }
 
-        const validSections = ['general', 'voice', 'llm', 'vault', 'research', 'privacy', 'system', 'database', 'profile'];
+        const validSections = ['general', 'voice', 'llm', 'vault', 'research', 'privacy', 'system', 'database', 'profile', 'storage'];
         if (!validSections.includes(section)) {
             throw new Error(`Invalid settings section: ${section}`);
         }
@@ -124,6 +127,20 @@ const setupSettingsIPC = () => {
             throw new Error('SettingsService not initialized');
         }
         return await settingsService.save();
+    });
+
+    ipcMain.handle('settings-set-all', async (event, settings: any) => {
+        if (!settingsService) {
+            throw new Error('SettingsService not initialized');
+        }
+        console.log('🔧 DEBUG: settings-set-all called with:', Object.keys(settings));
+        
+        // Replace the entire settings object and save
+        settingsService['settings'] = settings;
+        await settingsService.save();
+        
+        console.log('🔧 DEBUG: settings-set-all completed successfully');
+        return { success: true };
     });
 
     // IPC handlers for wake word management
@@ -183,6 +200,14 @@ const setupSettingsIPC = () => {
             console.error('Main process - wake-word:status error:', error);
             return { success: false, isListening: false, error: error.message };
         }
+    });
+    
+    // Link preview handler
+    ipcMain.handle('get-link-preview', async (event, url: string) => {
+        if (!linkPreviewService) {
+            throw new Error('LinkPreviewService not initialized');
+        }
+        return await linkPreviewService.getPreview(url);
     });
 
     console.log('🔧 DEBUG: Settings IPC handlers setup complete');
@@ -368,6 +393,7 @@ let cindyAgent: CindyAgent | null = null;
 let wakeWordService: any = null;
 let speechToTextService: SpeechToTextService | null = null;
 let realTimeTranscriptionService: RealTimeTranscriptionService | null = null;
+let linkPreviewService: LinkPreviewService | null = null;
 
 const createWindow = async (): Promise<void> => {
     // Ensure settings service is initialized
@@ -609,6 +635,12 @@ app.on('ready', async () => {
         });
         await vectorStoreService.initialize();
         console.log('🔧 DEBUG: VectorStoreService initialized');
+    }
+    
+    // Initialize LinkPreviewService
+    if (!linkPreviewService) {
+        linkPreviewService = new LinkPreviewService();
+        console.log('🔧 DEBUG: LinkPreviewService initialized');
     }
 
     // Initialize CindyAgent after other services

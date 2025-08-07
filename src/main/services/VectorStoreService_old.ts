@@ -78,120 +78,18 @@ export class VectorStoreService extends EventEmitter {
             tags: string[];
         };
     }>> {
-        try {
-            console.log('RAG Search query:', query);
-            const limit = options?.limit || 5;
-            
-            // Load indexed metadata
-            const indexFile = path.join(this.options.databasePath, '.vector_store', 'index.json');
-            if (!fs.existsSync(indexFile)) {
-                console.log('No indexed files found at:', indexFile);
-                return [];
+        // Implementation would query vector database
+        console.log('RAG Search query:', query);
+        return [{
+            id: 'test',
+            content: `Search results for: ${query}`,
+            metadata: {
+                path: '/test/path',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                tags: ['test']
             }
-            
-            const indexData = JSON.parse(fs.readFileSync(indexFile, 'utf-8'));
-            const indexedFiles = indexData.files || [];
-            console.log(`Searching through ${indexedFiles.length} indexed files`);
-            
-            // Simple keyword search through file names and content
-            const queryLower = query.toLowerCase();
-            const results = [];
-            
-            for (const file of indexedFiles) {
-                if (file.error) continue;
-                
-                // Simple relevance scoring
-                let score = 0;
-                const fileName = file.name.toLowerCase();
-                const filePath = file.path.toLowerCase();
-                
-                const queryTerms = queryLower.split(' ').filter(term => term.length > 2);
-                for (const term of queryTerms) {
-                    if (fileName.includes(term)) score += 10;
-                    if (filePath.includes(term)) score += 5;
-                }
-                
-                // Try to read and search file content for better matching
-                try {
-                    let content = '';
-                    const ext = path.extname(file.path).toLowerCase();
-                    
-                    if (fs.existsSync(file.path)) {
-                        if (ext === '.pdf') {
-                            content = await this.parsePDF(file.path);
-                        } else if (ext === '.doc' || ext === '.docx') {
-                            content = await this.parseWordDocument(file.path);
-                        } else {
-                            content = fs.readFileSync(file.path, 'utf-8');
-                        }
-                        
-                        // Search in content
-                        const contentLower = content.toLowerCase();
-                        for (const term of queryTerms) {
-                            const matches = (contentLower.match(new RegExp(term, 'g')) || []).length;
-                            score += matches * 2;
-                        }
-                    }
-                } catch (contentError) {
-                    console.log(`Could not search content of ${file.path}:`, contentError.message);
-                }
-                
-                if (score > 0) {
-                    results.push({
-                        file,
-                        score
-                    });
-                }
-            }
-            
-            // Sort by relevance and format results
-            const sortedResults = results
-                .sort((a, b) => b.score - a.score)
-                .slice(0, limit)
-                .map(result => ({
-                    id: `file-${Math.random().toString(36).substr(2, 9)}`,
-                    content: this.formatFileInfo(result.file),
-                    metadata: {
-                        title: result.file.name,
-                        path: result.file.path,
-                        createdAt: result.file.lastModified ? new Date(result.file.lastModified).toISOString() : new Date().toISOString(),
-                        updatedAt: result.file.lastModified ? new Date(result.file.lastModified).toISOString() : new Date().toISOString(),
-                        tags: [path.extname(result.file.path).slice(1)]
-                    }
-                }));
-            
-            console.log(`Found ${sortedResults.length} relevant results for "${query}"`);
-            return sortedResults;
-            
-        } catch (error) {
-            console.error('Error during search:', error);
-            return [];
-        }
-    }
-
-    private formatFileInfo(file: IndexedFile): string {
-        const lines = [
-            `📄 **${file.name}**`,
-            `📍 Path: ${file.path}`,
-        ];
-        
-        if (file.size) {
-            lines.push(`📊 Size: ${this.formatFileSize(file.size)}`);
-        }
-        
-        if (file.chunks) {
-            lines.push(`🔢 Chunks: ${file.chunks}`);
-        }
-        
-        return lines.join('\n');
-    }
-
-    private formatFileSize(bytes: number): string {
-        if (bytes === 0) return '0 Bytes';
-        const k = 1024;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }];
     }
 
     async indexDirectory(): Promise<{ success: boolean; indexedFiles: IndexedFile[]; error?: string }> {
@@ -224,26 +122,6 @@ export class VectorStoreService extends EventEmitter {
                 processedCount++;
                 const progress = Math.round((processedCount / files.length) * 100);
                 this.emit('progress', { type: 'progress', progress });
-            }
-            
-            // Save index metadata
-            try {
-                const dbDir = path.join(this.options.databasePath, '.vector_store');
-                const indexFile = path.join(dbDir, 'index.json');
-                
-                const metadata = {
-                    timestamp: new Date().toISOString(),
-                    options: this.options,
-                    totalFiles: indexedFiles.length,
-                    successfulFiles: indexedFiles.filter(f => !f.error).length,
-                    failedFiles: indexedFiles.filter(f => !!f.error).length,
-                    files: indexedFiles
-                };
-                
-                await fs.promises.writeFile(indexFile, JSON.stringify(metadata, null, 2));
-                console.log(`Saved index metadata to ${indexFile}`);
-            } catch (error) {
-                console.error('Error saving index metadata:', error);
             }
             
             console.log(`Indexing completed. Processed ${indexedFiles.length} files.`);
