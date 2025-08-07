@@ -154,12 +154,9 @@ export class ToolTokenHandler {
             if (partialEndIndex !== -1) {
                 const potentialEndTag = remainingContent.slice(partialEndIndex);
                 
-                // Check if this looks like the start of </tool>
-                if (potentialEndTag === '</' || 
-                    potentialEndTag.startsWith('</t') || 
-                    potentialEndTag.startsWith('</to') ||
-                    potentialEndTag.startsWith('</too') ||
-                    potentialEndTag.startsWith('</tool')) {
+                // Check if this looks like the start of </tool> (not other tags like </think>)
+                if (potentialEndTag === '</tool>' ||
+                    (potentialEndTag.startsWith('</tool') && potentialEndTag.length <= 7)) {
                     // Add content before the potential end tag to tool stack
                     this.toolStack[this.toolStack.length - 1] += remainingContent.slice(0, partialEndIndex);
                     // Store the potential end tag as pending
@@ -193,12 +190,9 @@ export class ToolTokenHandler {
                     // Partial '<tool>' start token
                     displayContent += remainingContent.slice(0, partialStartIndex);
                     this.pendingContent = potentialTag;
-                } else if (potentialTag === '</' || 
-                          potentialTag.startsWith('</t') || 
-                          potentialTag.startsWith('</to') ||
-                          potentialTag.startsWith('</too') ||
-                          potentialTag.startsWith('</tool')) {
-                    // Partial '</tool>' end token
+                } else if (potentialTag === '</tool>' ||
+                          (potentialTag.startsWith('</tool') && potentialTag.length <= 7)) {
+                    // Only capture </tool> patterns, not other closing tags like </think>
                     displayContent += remainingContent.slice(0, partialStartIndex);
                     this.pendingContent = potentialTag;
                 } else {
@@ -499,8 +493,9 @@ export class ToolTokenHandler {
     private hasMeaningfulPendingContent(): boolean {
         if (!this.pendingContent) return false;
         
-        // Ignore simple partial tag starts and ends - these are not meaningful incomplete blocks
         const trimmed = this.pendingContent.trim();
+        
+        // Ignore simple partial tag starts and ends - these are not meaningful incomplete blocks
         if (trimmed === '<' || 
             trimmed === '<t' || 
             trimmed === '<to' || 
@@ -514,8 +509,19 @@ export class ToolTokenHandler {
             return false;
         }
         
-        // Consider it meaningful if it looks like it has actual tool content
-        return trimmed.includes('<tool>') || trimmed.length > 10;
+        // Ignore thinking blocks - these should be handled by ThinkingTokenHandler
+        if (trimmed.startsWith('</think>') || trimmed.includes('</think>')) {
+            console.log('🔧 Tool Handler: Ignoring thinking block content in pending:', trimmed.substring(0, 50) + '...');
+            return false;
+        }
+        
+        // Only consider it meaningful if it actually contains tool-related content
+        if (trimmed.includes('<tool>') && trimmed.includes('"name":')) {
+            return true;
+        }
+        
+        // Everything else is not a meaningful incomplete tool block
+        return false;
     }
 
     /**
