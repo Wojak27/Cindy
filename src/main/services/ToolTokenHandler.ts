@@ -149,23 +149,56 @@ export class ToolTokenHandler {
         const remainingContent = fullContent.slice(lastIndex);
         
         if (inToolBlock && this.toolStack.length > 0) {
-            // Still inside a tool block, add to stack
-            this.toolStack[this.toolStack.length - 1] += remainingContent;
-            // Store as pending for next chunk
-            result.pendingToolContent = this.TOOL_START_TOKEN + this.toolStack[this.toolStack.length - 1];
+            // Check if remaining content contains the start of a closing tag
+            const partialEndIndex = remainingContent.lastIndexOf('</');
+            if (partialEndIndex !== -1) {
+                const potentialEndTag = remainingContent.slice(partialEndIndex);
+                
+                // Check if this looks like the start of </tool>
+                if (potentialEndTag === '</' || 
+                    potentialEndTag.startsWith('</t') || 
+                    potentialEndTag.startsWith('</to') ||
+                    potentialEndTag.startsWith('</too') ||
+                    potentialEndTag.startsWith('</tool')) {
+                    // Add content before the potential end tag to tool stack
+                    this.toolStack[this.toolStack.length - 1] += remainingContent.slice(0, partialEndIndex);
+                    // Store the potential end tag as pending
+                    this.pendingContent = potentialEndTag;
+                    console.log('🔧 Tool Handler: Found potential end tag in tool block:', potentialEndTag);
+                } else {
+                    // Not an end tag, add all to stack
+                    this.toolStack[this.toolStack.length - 1] += remainingContent;
+                }
+            } else {
+                // No potential end tag, add all to stack
+                this.toolStack[this.toolStack.length - 1] += remainingContent;
+            }
+            
+            // Store as pending for next chunk if we still have content in stack
+            if (this.toolStack.length > 0) {
+                result.pendingToolContent = this.TOOL_START_TOKEN + this.toolStack[this.toolStack.length - 1];
+            }
         } else {
-            // Check if we might be starting a tool block
+            // Check if we might be starting a tool block or ending one
             const partialStartIndex = remainingContent.lastIndexOf('<');
             if (partialStartIndex !== -1) {
                 const potentialTag = remainingContent.slice(partialStartIndex);
                 
-                // Handle various partial cases
+                // Handle various partial cases for start tags
                 if (potentialTag === '<' || 
                     potentialTag.startsWith('<t') || 
                     potentialTag.startsWith('<to') ||
                     potentialTag.startsWith('<too') ||
                     potentialTag.startsWith('<tool')) {
-                    // Partial '<tool>' token
+                    // Partial '<tool>' start token
+                    displayContent += remainingContent.slice(0, partialStartIndex);
+                    this.pendingContent = potentialTag;
+                } else if (potentialTag === '</' || 
+                          potentialTag.startsWith('</t') || 
+                          potentialTag.startsWith('</to') ||
+                          potentialTag.startsWith('</too') ||
+                          potentialTag.startsWith('</tool')) {
+                    // Partial '</tool>' end token
                     displayContent += remainingContent.slice(0, partialStartIndex);
                     this.pendingContent = potentialTag;
                 } else {
