@@ -154,9 +154,13 @@ export class ToolTokenHandler {
             if (partialEndIndex !== -1) {
                 const potentialEndTag = remainingContent.slice(partialEndIndex);
                 
-                // Check if this looks like the start of </tool> (not other tags like </think>)
-                if (potentialEndTag === '</tool>' ||
-                    (potentialEndTag.startsWith('</tool') && potentialEndTag.length <= 7)) {
+                // Check if this looks like the start of </tool>
+                if (potentialEndTag === '</' || 
+                    potentialEndTag === '</t' ||
+                    potentialEndTag === '</to' ||
+                    potentialEndTag === '</too' ||
+                    potentialEndTag === '</tool' ||
+                    potentialEndTag === '</tool>') {
                     // Add content before the potential end tag to tool stack
                     this.toolStack[this.toolStack.length - 1] += remainingContent.slice(0, partialEndIndex);
                     // Store the potential end tag as pending
@@ -190,9 +194,8 @@ export class ToolTokenHandler {
                     // Partial '<tool>' start token
                     displayContent += remainingContent.slice(0, partialStartIndex);
                     this.pendingContent = potentialTag;
-                } else if (potentialTag === '</tool>' ||
-                          (potentialTag.startsWith('</tool') && potentialTag.length <= 7)) {
-                    // Only capture </tool> patterns, not other closing tags like </think>
+                } else if (potentialTag.startsWith('</tool')) {
+                    // Only capture actual </tool patterns when NOT in a tool block
                     displayContent += remainingContent.slice(0, partialStartIndex);
                     this.pendingContent = potentialTag;
                 } else {
