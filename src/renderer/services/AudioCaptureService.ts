@@ -5,6 +5,7 @@ class AudioCaptureService {
     private mediaRecorder: MediaRecorder | null = null;
     private recordedChunks: Blob[] = [];
     private isCapturing: boolean = false;
+    private isStopping: boolean = false;
     private currentAudioBuffer: Int16Array[] = [];
     private audioContext: AudioContext | null = null;
     private analyser: AnalyserNode | null = null;
@@ -71,12 +72,13 @@ class AudioCaptureService {
     async stopCapture(): Promise<Int16Array[]> {
         console.log('DEBUG: AudioCaptureService: Stopping CLEAN capture...');
 
-        if (!this.isCapturing) {
-            console.log('DEBUG: AudioCaptureService: Not capturing, returning empty array');
+        if (!this.isCapturing || this.isStopping) {
+            console.log('DEBUG: AudioCaptureService: Not capturing or already stopping, returning empty array');
             return [] as Int16Array[];
         }
 
         this.isCapturing = false;
+        this.isStopping = true;
 
         return new Promise<Int16Array[]>((resolve, reject) => {
             if (!this.mediaRecorder) {
@@ -84,12 +86,19 @@ class AudioCaptureService {
                 return;
             }
 
-            this.mediaRecorder.onstop = async () => {
+            // Prevent multiple onstop handlers
+            if (this.mediaRecorder.onstop) {
+                console.log('DEBUG: AudioCaptureService: onstop handler already exists, clearing it');
+                this.mediaRecorder.onstop = null;
+            }
+
+            const handleStop = async () => {
                 try {
                     console.log(`DEBUG: AudioCaptureService: Processing ${this.recordedChunks.length} MediaRecorder chunks`);
 
                     if (this.recordedChunks.length === 0) {
                         console.warn('DEBUG: AudioCaptureService: No chunks recorded!');
+                        this.isStopping = false;
                         this.cleanup();
                         resolve([] as Int16Array[]);
                         return;
@@ -104,10 +113,17 @@ class AudioCaptureService {
                     const arrayBuffer = await audioBlob.arrayBuffer();
                     console.log(`DEBUG: AudioCaptureService: ArrayBuffer size: ${arrayBuffer.byteLength} bytes`);
 
-                    // Decode with AudioContext
-                    const audioContext = new AudioContext({ sampleRate: 16000 });
+                    if (arrayBuffer.byteLength === 0) {
+                        console.warn('DEBUG: AudioCaptureService: Empty array buffer, skipping decode');
+                        this.isStopping = false;
+                        resolve([] as Int16Array[]);
+                        return;
+                    }
 
+                    // Create AudioContext with error handling
+                    let audioContext: AudioContext | null = null;
                     try {
+                        audioContext = new AudioContext({ sampleRate: 16000 });
                         const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
                         console.log(`DEBUG: AudioCaptureService: CLEAN DECODE SUCCESS - Duration: ${audioBuffer.duration.toFixed(2)}s, Sample Rate: ${audioBuffer.sampleRate}Hz`);
 
@@ -129,43 +145,71 @@ class AudioCaptureService {
                         console.log(`DEBUG: AudioCaptureService: CLEAN CONVERSION - Max amplitude: ${maxAmplitude}/32767 (${((maxAmplitude / 32767) * 100).toFixed(1)}%)`);
 
                         console.log('DEBUG: AudioCaptureService: RETURNING SINGLE CLEAN CHUNK (not 218 fragments!)');
+                        this.isStopping = false;
                         resolve([int16Data]);
 
                     } catch (decodeError) {
                         console.error('DEBUG: AudioCaptureService: Decode error:', decodeError);
+                        this.isStopping = false;
                         reject(decodeError);
                     } finally {
-                        await audioContext.close();
+                        if (audioContext) {
+                            await audioContext.close();
+                        }
                     }
 
                 } catch (error) {
                     console.error('DEBUG: AudioCaptureService: Processing error:', error);
+                    this.isStopping = false;
                     reject(error);
+                } finally {
+                    this.cleanup();
                 }
             };
 
-            this.mediaRecorder.stop();
-        }).finally(() => {
-            this.cleanup();
+            this.mediaRecorder.onstop = handleStop;
+            
+            try {
+                this.mediaRecorder.stop();
+            } catch (error) {
+                console.error('DEBUG: AudioCaptureService: Error stopping MediaRecorder:', error);
+                reject(error);
+            }
         });
     }
 
     private cleanup(): void {
+        if (this.isCapturing === false && !this.mediaStream && !this.mediaRecorder) {
+            console.log('DEBUG: AudioCaptureService: Already cleaned up, skipping');
+            return;
+        }
+
         console.log('DEBUG: AudioCaptureService: Cleaning up...');
 
+        this.isCapturing = false;
+        this.isStopping = false; // Reset the stopping flag
+
         if (this.mediaStream) {
-            this.mediaStream.getTracks().forEach(track => track.stop());
+            try {
+                this.mediaStream.getTracks().forEach(track => track.stop());
+            } catch (error) {
+                console.warn('DEBUG: AudioCaptureService: Error stopping media tracks:', error);
+            }
             this.mediaStream = null;
         }
 
         if (this.audioContext) {
-            this.audioContext.close();
+            try {
+                // Note: audioContext.close() returns a Promise but we don't await it in cleanup
+                this.audioContext.close().catch(err => console.warn('AudioContext close error:', err));
+            } catch (error) {
+                console.warn('DEBUG: AudioCaptureService: Error closing audio context:', error);
+            }
             this.audioContext = null;
         }
 
         this.analyser = null;
         this.mediaRecorder = null;
-        this.isCapturing = false;
         this.recordedChunks = [];
         this.currentAudioBuffer = [];
 

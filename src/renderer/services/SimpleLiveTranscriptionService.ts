@@ -60,9 +60,13 @@ class SimpleLiveTranscriptionService {
                 this.recordedChunks.push(event.data);
                 this.lastAudioActivity = Date.now();
                 
-                // Process audio if we have enough chunks (at least 1 second of audio) and not already processing
-                if (this.recordedChunks.length >= 2 && !this.isProcessing) {
-                    this.processAudioChunks();
+                // Only process if we have significant data (at least 3 chunks of 1 second each)
+                if (this.recordedChunks.length >= 3 && !this.isProcessing) {
+                    const totalSize = this.recordedChunks.reduce((sum, chunk) => sum + chunk.size, 0);
+                    // Only process if we have substantial audio data (at least 50KB)
+                    if (totalSize >= 50000) {
+                        this.processAudioChunks();
+                    }
                 }
             } else if (event.data && event.data.size === 0) {
                 // Skip empty chunks but don't log unless debugging
@@ -89,8 +93,12 @@ class SimpleLiveTranscriptionService {
             const timeSinceLastActivity = now - this.lastAudioActivity;
             
             // If we have chunks and there's been silence, process them
-            if (this.recordedChunks.length > 0 && timeSinceLastActivity > 1500 && !this.isProcessing) {
-                this.processAudioChunks();
+            if (this.recordedChunks.length > 0 && timeSinceLastActivity > 2000 && !this.isProcessing) {
+                const totalSize = this.recordedChunks.reduce((sum, chunk) => sum + chunk.size, 0);
+                // Only process if we have reasonable amount of data (at least 20KB)
+                if (totalSize >= 20000) {
+                    this.processAudioChunks();
+                }
             }
             
             // Continue checking
@@ -122,7 +130,7 @@ class SimpleLiveTranscriptionService {
                 return;
             }
             
-            if (totalSize < 5000) { // Skip if less than 5KB
+            if (totalSize < 20000) { // Skip if less than 20KB (more substantial threshold)
                 console.log('SimpleLiveTranscriptionService: Skipping small audio chunk:', totalSize, 'bytes');
                 return;
             }
@@ -141,7 +149,7 @@ class SimpleLiveTranscriptionService {
                 return;
             }
             
-            if (arrayBuffer.byteLength < 1000) {
+            if (arrayBuffer.byteLength < 10000) {
                 console.log('SimpleLiveTranscriptionService: Skipping small array buffer:', arrayBuffer.byteLength, 'bytes');
                 return;
             }
@@ -152,8 +160,8 @@ class SimpleLiveTranscriptionService {
             try {
                 const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
                 
-                // Skip if decoded audio is too short (less than 0.3 seconds)
-                if (audioBuffer.duration < 0.3) {
+                // Skip if decoded audio is too short (less than 1 second)
+                if (audioBuffer.duration < 1.0) {
                     console.log('SimpleLiveTranscriptionService: Skipping short audio:', audioBuffer.duration, 'seconds');
                     return;
                 }
