@@ -439,19 +439,41 @@ export class ToolTokenHandler {
      */
     public isProcessingTool(): boolean {
         const hasStack = this.toolStack.length > 0;
-        const hasPending = this.pendingContent.length > 0;
+        const hasMeaningfulPending = this.hasMeaningfulPendingContent();
         
-        if (hasStack || hasPending) {
+        if (hasStack || hasMeaningfulPending) {
             console.log('🔧 Tool Handler: isProcessingTool() debug:', {
                 hasStack,
                 stackDepth: this.toolStack.length,
-                hasPending,
+                hasPending: this.pendingContent.length > 0,
+                hasMeaningfulPending,
                 pendingContentLength: this.pendingContent.length,
                 pendingContent: this.pendingContent
             });
         }
         
-        return hasStack || hasPending;
+        return hasStack || hasMeaningfulPending;
+    }
+
+    /**
+     * Check if pending content represents a meaningful incomplete tool block
+     * vs just partial tag starts that should be ignored
+     */
+    private hasMeaningfulPendingContent(): boolean {
+        if (!this.pendingContent) return false;
+        
+        // Ignore simple partial tag starts - these are not meaningful incomplete blocks
+        const trimmed = this.pendingContent.trim();
+        if (trimmed === '<' || 
+            trimmed === '<t' || 
+            trimmed === '<to' || 
+            trimmed === '<too' || 
+            trimmed === '<tool') {
+            return false;
+        }
+        
+        // Consider it meaningful if it looks like it has actual tool content
+        return trimmed.includes('<tool>') || trimmed.length > 10;
     }
 
     /**
@@ -485,12 +507,14 @@ export class ToolTokenHandler {
     public finalize(): string {
         const pending = this.pendingContent;
         const stackContent = this.toolStack.join('');
+        const hasMeaningfulPending = this.hasMeaningfulPendingContent();
         
         console.log('🔧 Tool Handler: finalize() called:', {
             pendingContent: pending,
             stackContent: stackContent,
             stackLength: this.toolStack.length,
-            willReturnContent: !!(stackContent || pending)
+            hasMeaningfulPending: hasMeaningfulPending,
+            willReturnContent: !!(stackContent || hasMeaningfulPending)
         });
         
         this.reset();
@@ -501,11 +525,13 @@ export class ToolTokenHandler {
             return result;
         }
         
-        if (pending) {
-            console.log('🔧 Tool Handler: finalize() returning pending content:', pending);
+        if (hasMeaningfulPending) {
+            console.log('🔧 Tool Handler: finalize() returning meaningful pending content:', pending);
+            return pending;
         }
         
-        return pending;
+        console.log('🔧 Tool Handler: finalize() ignoring trivial pending content:', pending);
+        return '';
     }
 }
 
