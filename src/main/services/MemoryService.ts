@@ -32,11 +32,10 @@ class MemoryService extends EventEmitter {
         toolName?: string;
         timestamp: Date;
     }): Promise<void> {
-        // Add message to Redux store
-        this.store.dispatch({
-            type: 'ADD_MESSAGE',
-            payload: message
-        });
+        // NOTE: Do NOT dispatch to Redux store from main process
+        // The persistence middleware is designed for renderer process only
+        // Messages are automatically persisted by the streaming handlers
+        console.log('🔧 MemoryService: Skipping Redux dispatch from main process to avoid ipcRenderer errors');
 
         // Store in memory cache
         await this.set(`conversation:${message.conversationId}:messages`, [

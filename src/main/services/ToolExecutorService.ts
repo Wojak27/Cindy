@@ -82,7 +82,7 @@ class ToolExecutorService extends EventEmitter {
                     result = await tool.searchNotes(parameters);
                     break;
                 case 'web_search':
-                    result = await tool.search(parameters.query, parameters.options);
+                    result = await tool.execute(parameters.query);
                     break;
                 case 'web_crawl':
                     result = await tool.crawl(parameters.url, parameters.options);
