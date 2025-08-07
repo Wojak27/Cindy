@@ -499,13 +499,18 @@ export class ToolTokenHandler {
     private hasMeaningfulPendingContent(): boolean {
         if (!this.pendingContent) return false;
         
-        // Ignore simple partial tag starts - these are not meaningful incomplete blocks
+        // Ignore simple partial tag starts and ends - these are not meaningful incomplete blocks
         const trimmed = this.pendingContent.trim();
         if (trimmed === '<' || 
             trimmed === '<t' || 
             trimmed === '<to' || 
             trimmed === '<too' || 
-            trimmed === '<tool') {
+            trimmed === '<tool' ||
+            trimmed === '</' ||
+            trimmed === '</t' ||
+            trimmed === '</to' ||
+            trimmed === '</too' ||
+            trimmed === '</tool') {
             return false;
         }
         
