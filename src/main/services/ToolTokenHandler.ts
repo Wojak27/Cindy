@@ -438,7 +438,20 @@ export class ToolTokenHandler {
      * Check if currently processing a tool block
      */
     public isProcessingTool(): boolean {
-        return this.toolStack.length > 0 || this.pendingContent.length > 0;
+        const hasStack = this.toolStack.length > 0;
+        const hasPending = this.pendingContent.length > 0;
+        
+        if (hasStack || hasPending) {
+            console.log('🔧 Tool Handler: isProcessingTool() debug:', {
+                hasStack,
+                stackDepth: this.toolStack.length,
+                hasPending,
+                pendingContentLength: this.pendingContent.length,
+                pendingContent: this.pendingContent
+            });
+        }
+        
+        return hasStack || hasPending;
     }
 
     /**
@@ -473,10 +486,23 @@ export class ToolTokenHandler {
         const pending = this.pendingContent;
         const stackContent = this.toolStack.join('');
         
+        console.log('🔧 Tool Handler: finalize() called:', {
+            pendingContent: pending,
+            stackContent: stackContent,
+            stackLength: this.toolStack.length,
+            willReturnContent: !!(stackContent || pending)
+        });
+        
         this.reset();
         
         if (stackContent) {
-            return pending + this.TOOL_START_TOKEN + stackContent;
+            const result = pending + this.TOOL_START_TOKEN + stackContent;
+            console.log('🔧 Tool Handler: finalize() returning stack content:', result);
+            return result;
+        }
+        
+        if (pending) {
+            console.log('🔧 Tool Handler: finalize() returning pending content:', pending);
         }
         
         return pending;
