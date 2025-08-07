@@ -33,28 +33,31 @@
     <link rel="icon" href="assets/favicon.ico" type="image/x-icon">
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="node_modules/cookieconsent/build/cookieconsent.min.css" />
-    <script src="node_modules/cookieconsent/build/cookieconsent.min.js"></script>
+    <!-- Simple GDPR popup will be handled in CSS and JS -->
     <script src="js/main.js" defer></script>
 </head>
 
-<body>
+<body class="landing-page">
     <header class="hero" role="banner">
         <div class="container">
-            <nav class="main-nav" style="display: flex;">
-                <a href="index.html" class="nav-logo" aria-label="Cindy Home">Cindy</a>
-                <button class="nav-toggle" aria-label="Toggle navigation">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                </button>
-                <ul class="nav-links">
-                    <li><a href="index.html">Home</a></li>
-                    <li><a href="product.html">Product</a></li>
-                    <li><a href="download.html">Download</a></li>
-                    <li><a href="blog.html">Blog</a></li>
-                    <li><a href="pricing.html">Pricing</a></li>
-                </ul>
+            <nav class="main-nav">
+                <div class="container">
+                    <a href="index.html" class="nav-logo" aria-label="Cindy Home">Cindy</a>
+                    <button class="nav-toggle" aria-label="Toggle navigation">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </button>
+                    <ul class="nav-links">
+                        <li><a href="index.html">Home</a></li>
+                        <li><a href="product.html">Product</a></li>
+                        <li><a href="download.html">Download</a></li>
+                        <li><a href="about.html">About</a></li>
+                        <li><a href="blog.html">Blog</a></li>
+                        <li><a href="pricing.html">Pricing</a></li>
+                        <li><a href="contact.html">Contact</a></li>
+                    </ul>
+                </div>
             </nav>
             <div class="hero-content">
                 <h1>Supercharge Your Memory</h1>
@@ -235,10 +238,10 @@
                     <div class="footer-column">
                         <h4>Resources</h4>
                         <ul>
-                            <li><a href="#">Documentation</a></li>
-                            <li><a href="#">Tutorials</a></li>
-                            <li><a href="#">Blog</a></li>
-                            <li><a href="#">Community</a></li>
+                            <li><a href="product.html">Documentation</a></li>
+                            <li><a href="blog.html">Blog</a></li>
+                            <li><a href="download.html">Download</a></li>
+                            <li><a href="contact.html">Support</a></li>
                         </ul>
                     </div>
                     <div class="footer-column">
@@ -256,7 +259,19 @@
                 <p>&copy; 2025 Cindy Voice Assistant. All rights reserved.</p>
             </div>
         </div>
-        <!-- Cookie Consent Banner will be handled by cookieconsent library -->
+        <!-- Cookie Consent Banner -->
+        <div id="cookie-consent-banner" class="cookie-consent-banner hidden">
+            <div class="cookie-content">
+                <div class="cookie-text">
+                    <h3>🍪 We use cookies</h3>
+                    <p>We use cookies to enhance your experience, analyze site usage, and improve our services. By continuing to use our site, you consent to our use of cookies as described in our <a href="privacy.html" target="_blank">Privacy Policy</a>.</p>
+                </div>
+                <div class="cookie-buttons">
+                    <button id="cookie-decline" class="cookie-btn cookie-btn-decline">Decline</button>
+                    <button id="cookie-accept" class="cookie-btn cookie-btn-accept">Accept All</button>
+                </div>
+            </div>
+        </div>
     </footer>
 </body>
 

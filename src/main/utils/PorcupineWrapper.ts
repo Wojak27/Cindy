@@ -6,15 +6,30 @@ class PorcupineWrapper {
 
     async initialize(accessKey: string, keyword: string, sensitivity: number = 0.5): Promise<void> {
         try {
-            // Load custom keyword file or use built-in
+            // Map common phrases to Porcupine built-in keywords
+            const keywordMap: { [key: string]: string } = {
+                'Hi Cindy!': 'picovoice',  // Use picovoice as fallback
+                'Hey Cindy': 'hey google', // If available
+                'Cindy': 'alexa',          // If available
+                'Computer': 'computer'     // If available
+            };
+            
+            // Use built-in keyword if available, otherwise use picovoice as default
+            const porcupineKeyword = keywordMap[keyword] || 'picovoice';
+            
+            console.log(`PorcupineWrapper: Mapping "${keyword}" to built-in keyword "${porcupineKeyword}"`);
+            
+            // Initialize with built-in keyword
             this.porcupine = new Porcupine(
                 accessKey,
-                [keyword], // keyword paths
+                [porcupineKeyword], // Use built-in keyword names
                 [sensitivity] // sensitivities
             );
             this.isInitialized = true;
+            console.log(`PorcupineWrapper: Initialized successfully with keyword "${porcupineKeyword}"`);
         } catch (error) {
-            console.error('Failed to initialize Porcupine:', error);
+            console.error('PorcupineWrapper: Failed to initialize Porcupine:', error);
+            console.error('PorcupineWrapper: Make sure you have a valid Porcupine access key');
             throw error;
         }
     }

@@ -16,6 +16,7 @@ interface Settings {
     voice: {
         activationPhrase: string;
         wakeWordSensitivity: number;
+        audioThreshold: number;
         voiceSpeed: number;
         voicePitch: number;
         sttProvider: 'online' | 'offline' | 'auto';
@@ -259,6 +260,7 @@ class SettingsService extends EventEmitter {
             voice: {
                 activationPhrase: 'Hi Cindy!',
                 wakeWordSensitivity: 0.5,
+                audioThreshold: 0.01,
                 voiceSpeed: 1.0,
                 voicePitch: 1.0,
                 sttProvider: 'auto',

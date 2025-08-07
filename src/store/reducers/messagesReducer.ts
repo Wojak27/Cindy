@@ -111,6 +111,37 @@ const messagesReducer = (state = initialState, action: any) => {
         };
       }
       return state;
+    case 'MARK_MESSAGE_FAILED':
+      // Mark a message as failed with error details
+      return {
+        ...state,
+        messages: state.messages.map(msg =>
+          msg.id === action.payload.messageId
+            ? { 
+                ...msg, 
+                failed: true, 
+                error: action.payload.error,
+                isStreaming: false 
+              }
+            : msg
+        )
+      };
+    case 'RETRY_MESSAGE':
+      // Mark message as retrying
+      return {
+        ...state,
+        messages: state.messages.map(msg =>
+          msg.id === action.payload.messageId
+            ? { 
+                ...msg, 
+                failed: false, 
+                error: null,
+                isStreaming: true,
+                retryCount: (msg.retryCount || 0) + 1
+              }
+            : msg
+        )
+      };
     case 'STREAM_COMPLETE':
       return state;
     case 'STREAM_ERROR':

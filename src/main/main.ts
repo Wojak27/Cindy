@@ -14,6 +14,7 @@ import { MemoryService } from './services/MemoryService';
 import { ToolExecutorService } from './services/ToolExecutorService';
 import { VectorStoreService } from './services/VectorStoreService';
 import { SpeechToTextService } from './services/SpeechToTextService';
+import RealTimeTranscriptionService from './services/RealTimeTranscriptionService';
 
 // Function to set up all settings-related IPC handlers
 const setupSettingsIPC = () => {
@@ -327,6 +328,7 @@ let vectorStoreService: VectorStoreService | null = null;
 let cindyAgent: CindyAgent | null = null;
 let wakeWordService: any = null;
 let speechToTextService: SpeechToTextService | null = null;
+let realTimeTranscriptionService: RealTimeTranscriptionService | null = null;
 
 const createWindow = async (): Promise<void> => {
     // Ensure settings service is initialized
@@ -608,33 +610,50 @@ app.on('ready', async () => {
         speechToTextService = new SpeechToTextService(sttConfig);
     }
 
+    // Initialize real-time transcription service
+    if (mainWindow && !realTimeTranscriptionService) {
+        realTimeTranscriptionService = new RealTimeTranscriptionService(mainWindow);
+        console.log('🎤 Real-time transcription service initialized');
+    }
+
     // Initialize wake word service after settings service
     if (settingsService && mainWindow && !wakeWordService) {
-        const WakeWordService = require('./services/WakeWordService').default;
-        wakeWordService = new WakeWordService(settingsService, mainWindow);
-        
-        // Listen for wake word detection events
-        wakeWordService.on('wakeWordDetected', () => {
-            console.log('🎤 Wake word detected! Activating voice recording...');
-            if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-                mainWindow.webContents.send('wake-word-detected');
-                // Optionally bring window to front
-                if (!mainWindow.isVisible()) {
-                    mainWindow.show();
-                }
-                if (mainWindow.isMinimized()) {
-                    mainWindow.restore();
-                }
-                mainWindow.focus();
-            }
-        });
-
-        // Start wake word listening when app is ready
         try {
-            await wakeWordService.startListening();
-            console.log('🎤 Wake word service started successfully');
-        } catch (error) {
-            console.error('🎤 Failed to start wake word service:', error);
+            const WakeWordService = require('./services/WakeWordService').default;
+            if (!WakeWordService) {
+                console.error('🎤 WakeWordService import failed - default export not found');
+                console.log('🎤 Available exports:', Object.keys(require('./services/WakeWordService')));
+            } else {
+                wakeWordService = new WakeWordService(settingsService, mainWindow);
+            }
+        } catch (importError) {
+            console.error('🎤 Failed to import WakeWordService:', importError);
+        }
+        
+        // Listen for wake word detection events only if service was successfully created
+        if (wakeWordService) {
+            wakeWordService.on('wakeWordDetected', () => {
+                console.log('🎤 Wake word detected! Activating voice recording...');
+                if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+                    mainWindow.webContents.send('wake-word-detected');
+                    // Optionally bring window to front
+                    if (!mainWindow.isVisible()) {
+                        mainWindow.show();
+                    }
+                    if (mainWindow.isMinimized()) {
+                        mainWindow.restore();
+                    }
+                    mainWindow.focus();
+                }
+            });
+
+            // Start wake word listening when app is ready
+            try {
+                await wakeWordService.startListening();
+                console.log('🎤 Whisper-based wake word service started successfully');
+            } catch (error) {
+                console.error('🎤 Failed to start wake word service:', error);
+            }
         }
     }
 
@@ -694,6 +713,35 @@ app.on('ready', async () => {
                 error: error instanceof Error ? error.message : 'Unknown error',
                 connections: { openai: false, ollama: false }
             };
+        }
+    });
+
+    // IPC handlers for real-time transcription
+    ipcMain.handle('start-real-time-transcription', async () => {
+        console.log('Main process - start-real-time-transcription IPC called');
+        try {
+            if (realTimeTranscriptionService) {
+                await realTimeTranscriptionService.startTranscription();
+                return { success: true };
+            }
+            return { success: false, error: 'Real-time transcription service not available' };
+        } catch (error) {
+            console.error('Main process - start-real-time-transcription error:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        }
+    });
+
+    ipcMain.handle('stop-real-time-transcription', async () => {
+        console.log('Main process - stop-real-time-transcription IPC called');
+        try {
+            if (realTimeTranscriptionService) {
+                await realTimeTranscriptionService.stopTranscription();
+                return { success: true };
+            }
+            return { success: false, error: 'Real-time transcription service not available' };
+        } catch (error) {
+            console.error('Main process - stop-real-time-transcription error:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
         }
     });
 

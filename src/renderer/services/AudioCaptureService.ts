@@ -5,6 +5,10 @@ class AudioCaptureService {
     private mediaRecorder: MediaRecorder | null = null;
     private recordedChunks: Blob[] = [];
     private isCapturing: boolean = false;
+    private currentAudioBuffer: Int16Array[] = [];
+    private audioContext: AudioContext | null = null;
+    private analyser: AnalyserNode | null = null;
+    private bufferSize: number = 512;
 
     async startCapture(): Promise<void> {
         console.log('DEBUG: AudioCaptureService: Starting CLEAN capture (no chunks)...');
@@ -53,6 +57,9 @@ class AudioCaptureService {
             this.isCapturing = true;
 
             console.log('DEBUG: AudioCaptureService: Clean MediaRecorder started');
+            
+            // Set up continuous audio monitoring for wake word detection
+            this.setupContinuousMonitoring();
 
         } catch (error) {
             console.error('DEBUG: AudioCaptureService: Failed to start capture:', error);
@@ -151,11 +158,75 @@ class AudioCaptureService {
             this.mediaStream = null;
         }
 
+        if (this.audioContext) {
+            this.audioContext.close();
+            this.audioContext = null;
+        }
+
+        this.analyser = null;
         this.mediaRecorder = null;
         this.isCapturing = false;
         this.recordedChunks = [];
+        this.currentAudioBuffer = [];
 
         console.log('DEBUG: AudioCaptureService: Cleanup completed');
+    }
+
+    private setupContinuousMonitoring(): void {
+        if (!this.mediaStream) return;
+
+        try {
+            // Create audio context for real-time analysis
+            this.audioContext = new AudioContext({ sampleRate: 16000 });
+            const source = this.audioContext.createMediaStreamSource(this.mediaStream);
+            
+            // Create analyser node
+            this.analyser = this.audioContext.createAnalyser();
+            this.analyser.fftSize = this.bufferSize * 2;
+            source.connect(this.analyser);
+
+            // Start monitoring loop
+            this.monitorAudioBuffer();
+        } catch (error) {
+            console.warn('DEBUG: AudioCaptureService: Failed to setup continuous monitoring:', error);
+        }
+    }
+
+    private monitorAudioBuffer(): void {
+        if (!this.analyser || !this.audioContext) return;
+
+        const bufferLength = this.analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        
+        const monitor = () => {
+            if (!this.isCapturing || !this.analyser) return;
+
+            this.analyser.getByteFrequencyData(dataArray);
+            
+            // Convert to Int16Array for wake word processing
+            const audioBuffer = new Int16Array(dataArray.length);
+            for (let i = 0; i < dataArray.length; i++) {
+                // Convert from 0-255 to -32768 to 32767
+                audioBuffer[i] = ((dataArray[i] - 128) / 128) * 32767;
+            }
+
+            // Keep a rolling buffer of recent audio (last 5 frames)
+            this.currentAudioBuffer.push(audioBuffer);
+            if (this.currentAudioBuffer.length > 5) {
+                this.currentAudioBuffer.shift();
+            }
+
+            // Continue monitoring
+            if (this.isCapturing) {
+                setTimeout(monitor, 50); // 50ms intervals
+            }
+        };
+
+        monitor();
+    }
+
+    async getCurrentAudioBuffer(): Promise<Int16Array[]> {
+        return [...this.currentAudioBuffer]; // Return copy
     }
 
     isCurrentlyCapturing(): boolean {

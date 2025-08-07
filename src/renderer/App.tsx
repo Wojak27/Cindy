@@ -29,7 +29,8 @@ import {
     EditSquare as EditSquareIcon,
     Settings as SettingsIcon,
     Storage as DatabaseIcon,
-    Hearing as WakeWordIcon
+    Hearing as WakeWordIcon,
+    Refresh as RetryIcon
 } from '@mui/icons-material';
 
 const App: React.FC = () => {
@@ -48,9 +49,14 @@ const App: React.FC = () => {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [isAppLoading, setIsAppLoading] = useState(true);
     const [wakeWordActive, setWakeWordActive] = useState(false);
+    const [wakeWordDetected, setWakeWordDetected] = useState(false);
+    const [isWakeWordListening, setIsWakeWordListening] = useState(false);
+    const [realTimeTranscription, setRealTimeTranscription] = useState('');
+    const [speechDetected, setSpeechDetected] = useState(false);
     const audioContext = useRef<AudioContext | null>(null);
     const sounds = useRef<Record<string, AudioBuffer>>({});
     const streamController = useRef<AbortController | null>(null);
+    const speechTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     // Load conversation history when conversation changes
     useEffect(() => {
@@ -283,8 +289,14 @@ const App: React.FC = () => {
                                 await ipcRenderer.invoke('process-message', transcript, currentConversationId);
                             } catch (error) {
                                 console.error('Error processing message:', error);
-                                // Update the assistant message with error
-                                dispatch({ type: 'UPDATE_LAST_ASSISTANT_MESSAGE', payload: 'Sorry, I encountered an error processing your request.' });
+                                // Mark the assistant message as failed
+                                dispatch({ 
+                                    type: 'MARK_MESSAGE_FAILED', 
+                                    payload: { 
+                                        messageId: assistantMessage.id, 
+                                        error: error instanceof Error ? error.message : 'Unknown error occurred' 
+                                    } 
+                                });
                                 dispatch({ type: 'STOP_THINKING' });
                             }
                         }
@@ -338,37 +350,169 @@ const App: React.FC = () => {
         }
     };
 
+    // Start real-time transcription after wake word detection
+    const startRealTimeTranscription = async () => {
+        try {
+            await ipcRenderer.invoke('start-real-time-transcription');
+        } catch (error) {
+            console.error('Failed to start real-time transcription:', error);
+        }
+    };
+
+    // Process the final transcription after wake word
+    const processWakeWordTranscription = async (transcription: string) => {
+        console.log('Processing wake word transcription:', transcription);
+        
+        // Stop real-time transcription
+        try {
+            await ipcRenderer.invoke('stop-real-time-transcription');
+        } catch (error) {
+            console.error('Failed to stop real-time transcription:', error);
+        }
+        
+        // Reset states
+        setIsWakeWordListening(false);
+        setSpeechDetected(false);
+        
+        if (transcription.trim()) {
+            // Set the transcription as input and process it
+            setInputValue(transcription.trim());
+            
+            // Add user message to store
+            const userMessage = {
+                id: `user-${Date.now()}`,
+                role: 'user',
+                content: transcription.trim(),
+                timestamp: new Date().toISOString(),
+                conversationId: currentConversationId,
+                fromWakeWord: true
+            };
+            dispatch({ type: 'ADD_MESSAGE', payload: userMessage });
+
+            // Create assistant message placeholder
+            const assistantMessage = {
+                id: `assistant-${Date.now()}`,
+                role: 'assistant',
+                content: '',
+                timestamp: new Date().toISOString(),
+                isStreaming: true,
+                conversationId: currentConversationId
+            };
+            dispatch({ type: 'ADD_MESSAGE', payload: assistantMessage });
+            dispatch({ type: 'START_THINKING' });
+
+            // Process through agent
+            try {
+                await ipcRenderer.invoke('process-message', transcription.trim(), currentConversationId);
+            } catch (error) {
+                console.error('Error processing wake word message:', error);
+                dispatch({ 
+                    type: 'MARK_MESSAGE_FAILED', 
+                    payload: { 
+                        messageId: assistantMessage.id, 
+                        error: error instanceof Error ? error.message : 'Unknown error occurred' 
+                    } 
+                });
+                dispatch({ type: 'STOP_THINKING' });
+            }
+        }
+        
+        // Clear real-time transcription
+        setRealTimeTranscription('');
+    };
+
+    // Retry a failed message
+    const retryMessage = async (messageId: string, userMessage: any) => {
+        console.log('Retrying message:', messageId, userMessage);
+        
+        // Mark message as retrying
+        dispatch({ type: 'RETRY_MESSAGE', payload: { messageId } });
+        dispatch({ type: 'START_THINKING' });
+        
+        try {
+            // Find the user message content to retry
+            const userContent = userMessage?.content || '';
+            if (userContent.trim()) {
+                // Process through agent again
+                await ipcRenderer.invoke('process-message', userContent, currentConversationId);
+            }
+        } catch (error) {
+            console.error('Error retrying message:', error);
+            dispatch({ 
+                type: 'MARK_MESSAGE_FAILED', 
+                payload: { 
+                    messageId: messageId, 
+                    error: error instanceof Error ? error.message : 'Unknown error occurred' 
+                } 
+            });
+            dispatch({ type: 'STOP_THINKING' });
+        }
+    };
+
     // Listen for wake word detection events
     useEffect(() => {
         const handleWakeWordDetected = () => {
             console.log('🎤 Wake word detected in renderer!');
-            setIsListening(true);
+            setWakeWordDetected(true);
+            setIsWakeWordListening(true);
+            setSpeechDetected(false);
+            setRealTimeTranscription('');
             playSound('activation');
 
-            // Automatically start recording when wake word is detected
-            handleMicClick();
+            // Start continuous transcription after wake word
+            startRealTimeTranscription();
 
-            // Reset listening state after a short delay
-            const timer = setTimeout(() => {
-                setIsListening(false);
-            }, 3000); // Extended to 3 seconds for better visual feedback
-
-            return () => clearTimeout(timer);
+            // Reset wake word detected state after visual feedback
+            setTimeout(() => {
+                setWakeWordDetected(false);
+            }, 2000);
         };
 
         const handleWakeWordTimeout = () => {
             setIsListening(false);
+            setIsWakeWordListening(false);
+        };
+
+        // Listen for real-time transcription updates
+        const handleTranscriptionUpdate = (_: any, data: { text: string, isFinal: boolean }) => {
+            setRealTimeTranscription(data.text);
+            
+            if (data.text.trim()) {
+                setSpeechDetected(true);
+                
+                // Reset speech timeout
+                if (speechTimeoutRef.current) {
+                    clearTimeout(speechTimeoutRef.current);
+                }
+                
+                // If final transcription or user stopped speaking, process it
+                if (data.isFinal) {
+                    processWakeWordTranscription(data.text);
+                } else {
+                    // Set timeout to detect end of speech (2 seconds of silence)
+                    speechTimeoutRef.current = setTimeout(() => {
+                        if (realTimeTranscription.trim()) {
+                            processWakeWordTranscription(realTimeTranscription);
+                        }
+                    }, 2000);
+                }
+            }
         };
 
         ipcRenderer.on('wake-word-detected', handleWakeWordDetected);
         ipcRenderer.on('wake-word-timeout', handleWakeWordTimeout);
+        ipcRenderer.on('real-time-transcription', handleTranscriptionUpdate);
 
         // Cleanup listeners on unmount
         return () => {
             ipcRenderer.off('wake-word-detected', handleWakeWordDetected);
             ipcRenderer.off('wake-word-timeout', handleWakeWordTimeout);
+            ipcRenderer.off('real-time-transcription', handleTranscriptionUpdate);
+            if (speechTimeoutRef.current) {
+                clearTimeout(speechTimeoutRef.current);
+            }
         };
-    }, []);
+    }, [realTimeTranscription]);
 
     // Handle send button click
     const handleSendClick = async () => {
@@ -410,8 +554,14 @@ const App: React.FC = () => {
                 await ipcRenderer.invoke('process-message', messageToProcess, currentConversationId);
             } catch (error) {
                 console.error('Error processing message:', error);
-                // Update the assistant message with error
-                dispatch({ type: 'UPDATE_LAST_ASSISTANT_MESSAGE', payload: 'Sorry, I encountered an error processing your request.' });
+                // Mark the assistant message as failed
+                dispatch({ 
+                    type: 'MARK_MESSAGE_FAILED', 
+                    payload: { 
+                        messageId: assistantMessage.id, 
+                        error: error instanceof Error ? error.message : 'Unknown error occurred' 
+                    } 
+                });
                 dispatch({ type: 'STOP_THINKING' });
             }
         }
@@ -492,7 +642,21 @@ const App: React.FC = () => {
             if (data.conversationId === currentConversationId) {
                 dispatch(streamError(data.error));
                 dispatch({ type: 'STOP_THINKING' });
-                dispatch({ type: 'UPDATE_LAST_ASSISTANT_MESSAGE', payload: `Sorry, I encountered an error: ${data.error}` });
+                
+                // Find the last assistant message and mark it as failed
+                const lastAssistantMessage = messages.find(msg => 
+                    msg.role === 'assistant' && msg.conversationId === currentConversationId && msg.isStreaming
+                );
+                
+                if (lastAssistantMessage) {
+                    dispatch({ 
+                        type: 'MARK_MESSAGE_FAILED', 
+                        payload: { 
+                            messageId: lastAssistantMessage.id, 
+                            error: data.error 
+                        } 
+                    });
+                }
             }
         };
 
@@ -607,8 +771,16 @@ const App: React.FC = () => {
                     
                     {/* Wake Word Status Indicator */}
                     <IconButton
-                        className={`wake-word-indicator ${wakeWordActive ? 'active' : 'inactive'}`}
-                        title={wakeWordActive ? 'Wake word listening' : 'Wake word inactive'}
+                        className={`wake-word-indicator ${
+                            wakeWordDetected ? 'detected' : 
+                            isWakeWordListening ? 'listening' : 
+                            wakeWordActive ? 'active' : 'inactive'
+                        }`}
+                        title={
+                            wakeWordDetected ? 'Wake word detected!' :
+                            isWakeWordListening ? 'Listening for speech...' :
+                            wakeWordActive ? 'Wake word listening' : 'Wake word inactive'
+                        }
                         size="small"
                         disabled
                     >
@@ -727,12 +899,43 @@ const App: React.FC = () => {
 
                                             {/* Display the message content */}
                                             <div className="message-text">
-                                                {msg.hasCodeBlocks ? (
+                                                {msg.failed ? (
+                                                    <div className="error-message">
+                                                        <div className="error-content">
+                                                            <span className="error-icon">⚠️</span>
+                                                            <span className="error-text">
+                                                                {msg.error || 'Something went wrong. Please try again.'}
+                                                            </span>
+                                                        </div>
+                                                        <div className="error-actions">
+                                                            <IconButton
+                                                                className="retry-button"
+                                                                onClick={() => {
+                                                                    // Find the corresponding user message
+                                                                    const messageIndex = messages.findIndex(m => m.id === msg.id);
+                                                                    const userMessage = messageIndex > 0 ? messages[messageIndex - 1] : null;
+                                                                    if (userMessage && userMessage.role === 'user') {
+                                                                        retryMessage(msg.id, userMessage);
+                                                                    }
+                                                                }}
+                                                                size="small"
+                                                                title="Retry message"
+                                                            >
+                                                                <RetryIcon fontSize="small" />
+                                                            </IconButton>
+                                                        </div>
+                                                    </div>
+                                                ) : msg.hasCodeBlocks ? (
                                                     <div dangerouslySetInnerHTML={{ __html: msg.content || '' }} />
                                                 ) : (
                                                     msg.content || (msg.isStreaming ? '...' : '')
                                                 )}
                                                 {msg.isStreaming && <span className="streaming-cursor">▋</span>}
+                                                {msg.retryCount > 0 && !msg.failed && !msg.isStreaming && (
+                                                    <div className="retry-indicator">
+                                                        <small>Retry attempt #{msg.retryCount}</small>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
@@ -740,6 +943,31 @@ const App: React.FC = () => {
                             })}
                         </div>
                     </div>
+
+                    {/* Real-time transcription overlay */}
+                    {isWakeWordListening && (
+                        <div className="real-time-transcription-overlay">
+                            <div className="transcription-container">
+                                <div className="transcription-header">
+                                    <div className="transcription-status">
+                                        {wakeWordDetected ? (
+                                            <span className="status-detected">🎤 Wake word detected!</span>
+                                        ) : speechDetected ? (
+                                            <span className="status-speaking">🗣️ Listening...</span>
+                                        ) : (
+                                            <span className="status-waiting">👂 Say something...</span>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="transcription-text">
+                                    {realTimeTranscription || 'Waiting for speech...'}
+                                </div>
+                                <div className="transcription-hint">
+                                    Speak naturally, I'll detect when you're done
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     <div className="input-area">
                         <input
@@ -749,7 +977,7 @@ const App: React.FC = () => {
                             value={inputValue}
                             onChange={handleInputChange}
                             onKeyDown={handleKeyPress}
-                            disabled={isRecording}
+                            disabled={isRecording || isWakeWordListening}
                         />
                         <div className="button-group">
                             <IconButton

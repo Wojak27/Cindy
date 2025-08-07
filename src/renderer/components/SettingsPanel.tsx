@@ -29,6 +29,7 @@ const SettingsPanel: React.FC = () => {
     const [activationPhrase, setActivationPhrase] = useState(settings?.voice?.activationPhrase || 'Hi Cindy!');
     const [sttProvider, setSttProvider] = useState(settings?.voice?.sttProvider || 'auto');
     const [wakeWordSensitivity, setWakeWordSensitivity] = useState(settings?.voice?.wakeWordSensitivity || 0.5);
+    const [audioThreshold, setAudioThreshold] = useState(settings?.voice?.audioThreshold || 0.01);
     const [wakeWordEnabled, setWakeWordEnabled] = useState(true);
     const [wakeWordStatus, setWakeWordStatus] = useState('Checking...');
 
@@ -65,6 +66,7 @@ const SettingsPanel: React.FC = () => {
             setActivationPhrase(settings?.voice?.activationPhrase || 'Hi Cindy!');
             setSttProvider(settings?.voice?.sttProvider || 'auto');
             setWakeWordSensitivity(settings?.voice?.wakeWordSensitivity || 0.5);
+            setAudioThreshold(settings?.voice?.audioThreshold || 0.01);
             setLlmProvider(settings?.llm?.provider || 'ollama');
             setOpenaiModel(settings?.llm?.openai?.model || 'gpt-3.5-turbo');
             setOllamaModel(settings?.llm?.ollama?.model || 'qwen3:4b');
@@ -143,6 +145,7 @@ const SettingsPanel: React.FC = () => {
                 activationPhrase,
                 sttProvider,
                 wakeWordSensitivity,
+                audioThreshold,
                 voiceSpeed: settings.voice.voiceSpeed,
                 voicePitch: settings.voice.voicePitch
             },
@@ -336,6 +339,15 @@ const SettingsPanel: React.FC = () => {
 
                             {/* Wake Word Settings */}
                             <Typography variant="subtitle2" gutterBottom sx={{ mt: 2 }}>Wake Word Settings</Typography>
+                            
+                            {/* Info about Whisper wake word */}
+                            <Alert severity="success" sx={{ mb: 2 }}>
+                                <Typography variant="body2">
+                                    Wake word detection is powered by Whisper AI for accurate, offline speech recognition.
+                                    <br />
+                                    You can use any custom phrase - just type it below and adjust the sensitivity for your environment.
+                                </Typography>
+                            </Alert>
                             <FormControl fullWidth margin="normal">
                                 <TextField
                                     id="activationPhrase"
@@ -363,6 +375,21 @@ const SettingsPanel: React.FC = () => {
                                     size="small"
                                 />
                                 <FormHelperText>Lower = more sensitive, Higher = less sensitive</FormHelperText>
+                            </Box>
+
+                            <Box sx={{ mt: 2, mb: 2 }}>
+                                <Typography variant="body2" gutterBottom>
+                                    Audio Level Threshold: {audioThreshold.toFixed(3)}
+                                </Typography>
+                                <Slider
+                                    value={audioThreshold}
+                                    onChange={(_, newValue) => setAudioThreshold(newValue as number)}
+                                    min={0.001}
+                                    max={0.1}
+                                    step={0.001}
+                                    size="small"
+                                />
+                                <FormHelperText>Minimum audio level to trigger wake word detection (prevents activation from background noise)</FormHelperText>
                             </Box>
 
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 2 }}>
@@ -494,7 +521,7 @@ const SettingsPanel: React.FC = () => {
                                 <Slider
                                     aria-labelledby="temperature-slider"
                                     value={temperature}
-                                    onChange={(e, newValue) => setTemperature(newValue as number)}
+                                    onChange={(_, newValue) => setTemperature(newValue as number)}
                                     step={0.1}
                                     min={0}
                                     max={1}
@@ -512,7 +539,7 @@ const SettingsPanel: React.FC = () => {
                                     onChange={(e) => setMaxTokens(parseInt(e.target.value))}
                                     variant="outlined"
                                     size="small"
-                                    InputProps={{ inputProps: { min: 1, max: 4096 } }}
+                                    slotProps={{ input: { inputProps: { min: 1, max: 4096 } } }}
                                 />
                                 <FormHelperText>The maximum number of tokens in the response.</FormHelperText>
                             </FormControl>
