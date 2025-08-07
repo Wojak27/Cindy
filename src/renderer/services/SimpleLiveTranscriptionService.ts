@@ -60,8 +60,8 @@ class SimpleLiveTranscriptionService {
                 this.recordedChunks.push(event.data);
                 this.lastAudioActivity = Date.now();
                 
-                // Process audio if we have enough chunks and not already processing
-                if (this.recordedChunks.length >= 3 && !this.isProcessing) {
+                // Process audio if we have enough chunks (at least 1 second of audio) and not already processing
+                if (this.recordedChunks.length >= 2 && !this.isProcessing) {
                     this.processAudioChunks();
                 }
             }
@@ -71,8 +71,8 @@ class SimpleLiveTranscriptionService {
             console.error('SimpleLiveTranscriptionService: MediaRecorder error:', error);
         };
 
-        // Start recording with small chunks (500ms)
-        this.mediaRecorder.start(500);
+        // Start recording with larger chunks (1000ms) for better audio quality
+        this.mediaRecorder.start(1000);
         
         // Set up silence detection
         this.setupSilenceDetection();
@@ -85,8 +85,8 @@ class SimpleLiveTranscriptionService {
             const now = Date.now();
             const timeSinceLastActivity = now - this.lastAudioActivity;
             
-            // If we have chunks and there's been activity recently, process them
-            if (this.recordedChunks.length > 0 && timeSinceLastActivity > 1000 && !this.isProcessing) {
+            // If we have chunks and there's been silence, process them
+            if (this.recordedChunks.length > 0 && timeSinceLastActivity > 1500 && !this.isProcessing) {
                 this.processAudioChunks();
             }
             
@@ -107,6 +107,13 @@ class SimpleLiveTranscriptionService {
         this.recordedChunks = []; // Clear for next collection
 
         try {
+            // Skip processing if chunks are too small (likely incomplete audio)
+            const totalSize = chunksToProcess.reduce((sum, chunk) => sum + chunk.size, 0);
+            if (totalSize < 5000) { // Skip if less than 5KB
+                console.log('SimpleLiveTranscriptionService: Skipping small audio chunk:', totalSize, 'bytes');
+                return;
+            }
+
             // Create blob from chunks
             const audioBlob = new Blob(chunksToProcess, { 
                 type: chunksToProcess[0]?.type || 'audio/webm' 
@@ -114,12 +121,25 @@ class SimpleLiveTranscriptionService {
 
             // Convert to ArrayBuffer
             const arrayBuffer = await audioBlob.arrayBuffer();
+            
+            // Skip if array buffer is empty or too small
+            if (arrayBuffer.byteLength < 1000) {
+                console.log('SimpleLiveTranscriptionService: Skipping small array buffer:', arrayBuffer.byteLength, 'bytes');
+                return;
+            }
 
             // Decode with AudioContext
             const audioContext = new AudioContext({ sampleRate: 16000 });
             
             try {
                 const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                
+                // Skip if decoded audio is too short (less than 0.3 seconds)
+                if (audioBuffer.duration < 0.3) {
+                    console.log('SimpleLiveTranscriptionService: Skipping short audio:', audioBuffer.duration, 'seconds');
+                    return;
+                }
+                
                 const audioData = audioBuffer.getChannelData(0);
 
                 // Convert to Int16Array
@@ -131,7 +151,7 @@ class SimpleLiveTranscriptionService {
 
                 // Check if audio has enough activity
                 const audioLevel = this.calculateAudioLevel(audioData);
-                if (audioLevel > 0.005) { // Threshold for meaningful audio
+                if (audioLevel > 0.003) { // Lower threshold for meaningful audio
                     // Send for transcription
                     const transcript = await ipcRenderer.invoke('transcribe-audio', [int16Data]);
                     
@@ -147,6 +167,11 @@ class SimpleLiveTranscriptionService {
                         }
                     }
                 }
+            } catch (decodeError) {
+                // Log decode errors less frequently but still log them for debugging
+                if (Math.random() < 0.3) { // Log 30% of decode errors
+                    console.warn('SimpleLiveTranscriptionService: Audio decode error (sampled):', decodeError.message, 'Size:', arrayBuffer.byteLength);
+                }
             } finally {
                 await audioContext.close();
             }
@@ -154,7 +179,7 @@ class SimpleLiveTranscriptionService {
         } catch (error) {
             // Don't log every error to avoid spam
             if (Math.random() < 0.1) { // Log 10% of errors
-                console.warn('SimpleLiveTranscriptionService: Processing error (sampled):', error);
+                console.warn('SimpleLiveTranscriptionService: Processing error (sampled):', error.message);
             }
         } finally {
             this.isProcessing = false;

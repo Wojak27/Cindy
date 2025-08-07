@@ -180,19 +180,6 @@ class LiveTranscriptionService {
         });
     }
 
-    private calculateAudioLevel(audioData: Float32Array): number {
-        if (!audioData || audioData.length === 0) {
-            return 0;
-        }
-
-        let sum = 0;
-        for (let i = 0; i < audioData.length; i++) {
-            sum += audioData[i] * audioData[i];
-        }
-
-        const rms = Math.sqrt(sum / audioData.length);
-        return Math.min(rms, 1.0);
-    }
 
     private calculateFrequencyLevel(frequencyData: Uint8Array): number {
         if (!frequencyData || frequencyData.length === 0) {
