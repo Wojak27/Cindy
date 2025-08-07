@@ -41,46 +41,55 @@ class LiveTranscriptionService {
             this.audioContext = new AudioContext({ sampleRate: 16000 });
             const source = this.audioContext.createMediaStreamSource(this.mediaStream);
             
-            // Create script processor for real-time audio analysis
-            this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
+            // Use AnalyserNode for simpler audio level monitoring
+            const analyser = this.audioContext.createAnalyser();
+            analyser.fftSize = 2048;
+            source.connect(analyser);
             
             let audioBuffer: Float32Array[] = [];
             let isCollectingAudio = false;
+            let lastSpeechTime = 0;
 
-            this.processor.onaudioprocess = (event) => {
-                const inputData = event.inputBuffer.getChannelData(0);
-                const audioLevel = this.calculateAudioLevel(inputData);
+            const monitorAudio = () => {
+                if (!this.isListening) return;
 
-                // Check if there's significant audio input
+                const bufferLength = analyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+                analyser.getByteFrequencyData(dataArray);
+
+                // Calculate audio level from frequency data
+                const audioLevel = this.calculateFrequencyLevel(dataArray);
+
                 if (audioLevel > this.audioThreshold) {
+                    lastSpeechTime = Date.now();
+                    
                     if (!isCollectingAudio) {
                         console.log('LiveTranscriptionService: Speech detected, starting collection');
                         isCollectingAudio = true;
                         audioBuffer = [];
                     }
                     
-                    // Add audio data to buffer
-                    audioBuffer.push(new Float32Array(inputData));
-                    
                     // Clear any existing silence timeout
                     if (this.silenceTimeout) {
                         clearTimeout(this.silenceTimeout);
+                        this.silenceTimeout = null;
                     }
-
-                    // Set timeout for silence detection
-                    this.silenceTimeout = setTimeout(() => {
-                        if (isCollectingAudio && audioBuffer.length > 0) {
-                            console.log('LiveTranscriptionService: Silence detected, processing audio');
-                            this.processCollectedAudio(audioBuffer);
-                            audioBuffer = [];
-                            isCollectingAudio = false;
-                        }
-                    }, this.silenceThreshold);
+                } else if (isCollectingAudio && Date.now() - lastSpeechTime > this.silenceThreshold) {
+                    // Process collected audio after silence
+                    if (audioBuffer.length > 0) {
+                        console.log('LiveTranscriptionService: Silence detected, processing audio');
+                        this.processCollectedAudio([...audioBuffer]); // Pass copy
+                    }
+                    audioBuffer = [];
+                    isCollectingAudio = false;
                 }
+
+                // Continue monitoring
+                setTimeout(monitorAudio, 100); // Check every 100ms
             };
 
-            source.connect(this.processor);
-            this.processor.connect(this.audioContext.destination);
+            // Start monitoring
+            monitorAudio();
 
             this.isListening = true;
             console.log('LiveTranscriptionService: Started live transcription');
@@ -183,6 +192,20 @@ class LiveTranscriptionService {
 
         const rms = Math.sqrt(sum / audioData.length);
         return Math.min(rms, 1.0);
+    }
+
+    private calculateFrequencyLevel(frequencyData: Uint8Array): number {
+        if (!frequencyData || frequencyData.length === 0) {
+            return 0;
+        }
+
+        let sum = 0;
+        for (let i = 0; i < frequencyData.length; i++) {
+            sum += frequencyData[i];
+        }
+
+        const average = sum / frequencyData.length;
+        return average / 255.0; // Normalize to 0-1
     }
 
     private calculateSimilarity(str1: string, str2: string): number {
