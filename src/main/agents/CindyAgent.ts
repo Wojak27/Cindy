@@ -293,8 +293,14 @@ Your tools include:
 **Scheduling:**
 - schedule_task: Schedule research tasks and reminders
 
-When you need to use tools, format your response like this:
+When you need to use tools, format your response EXACTLY like this:
 <tool>{"name": "tool_name", "parameters": {"param1": "value1"}}</tool>
+
+IMPORTANT TOOL FORMATTING RULES:
+1. Always use exactly one tool per tool block
+2. Ensure the JSON is properly formatted with no trailing characters
+3. Do not add backslashes, newlines, or extra text after the closing </tool> tag
+4. The JSON must be valid and parseable
 
 Examples:
 - <tool>{"name": "calculate", "parameters": {"expression": "25 * 1.08"}}</tool>

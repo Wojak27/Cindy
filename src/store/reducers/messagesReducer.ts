@@ -9,9 +9,21 @@ const initialState = {
 const messagesReducer = (state = initialState, action: any) => {
   switch (action.type) {
     case 'ADD_MESSAGE':
+      // Prevent duplicate messages by checking if message already exists
+      const messageExists = state.messages.some(msg => msg.id === action.payload.id);
+      if (messageExists) {
+        console.warn('Preventing duplicate message:', action.payload.id);
+        return state;
+      }
       return {
         ...state,
         messages: [...state.messages, action.payload]
+      };
+    case 'LOAD_MESSAGES':
+      // Batch load messages (for conversation history)
+      return {
+        ...state,
+        messages: action.payload || []
       };
     case 'CLEAR_MESSAGES':
       return {
@@ -147,6 +159,13 @@ const messagesReducer = (state = initialState, action: any) => {
     case 'STREAM_ERROR':
       return state;
     case 'ADD_THINKING_BLOCK':
+      // Prevent duplicate thinking blocks
+      const blockExists = state.thinkingBlocks.some(block => block.id === action.payload.id);
+      if (blockExists) {
+        console.warn('Preventing duplicate thinking block:', action.payload.id);
+        return state;
+      }
+
       // Associate thinking block with the current assistant message if available
       const currentAssistantMessage = state.messages.length > 0 && state.messages[state.messages.length - 1].role === 'assistant'
         ? state.messages[state.messages.length - 1]
@@ -159,6 +178,12 @@ const messagesReducer = (state = initialState, action: any) => {
       return {
         ...state,
         thinkingBlocks: [...state.thinkingBlocks, enhancedBlock]
+      };
+    case 'LOAD_THINKING_BLOCKS':
+      // Batch load thinking blocks
+      return {
+        ...state,
+        thinkingBlocks: action.payload || []
       };
     case 'UPDATE_THINKING_BLOCK':
       return {

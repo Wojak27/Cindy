@@ -154,14 +154,22 @@ export class ToolTokenHandler {
         } else {
             // Check if we might be starting a tool block
             const partialStartIndex = remainingContent.lastIndexOf('<');
-            if (partialStartIndex !== -1 && partialStartIndex === remainingContent.length - 1) {
-                // Might be the start of '<tool>'
-                displayContent += remainingContent.slice(0, partialStartIndex);
-                this.pendingContent = remainingContent.slice(partialStartIndex);
-            } else if (partialStartIndex !== -1 && remainingContent.slice(partialStartIndex).startsWith('<t')) {
-                // Partial '<tool>' token
-                displayContent += remainingContent.slice(0, partialStartIndex);
-                this.pendingContent = remainingContent.slice(partialStartIndex);
+            if (partialStartIndex !== -1) {
+                const potentialTag = remainingContent.slice(partialStartIndex);
+                
+                // Handle various partial cases
+                if (potentialTag === '<' || 
+                    potentialTag.startsWith('<t') || 
+                    potentialTag.startsWith('<to') ||
+                    potentialTag.startsWith('<too') ||
+                    potentialTag.startsWith('<tool')) {
+                    // Partial '<tool>' token
+                    displayContent += remainingContent.slice(0, partialStartIndex);
+                    this.pendingContent = potentialTag;
+                } else {
+                    // Not a tool tag, add all to display
+                    displayContent += remainingContent;
+                }
             } else {
                 displayContent += remainingContent;
             }
@@ -187,7 +195,21 @@ export class ToolTokenHandler {
      */
     private parseToolCall(content: string, conversationId: string): ToolCall | null {
         try {
-            const parsed = JSON.parse(content.trim());
+            // Clean up the content by removing trailing backslashes and whitespace
+            let cleanContent = content.trim();
+            
+            // Remove trailing backslashes that might appear from malformed XML
+            cleanContent = cleanContent.replace(/\\+$/, '');
+            
+            // Remove any trailing newlines or extra characters
+            cleanContent = cleanContent.replace(/[\n\r\s]*$/, '');
+            
+            console.log('🔧 Tool Handler: Cleaning content:', { 
+                original: content, 
+                cleaned: cleanContent 
+            });
+            
+            const parsed = JSON.parse(cleanContent);
             
             if (!parsed.name) {
                 console.error('🔧 Tool Handler: Tool call missing required "name" field');
@@ -202,10 +224,43 @@ export class ToolTokenHandler {
                 startTime: Date.now()
             };
 
+            console.log('🔧 Tool Handler: Successfully parsed tool call:', {
+                id: toolCall.id,
+                name: toolCall.name,
+                parameters: toolCall.parameters
+            });
+
             return toolCall;
         } catch (error) {
             console.error('🔧 Tool Handler: Failed to parse tool call JSON:', error);
             console.error('🔧 Tool Handler: Content that failed to parse:', content);
+            
+            // Try to fix common issues and parse again
+            try {
+                let fixedContent = content.trim()
+                    .replace(/\\+$/, '') // Remove trailing backslashes
+                    .replace(/[\n\r]*$/, '') // Remove trailing newlines
+                    .replace(/,\s*}/, '}') // Remove trailing commas
+                    .replace(/,\s*]/, ']'); // Remove trailing commas in arrays
+                
+                console.log('🔧 Tool Handler: Attempting to fix malformed JSON:', fixedContent);
+                const parsed = JSON.parse(fixedContent);
+                
+                if (parsed.name) {
+                    const toolCall: ToolCall = {
+                        id: `tool-${conversationId}-${this.currentToolId++}`,
+                        name: parsed.name,
+                        parameters: parsed.parameters || {},
+                        status: 'pending',
+                        startTime: Date.now()
+                    };
+                    console.log('🔧 Tool Handler: Fixed and parsed tool call successfully');
+                    return toolCall;
+                }
+            } catch (fixError) {
+                console.error('🔧 Tool Handler: Failed to fix malformed JSON:', fixError);
+            }
+            
             return null;
         }
     }
