@@ -56,16 +56,20 @@ const SettingsPanel: React.FC = () => {
     // Theme settings state
     const [, setTheme] = useState(settings?.theme || 'system');
 
-    // Auto-save functionality (similar to DatabasePanel)
-    const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    // Track if there are unsaved changes
+    const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
     const isUpdatingFromRedux = useRef(false);
 
-    // Auto-save function
-    const autoSaveSettings = useCallback(() => {
+    // Mark as having unsaved changes when any setting is modified
+    useEffect(() => {
         if (isUpdatingFromRedux.current) {
-            return; // Don't save if updating from Redux
+            return; // Don't mark as changed if updating from Redux
         }
+        setHasUnsavedChanges(true);
+    }, [activationPhrase, sttProvider, wakeWordSensitivity, audioThreshold, llmProvider, openaiModel, openaiApiKey, temperature, maxTokens, ollamaModel, ollamaBaseUrl, name, surname]);
 
+    // Function to save settings (only called explicitly)
+    const saveSettings = useCallback(() => {
         dispatch(updateSettings({
             voice: {
                 activationPhrase,
@@ -93,30 +97,16 @@ const SettingsPanel: React.FC = () => {
                 hasCompletedSetup: true
             }
         }));
+        setHasUnsavedChanges(false);
     }, [dispatch, activationPhrase, sttProvider, wakeWordSensitivity, audioThreshold, llmProvider, openaiModel, openaiApiKey, temperature, maxTokens, ollamaModel, ollamaBaseUrl, name, surname]);
 
-    // Debounced auto-save effect
-    useEffect(() => {
-        if (isUpdatingFromRedux.current) {
-            return () => {}; // Don't trigger auto-save if updating from Redux
+    // Function to handle closing settings
+    const handleClose = useCallback(() => {
+        if (hasUnsavedChanges) {
+            saveSettings();
         }
-
-        // Clear existing timeout
-        if (saveTimeoutRef.current) {
-            clearTimeout(saveTimeoutRef.current);
-        }
-
-        // Set new timeout
-        saveTimeoutRef.current = setTimeout(() => {
-            autoSaveSettings();
-        }, 1000); // 1 second debounce
-
-        return () => {
-            if (saveTimeoutRef.current) {
-                clearTimeout(saveTimeoutRef.current);
-            }
-        };
-    }, [activationPhrase, sttProvider, wakeWordSensitivity, audioThreshold, llmProvider, openaiModel, openaiApiKey, temperature, maxTokens, ollamaModel, ollamaBaseUrl, name, surname, autoSaveSettings]);
+        dispatch(toggleSettings());
+    }, [hasUnsavedChanges, saveSettings, dispatch]);
 
     // Update local state when settings change in the store
     useEffect(() => {
@@ -172,37 +162,37 @@ const SettingsPanel: React.FC = () => {
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        dispatch(updateSettings({
-            voice: {
-                activationPhrase,
-                sttProvider,
-                wakeWordSensitivity,
-                audioThreshold,
-                voiceSpeed: settings.voice.voiceSpeed,
-                voicePitch: settings.voice.voicePitch
-            },
-            llm: {
-                provider: llmProvider,
-                openai: {
-                    model: openaiModel,
-                    apiKey: openaiApiKey || settings.llm.openai.apiKey,
-                    organizationId: settings.llm.openai.organizationId,
-                    temperature,
-                    maxTokens
-                },
-                ollama: {
-                    model: ollamaModel,
-                    baseUrl: ollamaBaseUrl,
-                    temperature
-                }
-            },
-            profile: {
-                name,
-                surname,
-                hasCompletedSetup: true
-            }
-        }));
+        saveSettings();
     };
+
+    // Function to cancel changes and revert to saved settings
+    const handleCancel = useCallback(() => {
+        // Reset to saved settings from Redux store
+        if (settings) {
+            isUpdatingFromRedux.current = true;
+            
+            setActivationPhrase(settings?.voice?.activationPhrase || 'Hi Cindy!');
+            setSttProvider(settings?.voice?.sttProvider || 'auto');
+            setWakeWordSensitivity(settings?.voice?.wakeWordSensitivity || 0.5);
+            setAudioThreshold(settings?.voice?.audioThreshold || 0.01);
+            setLlmProvider(settings?.llm?.provider || 'ollama');
+            setOpenaiModel(settings?.llm?.openai?.model || 'gpt-3.5-turbo');
+            setOllamaModel(settings?.llm?.ollama?.model || 'qwen3:4b');
+            setOpenaiApiKey(settings?.llm?.openai?.apiKey || '');
+            setOllamaBaseUrl(settings?.llm?.ollama?.baseUrl || 'http://127.0.0.1:11434');
+            setTemperature(settings?.llm?.openai?.temperature || 0.7);
+            setMaxTokens(settings?.llm?.openai?.maxTokens || 4096);
+            setName(settings?.profile?.name || '');
+            setSurname(settings?.profile?.surname || '');
+            setTheme(settings?.theme || 'system');
+            
+            setTimeout(() => {
+                isUpdatingFromRedux.current = false;
+                setHasUnsavedChanges(false);
+            }, 100);
+        }
+        dispatch(toggleSettings());
+    }, [settings, dispatch]);
 
     // Handle blob style change
     const handleBlobStyleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -288,8 +278,9 @@ const SettingsPanel: React.FC = () => {
             <div className="settings-header">
                 <Typography variant="h6">Settings</Typography>
                 <IconButton
-                    onClick={() => dispatch(toggleSettings())}
+                    onClick={handleClose}
                     size="small"
+                    title={hasUnsavedChanges ? "Save and close" : "Close"}
                 >
                     <CloseIcon />
                 </IconButton>
@@ -634,6 +625,14 @@ const SettingsPanel: React.FC = () => {
             </div>
             <div className="settings-footer">
                 <Button
+                    variant="outlined"
+                    color="secondary"
+                    onClick={handleCancel}
+                    sx={{ mr: 1 }}
+                >
+                    Cancel
+                </Button>
+                <Button
                     type="submit"
                     variant="contained"
                     color="primary"
@@ -641,8 +640,9 @@ const SettingsPanel: React.FC = () => {
                         handleSubmit(e);
                         dispatch(toggleSettings());
                     }}
+                    disabled={!hasUnsavedChanges}
                 >
-                    Save Settings
+                    {hasUnsavedChanges ? 'Save Changes' : 'Saved'}
                 </Button>
             </div>
         </div>

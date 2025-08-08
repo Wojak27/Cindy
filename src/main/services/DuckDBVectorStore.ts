@@ -1,6 +1,9 @@
 import { EventEmitter } from 'events';
 import { Database } from 'duckdb-async';
 import { OpenAIEmbeddings } from '@langchain/openai';
+import { OllamaEmbeddings } from '@langchain/ollama';
+import { HuggingFaceTransformersEmbeddings } from '@langchain/community/embeddings/huggingface_transformers';
+import { Embeddings } from '@langchain/core/embeddings';
 import { Document } from '@langchain/core/documents';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -12,11 +15,15 @@ import { DocxLoader } from '@langchain/community/document_loaders/fs/docx';
 
 interface DuckDBVectorStoreConfig {
     databasePath: string;
-    openaiApiKey: string;
+    embeddingProvider?: 'openai' | 'ollama' | 'huggingface';
     embeddingModel?: string;
     chunkSize?: number;
     chunkOverlap?: number;
     vectorDimension?: number;
+    // Provider-specific options
+    openaiApiKey?: string; // Only required when provider is 'openai'
+    ollamaBaseUrl?: string; // Optional for Ollama
+    huggingfaceModel?: string; // Optional for HuggingFace
 }
 
 interface IndexedFile {
@@ -29,7 +36,7 @@ interface IndexedFile {
 
 export class DuckDBVectorStore extends EventEmitter {
     private db: Database | null = null;
-    private embeddings: OpenAIEmbeddings;
+    private embeddings: Embeddings;
     private config: DuckDBVectorStoreConfig;
     private textSplitter: RecursiveCharacterTextSplitter;
     private indexedFiles: Map<string, IndexedFile> = new Map();
@@ -37,19 +44,18 @@ export class DuckDBVectorStore extends EventEmitter {
 
     constructor(config: DuckDBVectorStoreConfig) {
         super();
+        // Set defaults based on provider
+        const provider = config.embeddingProvider || 'openai';
+        const defaultConfig = this.getProviderDefaults(provider);
+
         this.config = {
-            embeddingModel: 'text-embedding-3-small',
-            chunkSize: 1000,
-            chunkOverlap: 200,
-            vectorDimension: 1536, // Default for text-embedding-3-small
-            ...config
+            ...defaultConfig,
+            ...config,
+            embeddingProvider: provider
         };
 
-        // Initialize OpenAI embeddings
-        this.embeddings = new OpenAIEmbeddings({
-            openAIApiKey: this.config.openaiApiKey,
-            modelName: this.config.embeddingModel
-        });
+        // Initialize embeddings based on provider
+        this.embeddings = this.createEmbeddingsProvider();
 
         // Initialize text splitter
         this.textSplitter = new RecursiveCharacterTextSplitter({
@@ -57,6 +63,68 @@ export class DuckDBVectorStore extends EventEmitter {
             chunkOverlap: this.config.chunkOverlap!,
             separators: ['\n\n', '\n', ' ', '']
         });
+    }
+
+    private getProviderDefaults(provider: string): Partial<DuckDBVectorStoreConfig> {
+        switch (provider) {
+
+            case 'huggingface':
+                return {
+                    embeddingModel: 'Xenova/all-MiniLM-L6-v2',
+                    chunkSize: 1000,
+                    chunkOverlap: 200,
+                    vectorDimension: 384, // Default for all-MiniLM-L6-v2
+                    huggingfaceModel: 'Xenova/all-MiniLM-L6-v2'
+                };
+            case 'openai':
+                return {
+                    embeddingModel: 'text-embedding-ada-002',
+                    chunkSize: 1000,
+                    chunkOverlap: 200,
+                    vectorDimension: 1536 // Default for text-embedding-ada-002
+                };
+            case 'ollama':
+            default:
+                return {
+                    embeddingModel: 'nomic-embed-text',
+                    chunkSize: 1000,
+                    chunkOverlap: 200,
+                    vectorDimension: 768, // Default for nomic-embed-text
+                    ollamaBaseUrl: 'http://localhost:11434'
+                };
+        }
+    }
+
+    private createEmbeddingsProvider(): Embeddings {
+        const provider = this.config.embeddingProvider!;
+
+        switch (provider) {
+            case 'ollama':
+                console.log('[DuckDBVectorStore] Using Ollama embeddings:', this.config.embeddingModel);
+                return new OllamaEmbeddings({
+                    model: this.config.embeddingModel!,
+                    baseUrl: this.config.ollamaBaseUrl
+                });
+
+            case 'huggingface':
+                console.log('[DuckDBVectorStore] Using HuggingFace local embeddings:', this.config.huggingfaceModel);
+                return new HuggingFaceTransformersEmbeddings({
+                    model: this.config.huggingfaceModel!
+                });
+
+            case 'openai':
+                if (!this.config.openaiApiKey) {
+                    throw new Error('OpenAI API key is required when using OpenAI embeddings provider');
+                }
+                console.log('[DuckDBVectorStore] Using OpenAI embeddings (Ada):', this.config.embeddingModel);
+                return new OpenAIEmbeddings({
+                    openAIApiKey: this.config.openaiApiKey,
+                    modelName: this.config.embeddingModel!
+                });
+
+            default:
+                throw new Error(`Unsupported embedding provider: ${provider}`);
+        }
     }
 
     async initialize(): Promise<void> {
@@ -71,10 +139,13 @@ export class DuckDBVectorStore extends EventEmitter {
 
             // Initialize DuckDB
             this.db = await Database.create(this.config.databasePath);
-            
+
             // Install and load VSS extension
             await this.db.all(`INSTALL vss;`);
             await this.db.all(`LOAD vss;`);
+
+            // Enable experimental HNSW persistence for file-based databases
+            await this.db.all(`SET hnsw_enable_experimental_persistence = true;`);
 
             // Create tables for vector storage
             await this.createTables();
@@ -114,42 +185,54 @@ export class DuckDBVectorStore extends EventEmitter {
         `);
 
         // Create VSS index for similarity search
-        await this.db.all(`
-            CREATE INDEX IF NOT EXISTS idx_documents_embedding 
-            ON documents USING HNSW (embedding) 
-            WITH (metric = 'cosine')
-        `);
+        try {
+            await this.db.all(`
+                CREATE INDEX IF NOT EXISTS idx_documents_embedding 
+                ON documents USING HNSW (embedding) 
+                WITH (metric = 'cosine')
+            `);
+            console.log('[DuckDBVectorStore] HNSW index created successfully');
+        } catch (error) {
+            console.warn('[DuckDBVectorStore] HNSW index creation failed, using slower brute force search:', error.message);
+            // Continue without index - queries will be slower but still work
+        }
 
         console.log('[DuckDBVectorStore] Tables and indexes created');
     }
 
     async addDocuments(documents: Document[]): Promise<void> {
         if (!this.db) throw new Error('Database not initialized');
-
-        const embeddings = await this.embeddings.embedDocuments(
-            documents.map(doc => doc.pageContent)
-        );
-
-        const stmt = await this.db.prepare(`
-            INSERT INTO documents (id, content, metadata, embedding)
-            VALUES (?, ?, ?, ?)
-        `);
-
-        for (let i = 0; i < documents.length; i++) {
-            const doc = documents[i];
-            const embedding = embeddings[i];
-            const id = `doc_${Date.now()}_${i}`;
-            
-            await stmt.run(
-                id,
-                doc.pageContent,
-                JSON.stringify(doc.metadata || {}),
-                `[${embedding.join(',')}]`
+        // TODO: Fix error below
+        try {
+            const embeddings = await this.embeddings.embedDocuments(
+                documents.map(doc => doc.pageContent)
             );
-        }
 
-        await stmt.finalize();
-        console.log(`[DuckDBVectorStore] Added ${documents.length} documents`);
+            const stmt = await this.db.prepare(`
+                INSERT INTO documents (id, content, metadata, embedding)
+                VALUES (?, ?, ?, ?)
+                `);
+
+            for (let i = 0; i < documents.length; i++) {
+                const doc = documents[i];
+                const embedding = embeddings[i];
+                const id = `doc_${Date.now()}_${i}`;
+
+                await stmt.run(
+                    id,
+                    doc.pageContent,
+                    JSON.stringify(doc.metadata || {}),
+                    `[${embedding.join(',')}]`
+                );
+            }
+
+            await stmt.finalize();
+            console.log(`[DuckDBVectorStore] Added ${documents.length} documents`);
+        }
+        catch (error) {
+            console.error('[DuckDBVectorStore] Error embedding documents:', error);
+            throw new Error('Failed to embed documents');
+        }
     }
 
     async similaritySearch(query: string, k: number = 5): Promise<Document[]> {
@@ -157,22 +240,39 @@ export class DuckDBVectorStore extends EventEmitter {
 
         // Get query embedding
         const queryEmbedding = await this.embeddings.embedQuery(query);
-        
-        // Perform similarity search using VSS
-        const results = await this.db.all(`
-            SELECT 
-                content,
-                metadata,
-                vss_distance_cosine(embedding, ?::FLOAT[${this.config.vectorDimension}]) as distance
-            FROM documents
-            ORDER BY distance ASC
-            LIMIT ?
-        `, [`[${queryEmbedding.join(',')}]`, k]);
 
-        return results.map(row => new Document({
-            pageContent: row.content,
-            metadata: JSON.parse(row.metadata)
-        }));
+        // Perform similarity search using VSS (with or without HNSW index)
+        try {
+            const results = await this.db.all(`
+                SELECT 
+                    content,
+                    metadata,
+                    vss_distance_cosine(embedding, ?::FLOAT[${this.config.vectorDimension}]) as distance
+                FROM documents
+                ORDER BY distance ASC
+                LIMIT ?
+            `, [`[${queryEmbedding.join(',')}]`, k]);
+
+            return results.map(row => new Document({
+                pageContent: row.content,
+                metadata: JSON.parse(row.metadata)
+            }));
+        } catch (error) {
+            console.error('[DuckDBVectorStore] VSS search failed:', error);
+            // Fallback to basic search without similarity scoring
+            console.log('[DuckDBVectorStore] Falling back to basic text search');
+            const results = await this.db.all(`
+                SELECT content, metadata
+                FROM documents
+                WHERE content LIKE ?
+                LIMIT ?
+            `, [`%${query}%`, k]);
+
+            return results.map(row => new Document({
+                pageContent: row.content,
+                metadata: JSON.parse(row.metadata)
+            }));
+        }
     }
 
     async indexFolder(folderPath: string): Promise<{ success: number; errors: number }> {
@@ -186,9 +286,14 @@ export class DuckDBVectorStore extends EventEmitter {
 
         console.log(`[DuckDBVectorStore] Starting to index ${totalFiles} files from ${folderPath}`);
 
+        if (totalFiles === 0) {
+            console.log('[DuckDBVectorStore] No supported files found. Supported extensions: .pdf, .txt, .md, .json, .docx, .doc');
+            return stats;
+        }
+
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
-            
+
             this.emit('progress', {
                 current: i + 1,
                 total: totalFiles,
@@ -274,17 +379,53 @@ export class DuckDBVectorStore extends EventEmitter {
     }
 
     private getAllFiles(dirPath: string, arrayOfFiles: string[] = []): string[] {
-        const files = fs.readdirSync(dirPath);
+        const supportedExtensions = new Set(['.pdf', '.txt', '.md', '.json', '.docx', '.doc']);
 
-        files.forEach(file => {
-            const filePath = path.join(dirPath, file);
-            if (fs.statSync(filePath).isDirectory()) {
-                arrayOfFiles = this.getAllFiles(filePath, arrayOfFiles);
-            } else {
-                arrayOfFiles.push(filePath);
-            }
-        });
+        try {
+            const files = fs.readdirSync(dirPath);
+            console.log(`[DuckDBVectorStore] Scanning directory: ${dirPath} (${files.length} items)`);
+            console.log(`[DuckDBVectorStore] Directory contents:`, files);
 
+            files.forEach(file => {
+                console.log(`[DuckDBVectorStore] Processing item: ${file}`);
+
+                const filePath = path.join(dirPath, file);
+                try {
+                    const stat = fs.statSync(filePath);
+
+                    if (stat.isDirectory()) {
+                        console.log(`[DuckDBVectorStore] Directory found: ${file}`);
+                        // Skip hidden files and directories
+                        if (file.startsWith('.')) {
+                            console.log(`[DuckDBVectorStore] Skipping hidden directory: ${file}`);
+                            return;
+                        }
+                        // Skip common directories that shouldn't be indexed
+                        if (['node_modules', '.git', 'dist', 'build', '__pycache__', '.next'].includes(file)) {
+                            console.log(`[DuckDBVectorStore] Skipping excluded directory: ${file}`);
+                            return;
+                        }
+                        arrayOfFiles = this.getAllFiles(filePath, arrayOfFiles);
+                    } else if (stat.isFile()) {
+                        const ext = path.extname(file).toLowerCase();
+                        console.log(`[DuckDBVectorStore] File found: ${file} (extension: ${ext})`);
+
+                        if (supportedExtensions.has(ext)) {
+                            arrayOfFiles.push(filePath);
+                            console.log(`[DuckDBVectorStore] ✅ Added supported file: ${filePath}`);
+                        } else {
+                            console.log(`[DuckDBVectorStore] ❌ Unsupported extension: ${ext} for file ${file}`);
+                        }
+                    }
+                } catch (error) {
+                    console.warn(`[DuckDBVectorStore] Error accessing ${filePath}:`, error.message);
+                }
+            });
+        } catch (error) {
+            console.error(`[DuckDBVectorStore] Error reading directory ${dirPath}:`, error.message);
+        }
+
+        console.log(`[DuckDBVectorStore] Total supported files found: ${arrayOfFiles.length}`);
         return arrayOfFiles;
     }
 
@@ -326,25 +467,25 @@ export class DuckDBVectorStore extends EventEmitter {
     // Create a LangChain-compatible wrapper
     asLangChainVectorStore(): any {
         const self = this;
-        
+
         // Return a simplified interface for now
         return {
             embeddings: this.embeddings,
-            
+
             async addDocuments(documents: Document[]): Promise<void> {
                 return self.addDocuments(documents);
             },
-            
+
             async similaritySearch(query: string, k?: number): Promise<Document[]> {
                 return self.similaritySearch(query, k);
             },
-            
+
             async similaritySearchWithScore(query: string, k?: number): Promise<[Document, number][]> {
                 const docs = await self.similaritySearch(query, k);
                 // Return documents with dummy scores for now
                 return docs.map(doc => [doc, 0.5]);
             },
-            
+
             async delete(): Promise<void> {
                 return self.clearIndex();
             }

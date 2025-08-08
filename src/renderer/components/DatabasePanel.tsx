@@ -49,7 +49,7 @@ const DatabasePanel: React.FC = () => {
     const [autoIndex, setAutoIndex] = useState(settings?.database?.autoIndex || true);
     const [pathValidation, setPathValidation] = useState<{ valid: boolean; message?: string } | null>(null);
     const [notesPathValidation, setNotesPathValidation] = useState<{ valid: boolean; message?: string } | null>(null);
-    
+
     // Indexing state
     const [isIndexing, setIsIndexing] = useState(false);
     const [indexingProgress, setIndexingProgress] = useState(0);
@@ -161,7 +161,7 @@ const DatabasePanel: React.FC = () => {
 
     const indexDirectory = async (directoryPath?: string) => {
         const pathToIndex = directoryPath || notesPath || databasePath;
-        
+
         if (!pathToIndex) {
             setNotificationMessage('Please set a directory path to index');
             setNotificationSeverity('error');
@@ -171,16 +171,16 @@ const DatabasePanel: React.FC = () => {
 
         setIsIndexing(true);
         setIndexingProgress(0);
-        
+
         try {
             console.log('Starting directory indexing for:', pathToIndex);
             const result = await ipcRenderer.invoke('vector-store:index-directory', pathToIndex);
-            
+
             if (result.success) {
                 setNotificationMessage(`Successfully indexed ${result.indexed} files${result.errors > 0 ? ` with ${result.errors} errors` : ''}`);
                 setNotificationSeverity('success');
                 setShowNotification(true);
-                
+
                 // Reload indexed items
                 const itemsResult = await ipcRenderer.invoke('vector-store:get-indexed-items', databasePath);
                 if (itemsResult.success && itemsResult.items) {
@@ -208,7 +208,7 @@ const DatabasePanel: React.FC = () => {
             setIsIndexing(true);
             setIndexingProgress(0);
             setIndexedItems([]);
-            
+
             const options = {
                 databasePath,
                 embeddingModel,
@@ -225,27 +225,27 @@ const DatabasePanel: React.FC = () => {
                     setIndexedItems(prev => [...prev, data.file]);
                 }
             };
-            
+
             ipcRenderer.on('vector-store:indexing-progress', progressHandler);
 
             const result = await ipcRenderer.invoke('create-vector-store', options);
-            
+
             // Clean up listener
             ipcRenderer.removeListener('vector-store:indexing-progress', progressHandler);
-            
+
             if (result.success) {
                 console.log('Vector store created successfully');
-                
+
                 // Get indexed items
                 if (result.indexedFiles) {
                     setIndexedItems(result.indexedFiles);
                 }
-                
+
                 // Show success notification
                 setNotificationMessage(`Successfully indexed ${result.indexedFiles?.length || 0} files`);
                 setNotificationSeverity('success');
                 setShowNotification(true);
-                
+
                 // Update settings
                 dispatch(updateSettings({
                     database: {
@@ -256,7 +256,7 @@ const DatabasePanel: React.FC = () => {
                         autoIndex
                     }
                 }));
-                
+
                 // Don't close panel immediately - let user see results
                 setTimeout(() => {
                     dispatch({ type: 'TOGGLE_DATABASE_SIDEBAR' });
@@ -277,7 +277,7 @@ const DatabasePanel: React.FC = () => {
             setIndexingProgress(100);
         }
     };
-    
+
     // Load existing indexed items when component mounts or path changes
     useEffect(() => {
         const loadIndexedItems = async () => {
@@ -292,14 +292,14 @@ const DatabasePanel: React.FC = () => {
                 }
             }
         };
-        
+
         loadIndexedItems();
     }, [databasePath]);
-    
+
     const handleAccordionChange = (panel: string) => (_event: React.SyntheticEvent, isExpanded: boolean) => {
         setExpandedAccordion(isExpanded ? panel : false);
     };
-    
+
     const getFileIcon = (fileName: string) => {
         const ext = fileName.split('.').pop()?.toLowerCase();
         if (['pdf'].includes(ext || '')) return '📄';
@@ -422,7 +422,7 @@ const DatabasePanel: React.FC = () => {
                             size="small"
                         >
                             <MenuItem value="qwen3:8b">Qwen3 8B</MenuItem>
-                            <MenuItem value="text-embedding-ada-002">Text Embedding Ada 002</MenuItem>
+                            <MenuItem value="dengcao/Qwen3-Embedding-0.6B">Qwen3-Embedding-0.6B</MenuItem>
                             <MenuItem value="all-MiniLM-L6-v2">All MiniLM L6 v2</MenuItem>
                         </Select>
                         <FormHelperText>The model used for generating embeddings.</FormHelperText>
@@ -512,7 +512,7 @@ const DatabasePanel: React.FC = () => {
                             <FormHelperText>
                                 This will index PDF, Word documents (.doc/.docx), text, markdown, and code files in the selected directory for RAG queries.
                             </FormHelperText>
-                            
+
                             {/* Progress bar during indexing */}
                             {isIndexing && (
                                 <Box sx={{ width: '100%', mt: 2 }}>
@@ -526,11 +526,11 @@ const DatabasePanel: React.FC = () => {
                                     </Box>
                                 </Box>
                             )}
-                            
+
                             {/* Expandable view of indexed items */}
                             {indexedItems.length > 0 && (
-                                <Accordion 
-                                    expanded={expandedAccordion === 'indexed'} 
+                                <Accordion
+                                    expanded={expandedAccordion === 'indexed'}
                                     onChange={handleAccordionChange('indexed')}
                                     sx={{ mt: 2 }}
                                 >
@@ -555,15 +555,15 @@ const DatabasePanel: React.FC = () => {
                                                             <InsertDriveFileIcon fontSize="small" />
                                                         )}
                                                     </ListItemIcon>
-                                                    <ListItemText 
+                                                    <ListItemText
                                                         primary={
                                                             <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                                 <span>{getFileIcon(item.name)} {item.name}</span>
                                                                 {item.chunks && (
-                                                                    <Chip 
-                                                                        label={`${item.chunks} chunks`} 
-                                                                        size="small" 
-                                                                        variant="outlined" 
+                                                                    <Chip
+                                                                        label={`${item.chunks} chunks`}
+                                                                        size="small"
+                                                                        variant="outlined"
                                                                     />
                                                                 )}
                                                             </span>
@@ -609,7 +609,7 @@ const DatabasePanel: React.FC = () => {
                     </div>
                 </Box>
             </div>
-            
+
             {/* Notification Snackbar */}
             <Snackbar
                 open={showNotification}
@@ -617,8 +617,8 @@ const DatabasePanel: React.FC = () => {
                 onClose={() => setShowNotification(false)}
                 anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
             >
-                <Alert 
-                    onClose={() => setShowNotification(false)} 
+                <Alert
+                    onClose={() => setShowNotification(false)}
                     severity={notificationSeverity}
                     sx={{ width: '100%' }}
                 >

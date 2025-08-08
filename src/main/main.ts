@@ -276,22 +276,64 @@ const setupDatabaseIPC = () => {
             }
 
             // Create and initialize DuckDB vector store
-            const apiKey = await settingsService?.getApiKey();
-
-            if (!apiKey) {
-                return {
-                    success: false,
-                    message: 'OpenAI API key required for DuckDB vector store'
-                };
+            // Detect embedding provider based on current LLM provider
+            const generalSettings = (await settingsService?.get('general') || {}) as any;
+            const llmProvider = generalSettings.llmProvider || 'auto';
+            
+            console.log('[IPC] DEBUG: Detected LLM provider:', llmProvider);
+            console.log('[IPC] DEBUG: General settings:', generalSettings);
+            
+            // Store database in app data directory, not in the folder being indexed
+            const appDataPath = app.getPath('userData');
+            const vectorDbDir = path.join(appDataPath, 'vector-stores');
+            
+            // Create vector store directory if it doesn't exist
+            if (!fs.existsSync(vectorDbDir)) {
+                fs.mkdirSync(vectorDbDir, { recursive: true });
             }
-
-            const vectorStore = new DuckDBVectorStore({
-                databasePath: path.join(options.databasePath, 'duckdb-vector-store.db'),
-                openaiApiKey: apiKey,
-                embeddingModel: 'text-embedding-3-small',
+            
+            // Use a hash of the source path to create unique database names
+            const crypto = require('crypto');
+            const sourcePathHash = crypto.createHash('md5').update(options.databasePath).digest('hex').substring(0, 8);
+            const dbName = `vector-store-${sourcePathHash}.db`;
+            
+            let vectorStoreConfig: any = {
+                databasePath: path.join(vectorDbDir, dbName),
                 chunkSize: 1000,
                 chunkOverlap: 200
-            });
+            };
+            
+            console.log('[IPC] Vector database will be stored at:', vectorStoreConfig.databasePath);
+            console.log('[IPC] Indexing content from:', options.databasePath);
+
+            // Choose embedding provider based on LLM provider
+            // Use Ollama embeddings if LLM provider is 'ollama'
+            if (llmProvider === 'ollama') {
+                vectorStoreConfig.embeddingProvider = 'ollama';
+                console.log('[IPC] Using Ollama embeddings (no API key required)');
+            } else {
+                // For 'openai' and 'auto' providers, try to use OpenAI embeddings
+                // But first check if we actually have an API key
+                const apiKey = await settingsService?.getApiKey();
+                
+                if (!apiKey && llmProvider === 'auto') {
+                    // If no API key and auto mode, fallback to Ollama
+                    console.log('[IPC] No OpenAI API key found in auto mode, falling back to Ollama embeddings');
+                    vectorStoreConfig.embeddingProvider = 'ollama';
+                } else if (!apiKey) {
+                    return {
+                        success: false,
+                        message: 'OpenAI API key required for OpenAI embeddings. Please set your API key or switch to Ollama provider.'
+                    };
+                } else {
+                    vectorStoreConfig.embeddingProvider = 'openai';
+                    vectorStoreConfig.openaiApiKey = apiKey;
+                    vectorStoreConfig.embeddingModel = 'text-embedding-ada-002'; // Use Ada model as requested
+                    console.log('[IPC] Using OpenAI embeddings with Ada model');
+                }
+            }
+
+            const vectorStore = new DuckDBVectorStore(vectorStoreConfig);
 
             await vectorStore.initialize();
 
