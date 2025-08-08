@@ -53,7 +53,6 @@ const App: React.FC = () => {
     const [currentConversationId, setCurrentConversationId] = useState<string>(Date.now().toString());
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [isAppLoading, setIsAppLoading] = useState(true);
-    const [wakeWordActive, setWakeWordActive] = useState(false);
     const [wakeWordDetected, setWakeWordDetected] = useState(false);
     const [isLiveListening, setIsLiveListening] = useState(false);
     const audioContext = useRef<AudioContext | null>(null);
@@ -101,6 +100,8 @@ const App: React.FC = () => {
                     messages,
                     currentConversationId
                 );
+                console.log("Messages before processing", messages);
+                console.log("Updated messages after processing:", updatedMessages);
 
 
                 // Load all processed messages at once to prevent duplication
@@ -243,25 +244,7 @@ const App: React.FC = () => {
         };
     }, [isAppLoading, onWakeWord]);
 
-    // Check wake word status periodically
-    useEffect(() => {
-        const checkWakeWordStatus = async () => {
-            try {
-                const result = await ipcRenderer.invoke('wake-word:status');
-                if (result.success) {
-                    setWakeWordActive(result.isListening);
-                }
-            } catch (error) {
-                console.error('Failed to check wake word status:', error);
-            }
-        };
 
-        // Check immediately and then every 5 seconds
-        checkWakeWordStatus();
-        const interval = setInterval(checkWakeWordStatus, 5000);
-
-        return () => clearInterval(interval);
-    }, []);
 
     // Initialize audio context for recording activation sound only
     useEffect(() => {

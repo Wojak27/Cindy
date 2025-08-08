@@ -37,7 +37,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     initializeLLM: () => ipcRenderer.invoke('initialize-llm'),
     
     // Event listeners
-    on: (channel: string, callback: Function) => {
+    on: (channel: string, callback: (...args: any[]) => void) => {
         const validChannels = [
             'stream-chunk',
             'stream-complete',
@@ -60,8 +60,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         }
     },
     
-    removeListener: (channel: string, callback: Function) => {
-        ipcRenderer.removeListener(channel, callback);
+    removeListener: (channel: string, callback: (...args: any[]) => void) => {
+        ipcRenderer.removeListener(channel, callback as any);
     },
     
     removeAllListeners: (channel: string) => {

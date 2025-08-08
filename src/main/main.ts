@@ -1209,7 +1209,8 @@ app.on('ready', async () => {
                 console.error('Main process - load-conversation: chatStorageService not available');
                 return [];
             }
-            return await chatStorageService.getConversationHistory(conversationId);
+            const loadedMessages = await chatStorageService.getConversationHistory(conversationId)
+            return loadedMessages;
         } catch (error) {
             console.error('Main process - load-conversation: error loading conversation:', error);
             return [];
