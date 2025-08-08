@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
 import { SpeechConfig, AudioConfig, SpeechRecognizer, ResultReason } from 'microsoft-cognitiveservices-speech-sdk';
+import { WhisperInitializer } from './WhisperInitializer';
 
 interface STTConfig {
     provider: 'online' | 'offline' | 'auto' | 'whisper';
@@ -65,6 +66,24 @@ class SpeechToTextService extends EventEmitter {
                 this.emit('transcriptionSuccess', { source: 'whisper', text: result });
                 return result;
             } else if (this.config.provider === 'online' || this.config.provider === 'auto') {
+                // Check if we have API key for online STT
+                if (!this.onlineEngine.hasApiKey()) {
+                    const noApiKeyMessage = 'Azure Speech API key not configured. Please set AZURE_SPEECH_KEY environment variable or configure in settings.';
+                    console.warn('Online STT not available:', noApiKeyMessage);
+                    
+                    if (this.config.provider === 'online') {
+                        // User specifically requested online, show error message
+                        this.emit('transcriptionError', new Error(noApiKeyMessage));
+                        throw new Error(noApiKeyMessage);
+                    } else {
+                        // Auto mode - fallback to offline
+                        console.log('Auto mode: falling back to offline STT due to missing API key');
+                        const result = await this.offlineEngine.transcribe(buffer);
+                        this.emit('transcriptionSuccess', { source: 'offline', text: result });
+                        return result;
+                    }
+                }
+
                 try {
                     const result = await this.onlineEngine.transcribe(buffer);
                     this.emit('transcriptionSuccess', { source: 'online', text: result });
@@ -179,8 +198,12 @@ class OnlineSTTEngine {
     private region: string;
 
     constructor(private config: STTConfig) {
-        this.apiKey = ''; // Will be loaded from secure storage
-        this.region = 'westus'; // Default region
+        this.apiKey = process.env.AZURE_SPEECH_KEY || ''; // Will be loaded from secure storage
+        this.region = process.env.AZURE_SPEECH_REGION || 'westus'; // Default region
+    }
+
+    hasApiKey(): boolean {
+        return Boolean(this.apiKey && this.apiKey.trim());
     }
 
     async initialize(): Promise<void> {
@@ -263,6 +286,25 @@ class OfflineSTTEngine {
         if (this.isInitialized) return;
 
         try {
+            // First, proactively check and fix whisper-node configuration
+            console.log('[OfflineSTTEngine] Proactively checking whisper-node initialization...');
+            try {
+                const whisperInitialized = await WhisperInitializer.isInitialized();
+                if (!whisperInitialized) {
+                    console.log('[OfflineSTTEngine] whisper-node not initialized, attempting auto-fix...');
+                    const initSuccess = await WhisperInitializer.initialize();
+                    if (!initSuccess) {
+                        console.warn('[OfflineSTTEngine] whisper-node auto-initialization failed, but continuing...');
+                    }
+                } else {
+                    // Even if initialized, fix configuration to prevent node binary path issues
+                    await WhisperInitializer.fixWhisperNodeConfig();
+                }
+            } catch (proactiveError) {
+                console.warn('[OfflineSTTEngine] Proactive whisper-node check failed:', proactiveError);
+                // Continue with initialization, we'll catch errors later
+            }
+
             // Ensure model directory exists
             await require('fs').promises.mkdir(this.modelDir, { recursive: true });
 
@@ -341,6 +383,13 @@ class OfflineSTTEngine {
     async transcribe(audioData: ArrayBuffer): Promise<string> {
         if (!this.isInitialized) {
             await this.initialize();
+        }
+
+        // Additional safety check: ensure whisper-node configuration is correct before transcription
+        try {
+            await WhisperInitializer.fixWhisperNodeConfig();
+        } catch (configError) {
+            console.warn('[OfflineSTTEngine] Failed to fix whisper-node config before transcription:', configError);
         }
 
         // DIAGNOSTIC: Log input audio data details
@@ -522,34 +571,68 @@ class OfflineSTTEngine {
             } catch (minimalError) {
                 console.log('DEBUG: Minimal whisper call failed:', minimalError.message);
 
-                // Test 3: Try with just language specified
-                console.log('DEBUG: Testing whisper-node with just language option');
-                try {
-                    result = await this.whisperFunction(tempFilePath, {
-                        modelPath: this.modelPath,
-                        whisperOptions: {
-                            language: 'en'
+                // Check if this is a whisper-node initialization error (broader detection)
+                if (minimalError.message.includes('whisper.cpp not initialized') || 
+                    minimalError.message.includes('make') || 
+                    minimalError.message.includes('unable to find') ||
+                    minimalError.message.includes('Unable to find a path to the node binary') ||
+                    minimalError.message.includes('shelljs') ||
+                    minimalError.message.includes('exec: Unable to find') ||
+                    minimalError.message.includes('Problem.') ||
+                    (minimalError.message.includes('whisper') && minimalError.message.includes('Problem'))) {
+                    
+                    console.log('🔧 [AUTO-FIX] Detected whisper-node initialization issue. Attempting automatic fix...');
+                    
+                    try {
+                        const initSuccess = await WhisperInitializer.initialize();
+                        
+                        if (initSuccess) {
+                            console.log('✅ [AUTO-FIX] whisper-node initialization successful! Retrying transcription...');
+                            
+                            // Retry the whisper call after successful initialization
+                            result = await this.whisperFunction(tempFilePath, {
+                                modelPath: this.modelPath
+                            });
+                            
+                            console.log('✅ [AUTO-FIX] Transcription successful after auto-initialization:', result);
+                        } else {
+                            console.log('❌ [AUTO-FIX] Failed to initialize whisper-node automatically');
+                            throw new Error('whisper-node auto-initialization failed. Please install build tools (xcode-select --install on macOS)');
                         }
-                    });
-                    console.log('DEBUG: Language-only whisper call succeeded, result:', result);
-                } catch (languageError) {
-                    console.log('DEBUG: Language-only whisper call failed:', languageError.message);
+                    } catch (autoFixError) {
+                        console.error('❌ [AUTO-FIX] Auto-initialization error:', autoFixError);
+                        throw autoFixError;
+                    }
+                } else {
+                    // Test 3: Try with just language specified
+                    console.log('DEBUG: Testing whisper-node with just language option');
+                    try {
+                        result = await this.whisperFunction(tempFilePath, {
+                            modelPath: this.modelPath,
+                            whisperOptions: {
+                                language: 'en'
+                            }
+                        });
+                        console.log('DEBUG: Language-only whisper call succeeded, result:', result);
+                    } catch (languageError) {
+                        console.log('DEBUG: Language-only whisper call failed:', languageError.message);
 
-                    // Test 4: Try ultra-permissive settings as final attempt
-                    console.log('DEBUG: Testing whisper-node with ULTRA-PERMISSIVE settings as last resort');
-                    result = await this.whisperFunction(tempFilePath, {
-                        modelPath: this.modelPath,
-                        whisperOptions: {
-                            language: 'en',
-                            temperature: 1.0,
-                            no_speech_threshold: 0.1,
-                            logprob_threshold: -2.0,
-                            compression_ratio_threshold: 10.0,
-                            suppress_blank: false,
-                            suppress_non_speech_tokens: false
-                        }
-                    });
-                    console.log('DEBUG: Ultra-permissive whisper call result:', result);
+                        // Test 4: Try ultra-permissive settings as final attempt
+                        console.log('DEBUG: Testing whisper-node with ULTRA-PERMISSIVE settings as last resort');
+                        result = await this.whisperFunction(tempFilePath, {
+                            modelPath: this.modelPath,
+                            whisperOptions: {
+                                language: 'en',
+                                temperature: 1.0,
+                                no_speech_threshold: 0.1,
+                                logprob_threshold: -2.0,
+                                compression_ratio_threshold: 10.0,
+                                suppress_blank: false,
+                                suppress_non_speech_tokens: false
+                            }
+                        });
+                        console.log('DEBUG: Ultra-permissive whisper call result:', result);
+                    }
                 }
             }
 

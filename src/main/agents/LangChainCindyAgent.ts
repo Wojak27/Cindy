@@ -1,4 +1,4 @@
-import { LangChainLLMRouterService } from '../services/LangChainLLMRouterService';
+import { LLMProvider } from '../services/LLMProvider';
 import { DynamicTool } from '@langchain/community/tools/dynamic';
 import { LangChainMemoryService as MemoryService } from '../services/LangChainMemoryService';
 import { LangChainToolExecutorService as ToolExecutorService } from '../services/LangChainToolExecutorService';
@@ -17,14 +17,14 @@ interface AgentOptions {
     memoryService: MemoryService;
     toolExecutor: ToolExecutorService;
     config: any;
-    llmRouter: LangChainLLMRouterService;
+    llmRouter: LLMProvider;
 }
 
 class LangChainCindyAgent {
     private memoryService: MemoryService;
     private toolExecutor: ToolExecutorService;
     private config: any;
-    private llmRouter: LangChainLLMRouterService;
+    private llmProvider: LLMProvider;
     private agentExecutor: any = null;
     private tools: any[] = [];
 
@@ -32,7 +32,7 @@ class LangChainCindyAgent {
         this.memoryService = options.memoryService;
         this.toolExecutor = options.toolExecutor;
         this.config = options.config;
-        this.llmRouter = options.llmRouter;
+        this.llmProvider = options.llmRouter; // Keep property name for compatibility
 
         this.initializeTools();
     }
@@ -154,7 +154,7 @@ class LangChainCindyAgent {
             // Build messages for direct LLM call
             const messages = this.buildDirectLLMMessages(input, history, userName);
 
-            const result = await this.llmRouter.chat(messages);
+            const result = await this.llmProvider.chat(messages);
 
             if (typeof result === 'string') {
                 return result;
@@ -291,10 +291,10 @@ class LangChainCindyAgent {
     }
 
     /**
-     * Get the current LLM router
+     * Get the current LLM provider
      */
-    getLLMRouter(): LangChainLLMRouterService {
-        return this.llmRouter;
+    getLLMRouter(): LLMProvider {
+        return this.llmProvider;
     }
 
     /**
@@ -305,7 +305,7 @@ class LangChainCindyAgent {
 
         // Reinitialize if LLM config changed
         if (newConfig.llm) {
-            await this.llmRouter.updateConfig(newConfig.llm);
+            await this.llmProvider.updateConfig(newConfig.llm);
             // Force recreation of agent executor with new LLM
             this.agentExecutor = null;
         }
@@ -318,7 +318,7 @@ class LangChainCindyAgent {
         return {
             toolsAvailable: this.tools.length,
             agentInitialized: !!this.agentExecutor,
-            llmConnectionStatus: this.llmRouter.getConnectionStatus()
+            llmConnectionStatus: this.llmProvider.getConnectionStatus()
         };
     }
 }

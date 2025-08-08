@@ -10,8 +10,8 @@ import { renderMarkdown, hasMarkdown } from './utils/markdownRenderer';
 // SoundReactiveCircle was imported but not used in the component
 // The component now uses SoundReactiveBlob instead
 import SoundReactiveBlob from './components/SoundReactiveBlob';
-import SettingsPanel from './components/SettingsPanel';
-import DatabasePanel from './components/DatabasePanel';
+import ModernSettingsPanel from './components/ModernSettingsPanel';
+import ModernDatabasePanel from './components/ModernDatabasePanel';
 import ThemeToggle from './components/ThemeToggle';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { getSettings } from '../store/actions';
@@ -1056,10 +1056,10 @@ const App: React.FC = () => {
                     )}
 
                     <div ref={settingsSidebarRef} className={`settings-sidebar-container ${showSettings ? 'open' : ''}`}>
-                        <SettingsPanel />
+                        <ModernSettingsPanel />
                     </div>
                     <div ref={databaseSidebarRef} className={`database-sidebar-container ${showDatabase ? 'open' : ''}`}>
-                        <DatabasePanel />
+                        <ModernDatabasePanel />
                     </div>
                 </div>
             </div>

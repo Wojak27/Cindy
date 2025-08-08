@@ -7,7 +7,7 @@ import axios from 'axios';
 import { ChatStorageService } from './services/ChatStorageService';
 // import { DuckDBChatStorageService } from './services/DuckDBChatStorageService';
 // Re-enable core LLM functionality
-import { LangChainLLMRouterService } from './services/LangChainLLMRouterService';
+import { LLMProvider } from './services/LLMProvider';
 // Re-enable tool executor for web search
 import { LangChainToolExecutorService } from './services/LangChainToolExecutorService';
 // Keep other complex services disabled for now
@@ -476,7 +476,7 @@ let trayService: TrayService | null = null;
 let settingsService: SettingsService | null = null;
 let chatStorageService: ChatStorageService | null = null;
 // let duckDBChatStorageService: DuckDBChatStorageService | null = null;
-let langChainLLMRouterService: LangChainLLMRouterService | null = null;
+let llmProvider: LLMProvider | null = null;
 let duckDBVectorStore: DuckDBVectorStore | null = null;
 // let langChainVectorStoreService: LangChainVectorStoreService | null = null;
 // @ts-ignore - temporarily unused
@@ -772,8 +772,8 @@ app.on('ready', async () => {
     // }
 
     // Initialize LangChain MemoryService - DISABLED FOR DEBUGGING
-    // if (!langChainMemoryService && langChainVectorStoreService && langChainLLMRouterService) {
-    //     const llmProvider = await langChainLLMRouterService.getCurrentProvider();
+    // if (!langChainMemoryService && langChainVectorStoreService && llmProvider) {
+    //     const provider = await llmProvider.getCurrentProvider();
     //     let llmModel = null;
     //     if (llmProvider && typeof llmProvider === 'object' && 'chatModel' in llmProvider) {
     //         llmModel = (llmProvider as any).chatModel;
@@ -787,7 +787,7 @@ app.on('ready', async () => {
     console.log('🔧 DEBUG: Skipping ToolExecutorService for startup speed');
 
     // Initialize LangChain CindyAgent after other services - DISABLED FOR DEBUGGING
-    // if (!langChainCindyAgent && langChainLLMRouterService && settingsService && chatStorageService && langChainMemoryService && langChainToolExecutorService) {
+    // if (!langChainCindyAgent && llmProvider && settingsService && chatStorageService && langChainMemoryService && langChainToolExecutorService) {
     //     // Get agent config from settings
     //     const agentConfig = await settingsService.get('general') || {};
 
@@ -800,7 +800,7 @@ app.on('ready', async () => {
     //             enableStreaming: true,
     //             ...agentConfig
     //         },
-    //         llmRouter: langChainLLMRouterService
+    //         llmRouter: llmProvider
     //     });
     //     console.log('🔧 DEBUG: LangChain CindyAgent initialized with full LangChain services integration');
     // }
@@ -817,13 +817,13 @@ app.on('ready', async () => {
     // IPC handler for getting available LLM models
     ipcMain.handle('llm:get-available-models', async () => {
         console.log('Main process - llm:get-available-models IPC called');
-        if (!langChainLLMRouterService) {
+        if (!llmProvider) {
             console.error('Main process - llm:get-available-models: llmRouterService not available');
             return { success: false, error: 'LLM Router service not available' };
         }
         try {
             console.log('Main process - llm:get-available-models: calling llmRouterService.getAvailableModels()');
-            const models = await langChainLLMRouterService.getAvailableModels();
+            const models = await llmProvider.getAvailableModels();
             console.log('Main process - llm:get-available-models: successfully retrieved models');
             return { success: true, models };
         } catch (error) {
@@ -835,7 +835,7 @@ app.on('ready', async () => {
     // IPC handler for testing LLM connections
     ipcMain.handle('llm:test-connection', async () => {
         console.log('Main process - llm:test-connection IPC called');
-        if (!langChainLLMRouterService) {
+        if (!llmProvider) {
             console.error('Main process - llm:test-connection: llmRouterService not available');
             return {
                 success: false,
@@ -846,8 +846,10 @@ app.on('ready', async () => {
         try {
             console.log('Main process - llm:test-connection: testing OpenAI and Ollama connections');
             // Access the providers through the LLMRouterService
-            const openaiConnected = await langChainLLMRouterService['openaiProvider']?.testConnection?.() || false;
-            const ollamaConnected = await langChainLLMRouterService['ollamaProvider']?.testConnection?.() || false;
+            // Get connection status from the unified provider
+            const connectionStatus = llmProvider.getConnectionStatus();
+            const openaiConnected = connectionStatus.openai;
+            const ollamaConnected = connectionStatus.ollama;
 
             console.log('Main process - llm:test-connection: connection results - OpenAI:', openaiConnected, 'Ollama:', ollamaConnected);
             return {
@@ -862,6 +864,148 @@ app.on('ready', async () => {
                 connections: { openai: false, ollama: false }
             };
         }
+    });
+
+    // IPC handler for full indexing (database + notes) - simplified version
+    ipcMain.handle('start-full-indexing', async (_, databasePath: string, notesPath?: string) => {
+        console.log('[IPC] Full indexing called - Database:', databasePath, 'Notes:', notesPath);
+        
+        const fs = require('fs');
+        
+        if (!databasePath) {
+            return { success: false, message: 'Database path is required' };
+        }
+
+        // Validate database directory exists
+        if (!fs.existsSync(databasePath)) {
+            return { success: false, message: 'Database directory does not exist' };
+        }
+
+        if (!duckDBVectorStore) {
+            return { success: false, message: 'Vector store not available' };
+        }
+
+        try {
+            let totalIndexed = 0;
+            let totalErrors = 0;
+
+            // Index database directory first
+            console.log('[IPC] Indexing database directory:', databasePath);
+            const dbResult = await duckDBVectorStore.indexFolder(databasePath);
+            totalIndexed += dbResult.success;
+            totalErrors += dbResult.errors;
+
+            // Index notes directory if provided
+            if (notesPath && notesPath.trim() && fs.existsSync(notesPath)) {
+                console.log('[IPC] Indexing notes directory:', notesPath);
+                const notesResult = await duckDBVectorStore.indexFolder(notesPath);
+                totalIndexed += notesResult.success;
+                totalErrors += notesResult.errors;
+            }
+
+            return {
+                success: true,
+                message: `Full indexing completed. ${totalIndexed} files indexed, ${totalErrors} errors.`,
+                indexed: totalIndexed,
+                errors: totalErrors
+            };
+        } catch (error) {
+            console.error('[IPC] Full indexing error:', error);
+            return { 
+                success: false, 
+                message: error instanceof Error ? error.message : 'Unknown error' 
+            };
+        }
+    });
+
+    // IPC handlers for Ollama model management
+    ipcMain.handle('ollama-list-models', async () => {
+        console.log('Main process - ollama-list-models IPC called');
+        try {
+            const { exec } = require('child_process');
+            const { promisify } = require('util');
+            const execAsync = promisify(exec);
+            
+            const result = await execAsync('ollama list');
+            const output = result.stdout;
+            
+            // Parse the output to extract model names
+            const lines = output.split('\n').filter((line: string) => line.trim() && !line.startsWith('NAME'));
+            const models = lines.map((line: string) => {
+                const parts = line.trim().split(/\s+/);
+                return parts[0]; // First column is the model name
+            }).filter((name: string) => name);
+            
+            console.log('Main process - ollama-list-models: found models:', models);
+            return models;
+        } catch (error) {
+            console.error('Main process - ollama-list-models error:', error);
+            return [];
+        }
+    });
+
+    ipcMain.handle('ollama-pull-model', async (_, modelName: string) => {
+        console.log('Main process - ollama-pull-model IPC called for model:', modelName);
+        try {
+            const { exec } = require('child_process');
+            const { promisify } = require('util');
+            const execAsync = promisify(exec);
+            
+            // Pull the model with timeout
+            await execAsync(`ollama pull ${modelName}`, { timeout: 600000 }); // 10 minute timeout
+            
+            console.log('Main process - ollama-pull-model: successfully pulled model:', modelName);
+            return { success: true };
+        } catch (error) {
+            console.error('Main process - ollama-pull-model error:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        }
+    });
+
+    ipcMain.handle('ollama-remove-model', async (_, modelName: string) => {
+        console.log('Main process - ollama-remove-model IPC called for model:', modelName);
+        try {
+            const { exec } = require('child_process');
+            const { promisify } = require('util');
+            const execAsync = promisify(exec);
+            
+            await execAsync(`ollama rm ${modelName}`);
+            
+            console.log('Main process - ollama-remove-model: successfully removed model:', modelName);
+            return { success: true };
+        } catch (error) {
+            console.error('Main process - ollama-remove-model error:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        }
+    });
+
+    ipcMain.handle('ollama-list-available-models', async () => {
+        console.log('Main process - ollama-list-available-models IPC called');
+        // Return a curated list of popular models that can be pulled from Ollama
+        const availableModels = [
+            'llama3:8b',
+            'llama3:70b',
+            'llama2:7b',
+            'llama2:13b',
+            'llama2:70b',
+            'mistral:7b',
+            'mixtral:8x7b',
+            'qwen:4b',
+            'qwen:7b',
+            'qwen:14b',
+            'gemma:7b',
+            'phi:3.8b',
+            'codegemma:7b',
+            'dolphin-mixtral:8x7b',
+            'neural-chat:7b',
+            'starling-lm:7b',
+            'vicuna:7b',
+            'orca-mini:3b',
+            'tinyllama:1.1b'
+        ];
+        
+        console.log('Main process - ollama-list-available-models: returning', availableModels.length, 'models');
+        return availableModels;
     });
 
     // IPC handlers for real-time transcription
@@ -983,7 +1127,7 @@ app.on('ready', async () => {
     ipcMain.handle('initialize-llm', async () => {
         console.log('Main process - initialize-llm IPC called');
         try {
-            if (langChainLLMRouterService) {
+            if (llmProvider) {
                 return { success: true, message: 'LLM service is already initialized' };
             }
 
@@ -994,22 +1138,53 @@ app.on('ready', async () => {
             const settings = await settingsService.get('llm');
             const apiKey = await settingsService.getApiKey();
 
-            if (!apiKey) {
-                return { success: false, message: 'OpenAI API key is required' };
+            // Check if API key is required for the selected provider
+            const providersRequiringApiKey = ['openai', 'anthropic', 'openrouter', 'groq', 'google', 'cohere', 'azure', 'huggingface'];
+            const selectedProvider = settings.provider || 'ollama';
+            
+            if (providersRequiringApiKey.includes(selectedProvider) && !apiKey) {
+                return { success: false, message: `API key is required for ${selectedProvider} provider` };
             }
 
             const llmConfig = {
-                ...settings,
-                openai: {
+                provider: settings.provider || 'ollama',
+                openai: settings.openai ? {
                     ...settings.openai,
                     apiKey: apiKey
+                } : undefined,
+                ollama: settings.ollama || {
+                    model: 'llama3:8b',
+                    baseUrl: 'http://127.0.0.1:11434',
+                    temperature: 0.7
                 },
+                anthropic: (settings as any).anthropic,
+                openrouter: (settings as any).openrouter,
+                groq: (settings as any).groq,
+                google: (settings as any).google,
+                cohere: (settings as any).cohere,
+                azure: (settings as any).azure,
+                huggingface: (settings as any).huggingface,
                 streaming: true,
                 timeout: 15000
             };
 
-            langChainLLMRouterService = new LangChainLLMRouterService(llmConfig);
-            await langChainLLMRouterService.initialize();
+            llmProvider = new LLMProvider(llmConfig);
+            await llmProvider.initialize();
+
+            // Attach tools to the LLM for automatic tool calling
+            if (langChainToolExecutorService && llmProvider) {
+                const tools = langChainToolExecutorService.getToolsForAgent();
+                console.log(`🔧 DEBUG: Attaching ${tools.length} tools to LLM:`, tools.map(t => t.name));
+                
+                const modelWithTools = llmProvider.withTools(tools);
+                if (modelWithTools) {
+                    console.log('✅ DEBUG: Tools successfully attached to LLM model');
+                } else {
+                    console.warn('⚠️ DEBUG: Failed to attach tools - model may not support tool binding');
+                }
+            } else {
+                console.warn('⚠️ DEBUG: Tool executor service not available, skipping tool attachment');
+            }
 
             console.log('✅ DEBUG: LLM service initialized successfully via IPC');
             return { success: true, message: 'LLM service initialized successfully' };
@@ -1025,7 +1200,7 @@ app.on('ready', async () => {
         console.log('Main process - process-message IPC called with:', message);
         try {
             // Use LangChain LLM router directly as fallback
-            if (!langChainLLMRouterService) {
+            if (!llmProvider) {
                 console.error('Main process - process-message: LangChain LLM router not initialized');
 
                 // Save user message first
@@ -1127,7 +1302,7 @@ app.on('ready', async () => {
                 ];
 
                 console.log('🔧 DEBUG: Message appears to need web search, using tool-aware processing');
-                response = await langChainLLMRouterService.chat(toolAwareHistory);
+                response = await llmProvider.chat(toolAwareHistory);
 
                 // If the response looks like it should have used a tool but didn't, manually trigger web search
                 if (typeof response === 'string' && response.includes('based on my training data')) {
@@ -1143,7 +1318,7 @@ app.on('ready', async () => {
                                     content: `Web search results for "${message}":\n${searchResult.result}\n\nPlease provide a helpful response based on this current information.`
                                 }
                             ];
-                            response = await langChainLLMRouterService.chat(enhancedHistory);
+                            response = await llmProvider.chat(enhancedHistory);
                         }
                     } catch (searchError) {
                         console.error('Web search failed:', searchError);
@@ -1152,7 +1327,7 @@ app.on('ready', async () => {
                 }
             } else {
                 // Process message through LangChain LLM router normally
-                response = await langChainLLMRouterService.chat(conversationHistory);
+                response = await llmProvider.chat(conversationHistory);
             }
 
             let assistantContent = '';
@@ -1375,7 +1550,7 @@ app.on('ready', async () => {
 
     // Initialize LLM services AFTER window is created and shown (non-blocking)
     setTimeout(async () => {
-        if (!langChainLLMRouterService && settingsService) {
+        if (!llmProvider && settingsService) {
             try {
                 console.log('🔧 DEBUG: Post-startup LLM initialization...');
                 const settings = await settingsService.get('llm');
@@ -1399,17 +1574,27 @@ app.on('ready', async () => {
                     if (canInitialize) {
                         console.log('🔧 DEBUG: Starting LLM service initialization...');
                         const llmConfig = {
-                            ...settings,
-                            openai: {
+                            provider: settings.provider || 'ollama',
+                            openai: settings.openai ? {
                                 ...settings.openai,
-                                apiKey: apiKey || '' // Empty string for Ollama
+                                apiKey: apiKey || ''
+                            } : undefined,
+                            ollama: settings.ollama || {
+                                model: 'llama3:8b',
+                                baseUrl: 'http://127.0.0.1:11434',
+                                temperature: 0.7
                             },
+                            anthropic: (settings as any).anthropic,
+                            google: (settings as any).google,
+                            cohere: (settings as any).cohere,
+                            azure: (settings as any).azure,
+                            huggingface: (settings as any).huggingface,
                             streaming: true,
                             timeout: 15000
                         };
 
-                        langChainLLMRouterService = new LangChainLLMRouterService(llmConfig);
-                        await langChainLLMRouterService.initialize();
+                        llmProvider = new LLMProvider(llmConfig);
+                        await llmProvider.initialize();
                         console.log('✅ DEBUG: LLM services now available for chat!');
 
                         // Notify renderer that LLM is ready (optional)
@@ -1424,7 +1609,7 @@ app.on('ready', async () => {
                 console.error('🚨 DEBUG: Post-startup LLM init failed:', error);
                 console.error('🚨 DEBUG: Error details:', error.stack);
             }
-        } else if (langChainLLMRouterService) {
+        } else if (llmProvider) {
             console.log('✅ DEBUG: LLM service already initialized');
         }
     }, 5000); // 5 second delay after app startup

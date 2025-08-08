@@ -2,7 +2,7 @@
     position: fixed;
     top: 0;
     right: 0;
-    width: 320px;
+    width: 0;
     height: 100vh;
     background: #ffffff;
     box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
@@ -51,14 +51,17 @@
 .settings-footer .MuiButton-root {
     width: 100%;
 }
+
 /* Style for the save button to make it more subtle */
 .settings-footer .MuiButton-containedPrimary {
-    background-color: #6c757d; /* Gray color for a more subtle appearance */
+    background-color: #6c757d;
+    /* Gray color for a more subtle appearance */
     color: white;
 }
 
 .settings-footer .MuiButton-containedPrimary:hover {
-    background-color: #5a6268; /* Darker gray on hover */
+    background-color: #5a6268;
+    /* Darker gray on hover */
 }
 
 /* Responsive adjustments */
