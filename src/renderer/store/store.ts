@@ -1,4 +1,4 @@
-import { createStore, applyMiddleware } from 'redux';
+import { configureStore } from '@reduxjs/toolkit';
 import { persistenceMiddleware, loadInitialSettings, setSettingsService, waitForSettingsService } from '../../store/middleware/persistenceMiddleware';
 import { rootReducer } from '../../store/reducers';
 
@@ -13,7 +13,7 @@ const getDefaultState = () => ({
         llm: {
             provider: 'ollama',
             ollama: {
-                model: 'qwen3:8b',
+                model: 'qwen3:4b',
                 baseUrl: 'http://127.0.0.1:11434',
                 temperature: 0.7
             },
@@ -25,7 +25,7 @@ const getDefaultState = () => ({
         },
         database: {
             path: '',
-            embeddingModel: 'qwen3:8b',
+            embeddingModel: 'qwen3:4b',
             chunkSize: 1000,
             chunkOverlap: 200,
             autoIndex: true
@@ -94,19 +94,22 @@ const initializeStore = async () => {
         });
 
         isStoreInitialized = true;
-        console.log('🔧 DEBUG: Store initialization completed successfully');
-        console.log('🔧 DEBUG: Store state after loading settings:', storeInstance.getState().settings);
         return storeInstance;
 
     } catch (error) {
         console.error('🚨 DEBUG: Failed to initialize store:', error);
 
         // Create store with default settings if initialization fails
-        storeInstance = createStore(
-            rootReducer,
-            getDefaultState(),
-            applyMiddleware(persistenceMiddleware)
-        );
+        storeInstance = configureStore({
+            reducer: rootReducer,
+            preloadedState: getDefaultState(),
+            middleware: (getDefaultMiddleware) =>
+                getDefaultMiddleware({
+                    serializableCheck: false, // Disable for Electron IPC
+                    immutableCheck: false
+                }).concat(persistenceMiddleware),
+            devTools: process.env.NODE_ENV !== 'production'
+        });
 
         isStoreInitialized = true;
         console.log('🔧 DEBUG: Store initialized with default settings due to error');
@@ -115,11 +118,16 @@ const initializeStore = async () => {
 };
 
 // Create the store immediately with default state
-storeInstance = createStore(
-    rootReducer,
-    getDefaultState(),
-    applyMiddleware(persistenceMiddleware)
-);
+storeInstance = configureStore({
+    reducer: rootReducer,
+    preloadedState: getDefaultState(),
+    middleware: (getDefaultMiddleware) =>
+        getDefaultMiddleware({
+            serializableCheck: false, // Disable for Electron IPC compatibility
+            immutableCheck: false
+        }).concat(persistenceMiddleware),
+    devTools: process.env.NODE_ENV !== 'production' // Enable Redux DevTools only in development
+});
 
 // Start initialization asynchronously to load saved settings
 initPromise = initializeStore().catch((error) => {

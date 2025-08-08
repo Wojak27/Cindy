@@ -34,7 +34,6 @@ import {
     EditSquare as EditSquareIcon,
     Settings as SettingsIcon,
     Storage as DatabaseIcon,
-    Hearing as WakeWordIcon,
     Refresh as RetryIcon
 } from '@mui/icons-material';
 
@@ -86,9 +85,7 @@ const App: React.FC = () => {
             if (!currentConversationId) return;
 
             try {
-                console.log('🔧 DEBUG: Loading conversation history for:', currentConversationId);
                 const messages = await ipcRenderer.invoke('load-conversation', currentConversationId);
-                console.log('🔧 DEBUG: Loaded messages from ChatStorageService:', messages.length, 'messages');
 
                 // Clear current messages, thinking blocks, and tool calls
                 dispatch({ type: 'CLEAR_MESSAGES' });
@@ -105,7 +102,6 @@ const App: React.FC = () => {
                     currentConversationId
                 );
 
-                console.log('🔧 DEBUG: Processed', messages.length, 'messages, extracted', extractedThinkingBlocks.length, 'thinking blocks');
 
                 // Load all processed messages at once to prevent duplication
                 dispatch({ type: 'LOAD_MESSAGES', payload: updatedMessages });
@@ -114,7 +110,6 @@ const App: React.FC = () => {
                 setTimeout(async () => {
                     try {
                         const latestHumanMessage = await ipcRenderer.invoke('get-latest-human-message', currentConversationId);
-                        console.log('🔧 DEBUG: Latest human message found:', latestHumanMessage?.id);
 
                         if (latestHumanMessage) {
                             scrollToHumanMessage(latestHumanMessage.id);
@@ -127,14 +122,11 @@ const App: React.FC = () => {
                 // Load extracted thinking blocks as batch
                 if (extractedThinkingBlocks.length > 0) {
                     dispatch({ type: 'LOAD_THINKING_BLOCKS', payload: extractedThinkingBlocks });
-                    console.log('🔧 DEBUG: Loaded', extractedThinkingBlocks.length, 'extracted thinking blocks');
                 }
 
                 // Load thinking blocks for this conversation
                 try {
-                    console.log('🔧 DEBUG: Loading thinking blocks for conversation:', currentConversationId);
                     const conversationThinkingBlocks = await ipcRenderer.invoke('get-thinking-blocks', currentConversationId);
-                    console.log('🔧 DEBUG: Loaded thinking blocks:', conversationThinkingBlocks?.length || 0, 'blocks');
 
                     if (conversationThinkingBlocks && conversationThinkingBlocks.length > 0) {
                         // Retroactively associate thinking blocks with messages if not already associated
@@ -160,7 +152,6 @@ const App: React.FC = () => {
 
                                     // Associate if within 2 minutes
                                     if (smallestDiff <= 120000) { // 2 minutes
-                                        console.log('🔧 DEBUG: Associated thinking block', block.id, 'with message', closestMessage.id);
                                         return { ...block, messageId: closestMessage.id };
                                     }
                                 }
@@ -170,7 +161,6 @@ const App: React.FC = () => {
 
                         // Add all thinking blocks to the store as batch (merge with existing)
                         dispatch({ type: 'LOAD_THINKING_BLOCKS', payload: [...extractedThinkingBlocks, ...updatedBlocks] });
-                        console.log('🔧 DEBUG: Loaded', updatedBlocks.length, 'conversation thinking blocks to store');
                     }
                 } catch (thinkingError) {
                     console.warn('🔧 DEBUG: Failed to load thinking blocks, continuing without them:', thinkingError);
@@ -339,13 +329,10 @@ const App: React.FC = () => {
         }
 
         if (isRecording) {
-            console.log('DEBUG: Stopping recording...');
             // Stop recording
             try {
-                console.log('App.tsx: Invoking stop-recording IPC');
                 // Stop recording - this will trigger audio data to be sent
                 const audioData = await ipcRenderer.invoke('stop-recording');
-                console.log('Audio data received:', audioData);
 
                 if (audioData && audioData.length > 0) {
                     // Send Int16Array[] directly to main process for proper WAV conversion
@@ -364,7 +351,6 @@ const App: React.FC = () => {
                                 timestamp: Date.now(),
                                 conversationId: currentConversationId
                             };
-                            console.log('🔧 DEBUG: Adding user message (from voice) - will be persisted to ChatStorageService:', userMessage);
                             dispatch({ type: 'ADD_MESSAGE', payload: userMessage });
 
                             // Create assistant message placeholder for streaming
@@ -406,7 +392,6 @@ const App: React.FC = () => {
                 setIsRecording(false);
             }
         } else {
-            console.log('DEBUG: Starting recording...');
             // Show visual feedback that recording is starting
             setIsRecording(true);
             console.log('DEBUG: App.tsx: isRecording state set to true');
@@ -429,9 +414,7 @@ const App: React.FC = () => {
 
             // Send start-recording IPC to renderer service
             try {
-                console.log('DEBUG: App.tsx: About to invoke start-recording IPC');
                 const result = await ipcRenderer.invoke('start-recording');
-                console.log('DEBUG: App.tsx: start-recording IPC result:', result);
                 if (!result?.success) {
                     console.error('DEBUG: App.tsx: start-recording failed:', result?.error);
                     setIsRecording(false);
@@ -526,7 +509,6 @@ const App: React.FC = () => {
                 timestamp: Date.now(),
                 conversationId: currentConversationId
             };
-            console.log('🔧 DEBUG: Adding user message (from text) - will be persisted to ChatStorageService:', userMessage);
             dispatch({ type: 'ADD_MESSAGE', payload: userMessage });
 
             // Create assistant message placeholder for streaming
@@ -948,26 +930,6 @@ const App: React.FC = () => {
                         </IconButton>
                         <div className="window-draggable-area"></div>
 
-                        {/* Wake Word Status Indicator */}
-                        <IconButton
-                            className={`wake-word-indicator ${wakeWordDetected ? 'detected' :
-                                isLiveListening ? 'listening' :
-                                    wakeWordActive ? 'active' : 'inactive'
-                                }`}
-                            title={
-                                wakeWordDetected ? 'Wake word detected!' :
-                                    isLiveListening ? 'Live transcription active' :
-                                        wakeWordActive ? 'Wake word listening' : 'Wake word inactive'
-                            }
-                            size="small"
-                            onClick={() => {
-                                // Manual wake word trigger for testing
-                                console.log('🎤 Manual wake word trigger');
-                                document.dispatchEvent(new CustomEvent('test-wake-word'));
-                            }}
-                        >
-                            <WakeWordIcon fontSize="small" />
-                        </IconButton>
 
                         <IconButton
                             className="database-button"
@@ -1025,7 +987,7 @@ const App: React.FC = () => {
                                 )}
                                 {[...messages].reverse().map((msg: any, index: number) => {
                                     const messageClass = `message ${msg.role} ${msg.isStreaming ? 'streaming' : ''} ${isSpeaking && msg.role === 'assistant' ? 'speaking' : ''} ${isLiveListening ? 'listening' : ''}`;
-
+                                    console.log('Rendering message:', msg)
                                     // Get thinking blocks associated with this specific message
                                     // For older chats, associate thinking blocks with assistant messages based on timestamp proximity
                                     const associatedBlocks = thinkingBlocks.filter((block: any) => {
@@ -1100,9 +1062,6 @@ const App: React.FC = () => {
                                             className={messageClass}
                                             data-message-id={msg.id}
                                         >
-                                            <div className="message-avatar">
-                                                {msg.role === 'user' ? '👤' : '🤖'}
-                                            </div>
                                             <div className="message-content">
                                                 {msg.role === 'assistant' && (
                                                     <>

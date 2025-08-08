@@ -21,6 +21,11 @@ import { SpeechToTextService } from './services/SpeechToTextService';
 import RealTimeTranscriptionService from './services/RealTimeTranscriptionService';
 import { LinkPreviewService } from './services/LinkPreviewService';
 
+import installExtension, {
+    REDUX_DEVTOOLS,
+    REACT_DEVELOPER_TOOLS
+} from 'electron-devtools-installer';
+
 // Function to set up all settings-related IPC handlers
 const setupSettingsIPC = () => {
     console.log('🔧 DEBUG: Setting up settings IPC handlers');
@@ -102,11 +107,11 @@ const setupSettingsIPC = () => {
             throw new Error('SettingsService not initialized');
         }
         console.log('🔧 DEBUG: settings-set-all called with:', Object.keys(settings));
-        
+
         // Replace the entire settings object and save
         settingsService['settings'] = settings;
         await settingsService.save();
-        
+
         console.log('🔧 DEBUG: settings-set-all completed successfully');
         return { success: true };
     });
@@ -156,20 +161,10 @@ const setupSettingsIPC = () => {
 
     ipcMain.handle('wake-word:status', async () => {
         console.log('Main process - wake-word:status IPC called');
-        try {
-            if (wakeWordService) {
-                return { 
-                    success: true, 
-                    isListening: wakeWordService.isCurrentlyListening() 
-                };
-            }
-            return { success: false, isListening: false, error: 'Wake word service not available' };
-        } catch (error) {
-            console.error('Main process - wake-word:status error:', error);
-            return { success: false, isListening: false, error: error.message };
-        }
+        // Wake word functionality disabled by default
+        return { success: false, isListening: false, error: 'Wake word service disabled' };
     });
-    
+
     // Link preview handler
     ipcMain.handle('get-link-preview', async (event, url: string) => {
         if (!linkPreviewService) {
@@ -282,14 +277,14 @@ const setupDatabaseIPC = () => {
 
             // Create and initialize DuckDB vector store
             const apiKey = await settingsService?.getApiKey();
-            
+
             if (!apiKey) {
-                return { 
-                    success: false, 
+                return {
+                    success: false,
                     message: 'OpenAI API key required for DuckDB vector store'
                 };
             }
-            
+
             const vectorStore = new DuckDBVectorStore({
                 databasePath: path.join(options.databasePath, 'duckdb-vector-store.db'),
                 openaiApiKey: apiKey,
@@ -297,22 +292,22 @@ const setupDatabaseIPC = () => {
                 chunkSize: 1000,
                 chunkOverlap: 200
             });
-            
+
             await vectorStore.initialize();
-            
+
             // Set up progress event forwarding
             vectorStore.on('progress', (data) => {
                 if (mainWindow) {
                     mainWindow.webContents.send('vector-store:indexing-progress', data);
                 }
             });
-            
+
             // Start indexing using DuckDB implementation
             const result = await vectorStore.indexFolder(options.databasePath);
-            
+
             console.log('[IPC] DuckDB vector store creation completed successfully');
-            return { 
-                success: true, 
+            return {
+                success: true,
                 message: `DuckDB vector store created successfully. Indexed ${result.success} files with ${result.errors} errors.`,
                 indexedFiles: await vectorStore.getIndexedFiles()
             };
@@ -321,7 +316,7 @@ const setupDatabaseIPC = () => {
             return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
         }
     });
-    
+
     // Index directory handler
     ipcMain.handle('vector-store:index-directory', async (event, directoryPath, options = {}) => {
         console.log('[IPC] Indexing directory:', directoryPath);
@@ -362,8 +357,8 @@ const setupDatabaseIPC = () => {
 
                 try {
                     const result = await duckDBVectorStore.indexFolder(directoryPath);
-                    return { 
-                        success: true, 
+                    return {
+                        success: true,
                         message: `Directory indexed successfully. ${result.success} files indexed, ${result.errors} errors.`,
                         indexed: result.success,
                         errors: result.errors
@@ -382,8 +377,8 @@ const setupDatabaseIPC = () => {
                     // VectorStoreService may not have indexFolder method, check if it exists
                     if (typeof (vectorStoreService as any).indexFolder === 'function') {
                         const result = await (vectorStoreService as any).indexFolder(directoryPath);
-                        return { 
-                            success: true, 
+                        return {
+                            success: true,
                             message: `Directory indexed successfully using legacy store.`,
                             indexed: result.indexed || result.success || 0,
                             errors: result.errors || 0
@@ -414,13 +409,13 @@ const setupDatabaseIPC = () => {
                 const items = await duckDBVectorStore.getIndexedFiles();
                 return { success: true, items };
             }
-            
+
             // Use LangChain vector store if available
             if (langChainVectorStoreService) {
                 const items = langChainVectorStoreService.getIndexedFiles();
                 return { success: true, items };
             }
-            
+
             // Fallback to legacy index file
             const indexFile = path.join(databasePath, '.vector_store', 'index.json');
             if (fs.existsSync(indexFile)) {
@@ -486,6 +481,18 @@ const createWindow = async (): Promise<void> => {
     console.log('🔧 DEBUG: Creating simplified window for testing');
 
     try {
+        // Install Redux DevTools in development
+        if (!app.isPackaged) {
+            try {
+                await installExtension([REDUX_DEVTOOLS, REACT_DEVELOPER_TOOLS], {
+                    loadExtensionOptions: { allowFileAccess: true }
+                });
+                console.log('✅ Redux DevTools and React DevTools installed');
+            } catch (error) {
+                console.error('Failed to install DevTools extensions:', error);
+            }
+        }
+
         console.log('🔧 DEBUG: About to create BrowserWindow...');
         // Create the simplest possible browser window with forced visibility
         mainWindow = new BrowserWindow({
@@ -494,13 +501,18 @@ const createWindow = async (): Promise<void> => {
             x: 100,    // Force position on screen
             y: 100,
             show: false, // Start hidden, show after loading
+            alwaysOnTop: true,  // Force to front
             titleBarStyle: 'hidden', // Hide the title bar
             webPreferences: {
                 nodeIntegration: true,
                 contextIsolation: false,
+                // Note: To use the more secure preload script approach, change to:
+                // nodeIntegration: false,
+                // contextIsolation: true,
+                // preload: path.join(__dirname, 'preload.js')
             }
         });
-        
+
         console.log('🔧 DEBUG: BrowserWindow created successfully!');
 
         // Show the window once it's ready
@@ -533,7 +545,7 @@ const createWindow = async (): Promise<void> => {
         mainWindow.webContents.on('did-finish-load', () => {
             console.log('🔧 DEBUG: Window content finished loading successfully');
         });
-        
+
         mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
             console.error('🔧 DEBUG: Window failed to load:', errorCode, errorDescription);
         });
@@ -547,7 +559,7 @@ const createWindow = async (): Promise<void> => {
         });
 
         console.log('🔧 DEBUG: Window setup complete');
-        
+
     } catch (error) {
         console.error('🚨 DEBUG: Error creating window:', error);
         throw error;
@@ -945,7 +957,7 @@ app.on('ready', async () => {
 
             const settings = await settingsService.get('llm');
             const apiKey = await settingsService.getApiKey();
-            
+
             if (!apiKey) {
                 return { success: false, message: 'OpenAI API key is required' };
             }
@@ -959,13 +971,13 @@ app.on('ready', async () => {
                 streaming: true,
                 timeout: 15000
             };
-            
+
             langChainLLMRouterService = new LangChainLLMRouterService(llmConfig);
             await langChainLLMRouterService.initialize();
-            
+
             console.log('✅ DEBUG: LLM service initialized successfully via IPC');
             return { success: true, message: 'LLM service initialized successfully' };
-            
+
         } catch (error) {
             console.error('🚨 DEBUG: Manual LLM initialization failed:', error);
             return { success: false, message: `Failed to initialize: ${error.message}` };
@@ -979,7 +991,7 @@ app.on('ready', async () => {
             // Use LangChain LLM router directly as fallback
             if (!langChainLLMRouterService) {
                 console.error('Main process - process-message: LangChain LLM router not initialized');
-                
+
                 // Save user message first
                 if (chatStorageService) {
                     try {
@@ -994,11 +1006,11 @@ app.on('ready', async () => {
                         console.error('🚨 DEBUG: Failed to persist user message:', saveError);
                     }
                 }
-                
+
                 // Check LLM settings and provider to give appropriate message
                 const llmSettings = await settingsService?.get('llm');
                 const provider = llmSettings?.provider || 'auto';
-                
+
                 let errorMessage;
                 if (provider === 'ollama') {
                     errorMessage = "I'm starting up with Ollama... please wait a moment and try again! The LLM service is initializing. ⏳";
@@ -1012,10 +1024,10 @@ app.on('ready', async () => {
                 } else {
                     errorMessage = "I'm still starting up... please wait a moment and try again! The LLM service is initializing. ⏳";
                 }
-                
+
                 // Send error message via streaming system so renderer receives it
                 event.sender.send('stream-chunk', { chunk: errorMessage, conversationId });
-                
+
                 // Save assistant error message
                 if (chatStorageService) {
                     try {
@@ -1030,11 +1042,11 @@ app.on('ready', async () => {
                         console.error('🚨 DEBUG: Failed to persist error message:', saveError);
                     }
                 }
-                
+
                 event.sender.send('stream-complete', { conversationId });
                 return errorMessage;
             }
-            
+
             console.log('Main process - using direct LangChain LLM router');
 
             // Save user message first
@@ -1053,7 +1065,7 @@ app.on('ready', async () => {
             }
 
             // Get recent conversation history for context
-            let conversationHistory: Array<{role: 'system' | 'user' | 'assistant', content: string}> = [];
+            let conversationHistory: Array<{ role: 'system' | 'user' | 'assistant', content: string }> = [];
             if (chatStorageService) {
                 try {
                     const history = await chatStorageService.getConversationHistory(conversationId);
@@ -1073,15 +1085,15 @@ app.on('ready', async () => {
             });
 
             // Check if the message might need web search
-            const needsWebSearch = message.toLowerCase().includes('search') || 
-                                  message.toLowerCase().includes('latest') || 
-                                  message.toLowerCase().includes('current') ||
-                                  message.toLowerCase().includes('recent') ||
-                                  message.toLowerCase().includes('news') ||
-                                  message.toLowerCase().includes('web');
+            const needsWebSearch = message.toLowerCase().includes('search') ||
+                message.toLowerCase().includes('latest') ||
+                message.toLowerCase().includes('current') ||
+                message.toLowerCase().includes('recent') ||
+                message.toLowerCase().includes('news') ||
+                message.toLowerCase().includes('web');
 
             let response;
-            
+
             if (needsWebSearch && langChainToolExecutorService) {
                 // Add a system message to encourage tool use
                 const toolAwareHistory = [
@@ -1091,10 +1103,10 @@ app.on('ready', async () => {
                     },
                     ...conversationHistory
                 ];
-                
+
                 console.log('🔧 DEBUG: Message appears to need web search, using tool-aware processing');
                 response = await langChainLLMRouterService.chat(toolAwareHistory);
-                
+
                 // If the response looks like it should have used a tool but didn't, manually trigger web search
                 if (typeof response === 'string' && response.includes('based on my training data')) {
                     console.log('🔧 DEBUG: Response indicates limitations, attempting web search');
@@ -1144,7 +1156,7 @@ app.on('ready', async () => {
                         .replace(/<think>[\s\S]*?<\/think>/g, '') // Remove complete thinking blocks
                         .replace(/<think>[\s\S]*$/g, '') // Remove incomplete thinking blocks at the end
                         .trim();
-                    
+
                     // Only save if there's actual content after cleaning
                     if (cleanContent) {
                         await chatStorageService.saveMessage({
@@ -1212,7 +1224,7 @@ app.on('ready', async () => {
                 console.error('Main process - get-thinking-blocks: chatStorageService not available');
                 return [];
             }
-            
+
             // Get thinking blocks from storage - this assumes chatStorageService has a method for this
             // If not implemented yet, return empty array for now
             if (typeof chatStorageService.getThinkingBlocks === 'function') {
@@ -1363,11 +1375,11 @@ app.on('ready', async () => {
                             streaming: true,
                             timeout: 15000
                         };
-                        
+
                         langChainLLMRouterService = new LangChainLLMRouterService(llmConfig);
                         await langChainLLMRouterService.initialize();
                         console.log('✅ DEBUG: LLM services now available for chat!');
-                        
+
                         // Notify renderer that LLM is ready (optional)
                         if (mainWindow && !mainWindow.isDestroyed()) {
                             mainWindow.webContents.send('llm-ready');
