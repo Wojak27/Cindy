@@ -81,7 +81,7 @@ const ChatList: React.FC<{
                         No conversations yet
                     </div>
                 ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column-reverse', overflowY: "auto", minHeight: '100%' }}>
                         <div style={{ flex: 1 }}></div>
                         {conversations
                             .sort((a, b) => b.lastMessageAt - a.lastMessageAt) // Sort by most recent first

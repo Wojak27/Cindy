@@ -314,6 +314,7 @@ const App: React.FC = () => {
                             };
                             dispatch({ type: 'ADD_MESSAGE', payload: assistantMessage });
                             dispatch({ type: 'START_THINKING' });
+                            setInputValue(''); // Clear input field after sending
 
                             try {
                                 // Process message through agent with conversation ID
@@ -427,6 +428,7 @@ const App: React.FC = () => {
                 timestamp: Date.now(),
                 conversationId: convID
             };
+            setInputValue('');
             dispatch({ type: 'ADD_MESSAGE', payload: userMessage });
 
             // Create assistant message placeholder for streaming
@@ -443,7 +445,6 @@ const App: React.FC = () => {
 
             // Clear input immediately for better UX
             const messageToProcess = inputValue;
-            setInputValue('');
 
             // Create new AbortController for this request
             streamController.current = new AbortController();
