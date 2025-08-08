@@ -208,6 +208,11 @@ const messagesReducer = (state = initialState, action: any) => {
         ...state,
         thinkingBlocks: []
       };
+    case 'REMOVE_STREAMING_THINKING_BLOCKS':
+      return {
+        ...state,
+        thinkingBlocks: state.thinkingBlocks.filter(block => !block.isStreaming)
+      };
 
     // Tool Call Actions
     case 'ADD_TOOL_CALL':

@@ -717,6 +717,25 @@ app.on('ready', async () => {
         }
     }
 
+    // Initialize SpeechToTextService for audio transcription
+    if (!speechToTextService) {
+        try {
+            console.log('🔧 DEBUG: Initializing SpeechToTextService...');
+            const voiceSettings = (await settingsService?.get('voice') || {}) as any;
+            const sttConfig = {
+                provider: voiceSettings.sttProvider || 'auto',
+                language: 'en-US',
+                autoPunctuation: true,
+                profanityFilter: false,
+                offlineModel: 'base' as const
+            };
+            speechToTextService = new SpeechToTextService(sttConfig);
+            console.log('🔧 DEBUG: SpeechToTextService initialized successfully');
+        } catch (error) {
+            console.error('🚨 DEBUG: Failed to initialize SpeechToTextService:', error);
+        }
+    }
+
     // Skip vector store initialization for testing
 
     // Initialize LangChain VectorStoreService - DISABLED FOR DEBUGGING
