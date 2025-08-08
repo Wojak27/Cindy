@@ -1,7 +1,8 @@
 import { LangChainLLMRouterService } from '../services/LangChainLLMRouterService';
-import { MemoryService } from '../services/MemoryService';
-import { ToolExecutorService } from '../services/ToolExecutorService';
 import { DynamicTool } from '@langchain/community/tools/dynamic';
+import { LangChainMemoryService as MemoryService } from '../services/LangChainMemoryService';
+import { LangChainToolExecutorService as ToolExecutorService } from '../services/LangChainToolExecutorService';
+
 
 interface AgentContext {
     conversationId: string;
@@ -32,14 +33,14 @@ class LangChainCindyAgent {
         this.toolExecutor = options.toolExecutor;
         this.config = options.config;
         this.llmRouter = options.llmRouter;
-        
+
         this.initializeTools();
     }
 
     private async initializeTools(): Promise<void> {
         // Convert existing tools to LangChain format
         const availableToolNames = this.toolExecutor.getAvailableTools();
-        
+
         this.tools = availableToolNames.map(toolName => {
             return new DynamicTool({
                 name: toolName,
@@ -94,7 +95,7 @@ class LangChainCindyAgent {
 
             // Extract user name from context preferences
             const userName = context?.preferences?.profile?.name || '';
-            
+
             // Create enhanced input with context
             const enhancedInput = this.enhanceInputWithContext(input, history, userName);
 
@@ -109,7 +110,7 @@ class LangChainCindyAgent {
 
             // For now, fallback to direct LLM call for actual functionality
             const response = await this.fallbackToDirectLLM(input, context);
-            
+
             console.log(`[LangChainCindyAgent] Generated response: ${response.substring(0, 200)}...`);
 
             // Store the interaction in memory using available methods
@@ -119,10 +120,10 @@ class LangChainCindyAgent {
                 content: input,
                 timestamp: new Date(Date.now())
             });
-            
+
             await this.memoryService.addMessage({
                 conversationId: context?.conversationId || 'default',
-                role: 'assistant', 
+                role: 'assistant',
                 content: response,
                 timestamp: new Date(Date.now())
             });
@@ -133,7 +134,7 @@ class LangChainCindyAgent {
 
         } catch (error) {
             console.error('[LangChainCindyAgent] Error processing request:', error);
-            
+
             // Fallback to direct LLM call without agent capabilities
             return this.fallbackToDirectLLM(input, context);
         }
@@ -141,7 +142,7 @@ class LangChainCindyAgent {
 
     private async fallbackToDirectLLM(input: string, context?: AgentContext): Promise<string> {
         console.log('[LangChainCindyAgent] Falling back to direct LLM call');
-        
+
         try {
             // Retrieve conversation history
             const history = await this.memoryService.getConversationHistory(
@@ -149,12 +150,12 @@ class LangChainCindyAgent {
             );
 
             const userName = context?.preferences?.profile?.name || '';
-            
+
             // Build messages for direct LLM call
             const messages = this.buildDirectLLMMessages(input, history, userName);
 
             const result = await this.llmRouter.chat(messages);
-            
+
             if (typeof result === 'string') {
                 return result;
             } else if ('content' in result) {
@@ -175,39 +176,39 @@ class LangChainCindyAgent {
 
     private enhanceInputWithContext(input: string, history: any[], userName: string): string {
         const contextParts = [];
-        
+
         if (userName) {
             contextParts.push(`User name: ${userName}`);
         }
-        
+
         if (history && history.length > 0) {
             const recentHistory = history.slice(-5); // Last 5 exchanges
-            const historyContext = recentHistory.map(h => 
+            const historyContext = recentHistory.map(h =>
                 `${h.role}: ${h.content.substring(0, 100)}`
             ).join('\n');
             contextParts.push(`Recent conversation:\n${historyContext}`);
         }
-        
+
         contextParts.push(`Current request: ${input}`);
-        
+
         return contextParts.join('\n\n');
     }
 
     private formatHistoryForAgent(history: any[]): string {
         if (!history || history.length === 0) return '';
-        
+
         return history.map(h => `${h.role}: ${h.content}`).join('\n');
     }
 
     private buildDirectLLMMessages(input: string, history: any[], userName: string) {
         const messages = [];
-        
+
         // System message
         messages.push({
             role: 'system' as const,
             content: this.getSystemPrompt(userName)
         });
-        
+
         // Add recent history (last 10 messages to manage context window)
         const recentHistory = history.slice(-10);
         for (const msg of recentHistory) {
@@ -216,48 +217,48 @@ class LangChainCindyAgent {
                 content: msg.content
             });
         }
-        
+
         // Add current user input
         messages.push({
             role: 'user' as const,
             content: input
         });
-        
+
         return messages;
     }
 
     private getSystemPrompt(userName?: string): string {
         const basePrompt = `You are Cindy, an advanced AI voice research assistant. You are helpful, knowledgeable, and conversational.
 
-Your capabilities include:
-- Answering questions and providing information
-- Helping with research tasks
-- Web searching for current information
-- Analyzing documents and files
-- Providing summaries and insights
-- Assisting with various tasks and projects
+                            Your capabilities include:
+                            - Answering questions and providing information
+                            - Helping with research tasks
+                            - Web searching for current information
+                            - Analyzing documents and files
+                            - Providing summaries and insights
+                            - Assisting with various tasks and projects
 
-You have access to various tools that you can use to help users. Always think step by step about what the user needs and use the appropriate tools when necessary.
+                            You have access to various tools that you can use to help users. Always think step by step about what the user needs and use the appropriate tools when necessary.
 
-Guidelines:
-- Be conversational and friendly
-- Provide accurate and helpful information
-- When you don't know something, be honest about it
-- Use tools when they can provide better or more current information
-- Break down complex tasks into manageable steps
-- Ask clarifying questions when needed
+                            Guidelines:
+                            - Be conversational and friendly
+                            - Provide accurate and helpful information
+                            - When you don't know something, be honest about it
+                            - Use tools when they can provide better or more current information
+                            - Break down complex tasks into manageable steps
+                            - Ask clarifying questions when needed
 
-Remember: You are designed to be an always-on voice assistant, so keep responses conversational and natural.`;
+                            Remember: You are designed to be an always-on voice assistant, so keep responses conversational and natural.`;
 
         if (userName) {
             return `${basePrompt}\n\nYou are speaking with ${userName}. Personalize your responses appropriately.`;
         }
-        
+
         return basePrompt;
     }
 
     // Additional LangChain-specific methods
-    
+
     /**
      * Get available tools for the agent
      */
@@ -280,7 +281,7 @@ Remember: You are designed to be an always-on voice assistant, so keep responses
     removeTool(toolName: string): boolean {
         const initialLength = this.tools.length;
         this.tools = this.tools.filter(tool => tool.name !== toolName);
-        
+
         if (this.tools.length < initialLength) {
             // Reinitialize agent executor without the removed tool
             this.agentExecutor = null;
@@ -301,7 +302,7 @@ Remember: You are designed to be an always-on voice assistant, so keep responses
      */
     async updateConfig(newConfig: any): Promise<void> {
         this.config = { ...this.config, ...newConfig };
-        
+
         // Reinitialize if LLM config changed
         if (newConfig.llm) {
             await this.llmRouter.updateConfig(newConfig.llm);

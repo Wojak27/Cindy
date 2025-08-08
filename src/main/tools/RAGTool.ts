@@ -1,4 +1,4 @@
-import { VectorStoreService } from '../services/VectorStoreService';
+import { LangChainVectorStoreService as VectorStoreService } from '../services/LangChainVectorStoreService';
 import { BrowserTool } from './BrowserTool';
 import { CitationTool } from './CitationTool';
 import * as fs from 'fs/promises';
@@ -62,8 +62,8 @@ export class RAGTool {
 
             // Search vector store for relevant documents
             const searchResults = await this.vectorStore.search(query, {
-                limit: maxResults * 2, // Get more results to filter by relevance
-                filters: {}
+                k: maxResults * 2, // Get more results to filter by relevance
+                filter: {}
             });
 
             console.log('🔍 RAG: Found', searchResults.length, 'potential matches');
@@ -71,7 +71,7 @@ export class RAGTool {
             // Filter by relevance and format results
             const relevantSources = searchResults
                 .map(result => ({
-                    id: result.id,
+                    id: result.source,
                     title: result.metadata.title || 'Untitled',
                     path: result.metadata.path,
                     content: result.content,
@@ -174,7 +174,6 @@ export class RAGTool {
                 path: document.path,
                 createdAt: new Date(),
                 updatedAt: new Date(),
-                tags: document.tags
             });
 
             console.log('📚 RAG: Document indexed successfully:', document.id);
@@ -228,7 +227,6 @@ export class RAGTool {
                 path: document.path,
                 createdAt: new Date(),
                 updatedAt: new Date(),
-                tags: document.tags
             });
 
             console.log('🌐 RAG: Web page indexed successfully:', document.id);

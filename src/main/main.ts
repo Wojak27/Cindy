@@ -6,7 +6,6 @@ import { TrayService } from './services/TrayService';
 import axios from 'axios';
 import { ChatStorageService } from './services/ChatStorageService';
 // import { DuckDBChatStorageService } from './services/DuckDBChatStorageService';
-import { LLMRouterService } from './services/LLMRouterService';
 // Re-enable core LLM functionality
 import { LangChainLLMRouterService } from './services/LangChainLLMRouterService';
 // Re-enable tool executor for web search
@@ -15,7 +14,6 @@ import { LangChainToolExecutorService } from './services/LangChainToolExecutorSe
 // import { LangChainCindyAgent } from './agents/LangChainCindyAgent';
 // import { LangChainMemoryService } from './services/LangChainMemoryService';
 // import { LangChainVectorStoreService } from './services/LangChainVectorStoreService';
-import { VectorStoreService } from './services/VectorStoreService';
 import { DuckDBVectorStore } from './services/DuckDBVectorStore';
 import { SpeechToTextService } from './services/SpeechToTextService';
 import RealTimeTranscriptionService from './services/RealTimeTranscriptionService';
@@ -279,30 +277,30 @@ const setupDatabaseIPC = () => {
             // Detect embedding provider based on current LLM provider
             const generalSettings = (await settingsService?.get('general') || {}) as any;
             const llmProvider = generalSettings.llmProvider || 'auto';
-            
+
             console.log('[IPC] DEBUG: Detected LLM provider:', llmProvider);
             console.log('[IPC] DEBUG: General settings:', generalSettings);
-            
+
             // Store database in app data directory, not in the folder being indexed
             const appDataPath = app.getPath('userData');
             const vectorDbDir = path.join(appDataPath, 'vector-stores');
-            
+
             // Create vector store directory if it doesn't exist
             if (!fs.existsSync(vectorDbDir)) {
                 fs.mkdirSync(vectorDbDir, { recursive: true });
             }
-            
+
             // Use a hash of the source path to create unique database names
             const crypto = require('crypto');
             const sourcePathHash = crypto.createHash('md5').update(options.databasePath).digest('hex').substring(0, 8);
             const dbName = `vector-store-${sourcePathHash}.db`;
-            
+
             let vectorStoreConfig: any = {
                 databasePath: path.join(vectorDbDir, dbName),
                 chunkSize: 1000,
                 chunkOverlap: 200
             };
-            
+
             console.log('[IPC] Vector database will be stored at:', vectorStoreConfig.databasePath);
             console.log('[IPC] Indexing content from:', options.databasePath);
 
@@ -315,7 +313,7 @@ const setupDatabaseIPC = () => {
                 // For 'openai' and 'auto' providers, try to use OpenAI embeddings
                 // But first check if we actually have an API key
                 const apiKey = await settingsService?.getApiKey();
-                
+
                 if (!apiKey && llmProvider === 'auto') {
                     // If no API key and auto mode, fallback to Ollama
                     console.log('[IPC] No OpenAI API key found in auto mode, falling back to Ollama embeddings');
@@ -413,27 +411,6 @@ const setupDatabaseIPC = () => {
                 }
             }
 
-            // Fallback to legacy vector store
-            if (vectorStoreService) {
-                try {
-                    // VectorStoreService may not have indexFolder method, check if it exists
-                    if (typeof (vectorStoreService as any).indexFolder === 'function') {
-                        const result = await (vectorStoreService as any).indexFolder(directoryPath);
-                        return {
-                            success: true,
-                            message: `Directory indexed successfully using legacy store.`,
-                            indexed: result.indexed || result.success || 0,
-                            errors: result.errors || 0
-                        };
-                    } else {
-                        return { success: false, message: 'Legacy vector store does not support directory indexing' };
-                    }
-                } catch (error) {
-                    console.error('[IPC] Error with legacy vector store:', error);
-                    return { success: false, message: `Legacy store error: ${error.message}` };
-                }
-            }
-
             return { success: false, message: 'No vector store available' };
 
         } catch (error) {
@@ -499,9 +476,7 @@ let trayService: TrayService | null = null;
 let settingsService: SettingsService | null = null;
 let chatStorageService: ChatStorageService | null = null;
 // let duckDBChatStorageService: DuckDBChatStorageService | null = null;
-let llmRouterService: LLMRouterService | null = null;
 let langChainLLMRouterService: LangChainLLMRouterService | null = null;
-let vectorStoreService: VectorStoreService | null = null;
 let duckDBVectorStore: DuckDBVectorStore | null = null;
 // let langChainVectorStoreService: LangChainVectorStoreService | null = null;
 // @ts-ignore - temporarily unused
@@ -842,13 +817,13 @@ app.on('ready', async () => {
     // IPC handler for getting available LLM models
     ipcMain.handle('llm:get-available-models', async () => {
         console.log('Main process - llm:get-available-models IPC called');
-        if (!llmRouterService) {
+        if (!langChainLLMRouterService) {
             console.error('Main process - llm:get-available-models: llmRouterService not available');
             return { success: false, error: 'LLM Router service not available' };
         }
         try {
             console.log('Main process - llm:get-available-models: calling llmRouterService.getAvailableModels()');
-            const models = await llmRouterService.getAvailableModels();
+            const models = await langChainLLMRouterService.getAvailableModels();
             console.log('Main process - llm:get-available-models: successfully retrieved models');
             return { success: true, models };
         } catch (error) {
@@ -860,7 +835,7 @@ app.on('ready', async () => {
     // IPC handler for testing LLM connections
     ipcMain.handle('llm:test-connection', async () => {
         console.log('Main process - llm:test-connection IPC called');
-        if (!llmRouterService) {
+        if (!langChainLLMRouterService) {
             console.error('Main process - llm:test-connection: llmRouterService not available');
             return {
                 success: false,
@@ -871,8 +846,8 @@ app.on('ready', async () => {
         try {
             console.log('Main process - llm:test-connection: testing OpenAI and Ollama connections');
             // Access the providers through the LLMRouterService
-            const openaiConnected = await llmRouterService['openaiProvider']?.testConnection?.() || false;
-            const ollamaConnected = await llmRouterService['ollamaProvider']?.testConnection?.() || false;
+            const openaiConnected = await langChainLLMRouterService['openaiProvider']?.testConnection?.() || false;
+            const ollamaConnected = await langChainLLMRouterService['ollamaProvider']?.testConnection?.() || false;
 
             console.log('Main process - llm:test-connection: connection results - OpenAI:', openaiConnected, 'Ollama:', ollamaConnected);
             return {

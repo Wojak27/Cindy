@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { PathValidator } from '../utils/PathValidator';
-import { VectorStoreService } from '../services/VectorStoreService';
+import { LangChainVectorStoreService as VectorStoreService } from '@main/services/LangChainVectorStoreService';
 
 interface Note {
     id: string;
@@ -11,19 +11,6 @@ interface Note {
     createdAt: Date;
     updatedAt: Date;
     tags: string[];
-}
-
-// Temporary interface to resolve type errors
-interface SearchResult {
-    id: string;
-    content: string;
-    metadata: {
-        title?: string;
-        path: string;
-        createdAt: string;
-        updatedAt: string;
-        tags: string[];
-    };
 }
 
 class FileSystemTool {
@@ -99,7 +86,6 @@ ${content}`;
                 path: note.path,
                 createdAt: note.createdAt,
                 updatedAt: note.updatedAt,
-                tags: note.tags
             });
         } catch (error) {
             console.warn('Failed to index note in vector store:', error);
@@ -154,11 +140,13 @@ ${bodyContent}`;
         // Update vector store
         try {
             await this.initializeVectorStore();
-            await this.vectorStore?.updateDocument(id, {
+            await this.vectorStore?.updateDocument({
+                id: id,
                 content: bodyContent,
                 title: currentTitle,
-                tags: currentTags,
-                updatedAt: new Date()
+                updatedAt: new Date(),
+                path: filePath,
+                createdAt: undefined
             });
         } catch (error) {
             console.warn('Failed to update note in vector store:', error);
@@ -179,19 +167,21 @@ ${bodyContent}`;
         try {
             await this.initializeVectorStore();
             const results = await this.vectorStore?.search(query, {
-                limit: options?.limit || 10,
-                filters: options?.tags ? { tags: options.tags } : undefined
+                k: options?.limit || 10,
+                filter: options?.tags ? { tags: options.tags } : undefined
             });
 
-            return results?.map((r: SearchResult) => ({
-                id: r.id,
-                title: r.metadata.title || 'Untitled',
-                content: r.content,
-                path: r.metadata.path,
-                createdAt: new Date(r.metadata.createdAt),
-                updatedAt: new Date(r.metadata.updatedAt),
-                tags: r.metadata.tags || []
-            })) || [];
+            return results?.map((r) => {
+                return {
+                    id: r.source,
+                    title: r.metadata.title || 'Untitled',
+                    content: r.content,
+                    path: r.metadata.path,
+                    createdAt: new Date(r.metadata.createdAt),
+                    updatedAt: new Date(r.metadata.updatedAt),
+                    tags: r.metadata.tags || []
+                }
+            }) || [];
         } catch (error) {
             console.error('Search failed:', error);
             return [];
@@ -212,7 +202,6 @@ ${bodyContent}`;
 
         // Reinitialize vector store with new path
         if (this.vectorStore) {
-            await this.vectorStore.close();
             this.vectorStore = null;
             await this.initializeVectorStore();
         }
