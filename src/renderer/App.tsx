@@ -291,7 +291,7 @@ const App: React.FC = () => {
                     if (transcript) {
                         // Set the transcribed text in the input field
                         setInputValue(transcript);
-
+                        const chatID = currentConversationId || getNewConversationId();
                         // Handle the transcribed text by sending it as a message
                         if (transcript.trim()) {
                             // Add user message to store with unique ID
@@ -300,7 +300,7 @@ const App: React.FC = () => {
                                 role: 'user',
                                 content: transcript,
                                 timestamp: Date.now(),
-                                conversationId: currentConversationId
+                                conversationId: chatID
                             };
                             dispatch({ type: 'ADD_MESSAGE', payload: userMessage });
 
@@ -311,14 +311,14 @@ const App: React.FC = () => {
                                 content: '',
                                 timestamp: Date.now(),
                                 isStreaming: true,
-                                conversationId: currentConversationId
+                                conversationId: chatID
                             };
                             dispatch({ type: 'ADD_MESSAGE', payload: assistantMessage });
                             dispatch({ type: 'START_THINKING' });
 
                             try {
                                 // Process message through agent with conversation ID
-                                await ipcRenderer.invoke('process-message', transcript, currentConversationId);
+                                await ipcRenderer.invoke('process-message', transcript, chatID);
                             } catch (error) {
                                 console.error('Error processing message:', error);
                                 // Mark the assistant message as failed
@@ -331,6 +331,9 @@ const App: React.FC = () => {
                                 });
                                 dispatch({ type: 'STOP_THINKING' });
                             }
+                        }
+                        if (chatID !== currentConversationId) {
+                            setCurrentConversationId(chatID);
                         }
                     }
                 } else {
@@ -461,7 +464,9 @@ const App: React.FC = () => {
                 });
                 dispatch({ type: 'STOP_THINKING' });
             }
-            setCurrentConversationId(convID);
+            if (convID !== currentConversationId) {
+                setCurrentConversationId(convID);
+            }
         }
     };
 
@@ -980,7 +985,7 @@ const App: React.FC = () => {
                                                     <>
                                                         {/* Render thinking blocks before assistant content */}
                                                         {associatedBlocks.map((block: any) => (
-                                                            block.isIncomplete ? <ThinkingBlock
+                                                            <ThinkingBlock
                                                                 key={block.id}
                                                                 id={block.id}
                                                                 content={block.content}
@@ -990,8 +995,7 @@ const App: React.FC = () => {
                                                                 defaultOpen={false}
                                                                 isIncomplete={block.isIncomplete || false}
                                                                 isStreaming={block.isStreaming || false}
-                                                            /> : <></>
-                                                        ))}
+                                                            />))}
 
                                                         {/* Render tool calls after thinking blocks */}
                                                         {associatedToolCalls.map((toolCall: any) => (
