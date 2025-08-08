@@ -717,7 +717,7 @@ export class LLMProvider extends EventEmitter {
 
     /**
      * Bind tools to the model for function calling
-     * Note: This modifies the model in place and returns it
+     * Note: This returns a new model instance with tools bound
      */
     withTools(tools: any[]): BaseChatModel | null {
         if (!this.model) {
@@ -732,9 +732,14 @@ export class LLMProvider extends EventEmitter {
         }
 
         // Use bindTools method which is the modern LangChain API
+        // bindTools() returns a new model instance with tools bound
         try {
-            (this.model as any).bindTools(tools);
-            return this.model;
+            const modelWithTools = (this.model as any).bindTools(tools);
+            console.log(`[LLMProvider] Successfully bound ${tools.length} tools to ${this.currentProvider} model`);
+            
+            // Update our internal model reference to the bound model
+            this.model = modelWithTools;
+            return modelWithTools;
         } catch (error) {
             console.error('[LLMProvider] Failed to bind tools:', error);
             return null;
