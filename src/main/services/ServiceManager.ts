@@ -39,7 +39,7 @@ export class ServiceManager extends EventEmitter {
     /**
      * Dynamically load LangChain ToolExecutorService
      */
-    async getToolExecutorService(): Promise<any> {
+    async getToolExecutorService(duckdbVectorStore?: any): Promise<any> {
         if (this.langChainToolExecutorService) {
             return this.langChainToolExecutorService;
         }
@@ -56,10 +56,11 @@ export class ServiceManager extends EventEmitter {
         try {
             console.log('[ServiceManager] Dynamically loading LangChainToolExecutorService...');
             
-            // Dynamic import to avoid loading at startup
-            const { LangChainToolExecutorService } = await import('./LangChainToolExecutorService');
+            // Dynamic import to avoid loading at startup - using completely lightweight version with NO LangChain imports
+            const { LangChainToolExecutorService } = await import('./LangChainToolExecutorService_lightweight');
             
-            this.langChainToolExecutorService = new LangChainToolExecutorService();
+            // Pass DuckDB vector store instead of LangChain vector store
+            this.langChainToolExecutorService = new LangChainToolExecutorService(duckdbVectorStore);
             await this.langChainToolExecutorService.initialize();
             
             console.log('[ServiceManager] LangChainToolExecutorService loaded successfully');
@@ -130,7 +131,7 @@ export class ServiceManager extends EventEmitter {
     /**
      * Dynamically load LangChain CindyAgent
      */
-    async getCindyAgent(): Promise<any> {
+    async getCindyAgent(duckdbVectorStore?: any): Promise<any> {
         if (this.langChainCindyAgent) {
             return this.langChainCindyAgent;
         }
@@ -157,7 +158,7 @@ export class ServiceManager extends EventEmitter {
             
             // Load dependencies
             const memoryService = await this.getMemoryService();
-            const toolExecutorService = await this.getToolExecutorService();
+            const toolExecutorService = await this.getToolExecutorService(duckdbVectorStore);
             
             // Dynamic import to avoid loading at startup
             const { LangChainCindyAgent } = await import('../agents/LangChainCindyAgent');

@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { PathValidator } from '../utils/PathValidator';
-import { LangChainVectorStoreService as VectorStoreService } from '@main/services/LangChainVectorStoreService';
+// import { LangChainVectorStoreService as VectorStoreService } from '@main/services/LangChainVectorStoreService'; // Removed - using DuckDBVectorStore instead
 
 interface Note {
     id: string;
@@ -15,10 +15,11 @@ interface Note {
 
 class FileSystemTool {
     private vaultPath: string;
-    private vectorStore: VectorStoreService | null = null;
+    private vectorStore: any | null = null; // DuckDBVectorStore instance
 
-    constructor(vaultPath?: string) {
+    constructor(vaultPath?: string, vectorStore?: any) {
         this.vaultPath = vaultPath || this.getDefaultVaultPath();
+        this.vectorStore = vectorStore;
     }
 
     private getDefaultVaultPath(): string {
@@ -26,15 +27,10 @@ class FileSystemTool {
     }
 
     async initializeVectorStore(): Promise<void> {
+        // Vector store should be passed in constructor now
+        // If not provided, skip vector store functionality
         if (!this.vectorStore) {
-            this.vectorStore = new VectorStoreService({
-                databasePath: path.join(this.vaultPath, 'cindy.db'),
-                embeddingModel: 'openai',
-                chunkSize: 1000,
-                chunkOverlap: 200,
-                autoIndex: true
-            });
-            await this.vectorStore.initialize();
+            console.warn('[FileSystemTool] No vector store provided, document indexing disabled');
         }
     }
 

@@ -1393,7 +1393,7 @@ app.on('ready', async () => {
             try {
                 if (!langChainCindyAgent && langChainMemoryService && langChainToolExecutorService && llmProvider) {
                     console.log('🔧 DEBUG: Loading LangChain CindyAgent via ServiceManager');
-                    langChainCindyAgent = await serviceManager.getCindyAgent();
+                    langChainCindyAgent = await serviceManager.getCindyAgent(duckDBVectorStore);
                     console.log('✅ DEBUG: LangChain CindyAgent loaded successfully');
                 } else {
                     console.warn('⚠️ DEBUG: Skipping Cindy Agent - required services not available');
@@ -1503,7 +1503,7 @@ app.on('ready', async () => {
                 try {
                     console.log('Main process - attempting to load Cindy Agent dynamically for message processing');
                     serviceManager.updateCoreServices(settingsService, llmProvider);
-                    langChainCindyAgent = await serviceManager.getCindyAgent();
+                    langChainCindyAgent = await serviceManager.getCindyAgent(duckDBVectorStore);
                     console.log('Main process - Cindy Agent loaded dynamically');
                 } catch (error) {
                     console.warn('Main process - failed to load Cindy Agent dynamically:', error.message);

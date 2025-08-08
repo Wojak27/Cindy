@@ -1,4 +1,4 @@
-import { LangChainVectorStoreService as VectorStoreService } from '../services/LangChainVectorStoreService';
+// import { LangChainVectorStoreService as VectorStoreService } from '../services/LangChainVectorStoreService'; // Removed - using DuckDBVectorStore instead
 import { BrowserTool } from './BrowserTool';
 import { CitationTool } from './CitationTool';
 import * as fs from 'fs/promises';
@@ -37,12 +37,12 @@ interface DocumentContent {
 }
 
 export class RAGTool {
-    private vectorStore: VectorStoreService;
+    private vectorStore: any; // DuckDBVectorStore instance
     private browserTool: BrowserTool;
     private citationTool: CitationTool;
     private knowledgeBaseDir: string;
 
-    constructor(vectorStore: VectorStoreService) {
+    constructor(vectorStore: any) {
         this.vectorStore = vectorStore;
         this.browserTool = new BrowserTool();
         this.citationTool = new CitationTool();

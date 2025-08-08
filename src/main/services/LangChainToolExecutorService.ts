@@ -4,7 +4,7 @@ import { Tool } from '@langchain/core/tools';
 // import { Calculator } from '@langchain/community/tools/calculator';
 // import { SerpAPI } from '@langchain/community/tools/serpapi';
 import { z } from 'zod';
-import { LangChainVectorStoreService } from './LangChainVectorStoreService';
+// import { LangChainVectorStoreService } from './LangChainVectorStoreService'; // Removed - using DuckDBVectorStore instead
 import * as fs from 'fs';
 import * as path from 'path';
 import axios from 'axios';
@@ -25,9 +25,9 @@ interface ToolDefinition {
 
 export class LangChainToolExecutorService extends EventEmitter {
     private tools: Map<string, ToolDefinition> = new Map();
-    private vectorStore?: LangChainVectorStoreService;
+    private vectorStore?: any; // DuckDBVectorStore instance passed from main
 
-    constructor(vectorStore?: LangChainVectorStoreService) {
+    constructor(vectorStore?: any) {
         super();
         this.vectorStore = vectorStore;
         // Don't call async initialization in constructor
@@ -41,34 +41,22 @@ export class LangChainToolExecutorService extends EventEmitter {
 
     private async initializeBuiltInTools(): Promise<void> {
         try {
-            // Calculator tool - temporarily disabled to fix memory issue
+            console.log('[LangChainToolExecutorService] Starting tool initialization with minimal set...');
+            
+            // Temporarily disable web search tool as it might be causing hanging
             // this.registerTool({
-            //     name: 'calculator',
-            //     description: 'Perform mathematical calculations and evaluate expressions',
+            //     name: 'web_search',
+            //     description: 'Search the web for current information',
             //     parameters: {
             //         type: 'object',
             //         properties: {
-            //             expression: { type: 'string', description: 'Mathematical expression to evaluate' }
+            //             query: { type: 'string', description: 'Search query' },
+            //             num_results: { type: 'number', description: 'Number of results to return (max 5)', default: 3 }
             //         },
-            //         required: ['expression']
+            //         required: ['query']
             //     },
-            //     tool: new Calculator() as any // Type assertion to bypass complex schema issues
+            //     tool: this.createWebSearchTool()
             // });
-
-            // Web search tool using a simple web search approach
-            this.registerTool({
-                name: 'web_search',
-                description: 'Search the web for current information',
-                parameters: {
-                    type: 'object',
-                    properties: {
-                        query: { type: 'string', description: 'Search query' },
-                        num_results: { type: 'number', description: 'Number of results to return (max 5)', default: 3 }
-                    },
-                    required: ['query']
-                },
-                tool: this.createWebSearchTool()
-            });
 
             // File reader tool
             this.registerTool({
@@ -140,156 +128,10 @@ export class LangChainToolExecutorService extends EventEmitter {
                 }) as any
             });
 
-            // Vector store search tool (RAG)
-            if (this.vectorStore) {
-                this.registerTool({
-                    name: 'search_documents',
-                    description: 'Search through indexed documents using semantic similarity',
-                    parameters: {
-                        type: 'object',
-                        properties: {
-                            query: { type: 'string', description: 'Search query' },
-                            limit: { type: 'number', description: 'Maximum number of results', default: 5 },
-                            score_threshold: { type: 'number', description: 'Minimum similarity score', default: 0.7 }
-                        },
-                        required: ['query']
-                    },
-                    tool: new DynamicStructuredTool({
-                        name: 'search_documents',
-                        description: 'Search through indexed documents using semantic similarity',
-                        schema: z.object({
-                            query: z.string().describe('Search query'),
-                            limit: z.number().default(5).describe('Maximum number of results'),
-                            score_threshold: z.number().default(0.7).describe('Minimum similarity score')
-                        }),
-                        func: async ({ query, limit, score_threshold }: any) => {
-                            try {
-                                const results = await this.vectorStore!.search(query, {
-                                    k: limit,
-                                    scoreThreshold: score_threshold
-                                });
-                                
-                                if (results.length === 0) {
-                                    return 'No relevant documents found for the query.';
-                                }
-                                
-                                return results.map((result, index) => 
-                                    `Result ${index + 1} (Score: ${result.score.toFixed(3)}):\n` +
-                                    `Source: ${result.source}\n` +
-                                    `Content: ${result.content.substring(0, 300)}${result.content.length > 300 ? '...' : ''}\n`
-                                ).join('\n---\n');
-                            } catch (error) {
-                                return `Error searching documents: ${error.message}`;
-                            }
-                        }
-                    }) as any
-                });
-            }
-
-            // HTTP request tool
-            this.registerTool({
-                name: 'http_request',
-                description: 'Make HTTP requests to web APIs',
-                parameters: {
-                    type: 'object',
-                    properties: {
-                        url: { type: 'string', description: 'URL to make request to' },
-                        method: { type: 'string', description: 'HTTP method', default: 'GET' },
-                        headers: { type: 'object', description: 'HTTP headers' },
-                        data: { type: 'object', description: 'Request body data' }
-                    },
-                    required: ['url']
-                },
-                tool: new DynamicStructuredTool({
-                    name: 'http_request',
-                    description: 'Make HTTP requests to web APIs',
-                    schema: z.object({
-                        url: z.string().describe('URL to make request to'),
-                        method: z.string().default('GET').describe('HTTP method'),
-                        headers: z.record(z.string()).optional().describe('HTTP headers'),
-                        data: z.record(z.any()).optional().describe('Request body data')
-                    }),
-                    func: async ({ url, method, headers, data }: any) => {
-                        try {
-                            const response = await axios({
-                                url,
-                                method: method as any,
-                                headers,
-                                data,
-                                timeout: 10000,
-                                maxRedirects: 5
-                            });
-                            
-                            return {
-                                status: response.status,
-                                statusText: response.statusText,
-                                headers: response.headers,
-                                data: response.data
-                            };
-                        } catch (error) {
-                            return `HTTP request failed: ${error.message}`;
-                        }
-                    }
-                }) as any
-            });
-
-            // Directory listing tool
-            this.registerTool({
-                name: 'list_directory',
-                description: 'List contents of a directory',
-                parameters: {
-                    type: 'object',
-                    properties: {
-                        path: { type: 'string', description: 'Directory path to list' },
-                        show_hidden: { type: 'boolean', description: 'Show hidden files', default: false }
-                    },
-                    required: ['path']
-                },
-                tool: new DynamicStructuredTool({
-                    name: 'list_directory',
-                    description: 'List contents of a directory',
-                    schema: z.object({
-                        path: z.string().describe('Directory path to list'),
-                        show_hidden: z.boolean().default(false).describe('Show hidden files')
-                    }),
-                    func: async ({ path: dirPath, show_hidden }: any) => {
-                        try {
-                            if (!fs.existsSync(dirPath)) {
-                                return `Error: Directory not found: ${dirPath}`;
-                            }
-                            
-                            const stat = fs.statSync(dirPath);
-                            if (!stat.isDirectory()) {
-                                return `Error: Path is not a directory: ${dirPath}`;
-                            }
-                            
-                            const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-                            const items = entries
-                                .filter(entry => show_hidden || !entry.name.startsWith('.'))
-                                .map(entry => {
-                                    const fullPath = path.join(dirPath, entry.name);
-                                    const stat = fs.statSync(fullPath);
-                                    return {
-                                        name: entry.name,
-                                        type: entry.isDirectory() ? 'directory' : 'file',
-                                        size: entry.isFile() ? stat.size : undefined,
-                                        modified: stat.mtime.toISOString()
-                                    };
-                                });
-                            
-                            return `Directory: ${dirPath}\n` +
-                                   `Items: ${items.length}\n\n` +
-                                   items.map(item => 
-                                       `${item.type === 'directory' ? '📁' : '📄'} ${item.name}` +
-                                       (item.size ? ` (${item.size} bytes)` : '') +
-                                       ` - Modified: ${item.modified}`
-                                   ).join('\n');
-                        } catch (error) {
-                            return `Error listing directory: ${error.message}`;
-                        }
-                    }
-                }) as any
-            });
+            // Temporarily disable all complex tools to isolate hanging issue
+            // Vector store search tool (RAG) - DISABLED
+            // HTTP request tool - DISABLED  
+            // Directory listing tool - DISABLED
 
             console.log(`[LangChainToolExecutorService] Registered ${this.tools.size} built-in tools`);
         } catch (error) {
