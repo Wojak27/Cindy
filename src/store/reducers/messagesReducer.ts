@@ -94,8 +94,8 @@ const messagesReducer = (state = initialState, action: any) => {
       if (lastAssistantIdx >= 0 && state.messages[lastAssistantIdx].role === 'assistant') {
         const updatedMessage = {
           ...state.messages[lastAssistantIdx],
-          ...(typeof action.payload === 'string' 
-            ? { content: action.payload } 
+          ...(typeof action.payload === 'string'
+            ? { content: action.payload }
             : action.payload
           ),
           isStreaming: false
@@ -131,12 +131,12 @@ const messagesReducer = (state = initialState, action: any) => {
         ...state,
         messages: state.messages.map(msg =>
           msg.id === action.payload.messageId
-            ? { 
-                ...msg, 
-                failed: true, 
-                error: action.payload.error,
-                isStreaming: false 
-              }
+            ? {
+              ...msg,
+              failed: true,
+              error: action.payload.error,
+              isStreaming: false
+            }
             : msg
         )
       };
@@ -146,13 +146,13 @@ const messagesReducer = (state = initialState, action: any) => {
         ...state,
         messages: state.messages.map(msg =>
           msg.id === action.payload.messageId
-            ? { 
-                ...msg, 
-                failed: false, 
-                error: null,
-                isStreaming: true,
-                retryCount: (msg.retryCount || 0) + 1
-              }
+            ? {
+              ...msg,
+              failed: false,
+              error: null,
+              isStreaming: true,
+              retryCount: (msg.retryCount || 0) + 1
+            }
             : msg
         )
       };
@@ -276,7 +276,7 @@ const messagesReducer = (state = initialState, action: any) => {
     case 'ADD_INCOMPLETE_TOOL_CALLS':
       // Add incomplete tool calls (for showing before </tool> tag)
       const incompleteCalls = action.payload || [];
-      const newToolCalls = incompleteCalls.filter(incompleteCall => 
+      const newToolCalls = incompleteCalls.filter(incompleteCall =>
         !state.toolCalls.some(existingCall => existingCall.id === incompleteCall.id)
       );
 
@@ -292,7 +292,7 @@ const messagesReducer = (state = initialState, action: any) => {
       // Remove incomplete tool calls when they're completed or replaced
       return {
         ...state,
-        toolCalls: state.toolCalls.filter(call => 
+        toolCalls: state.toolCalls.filter(call =>
           !call.id.startsWith('incomplete-tool-')
         )
       };

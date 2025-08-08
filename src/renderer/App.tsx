@@ -52,7 +52,6 @@ const App: React.FC = () => {
     const [currentConversationId, setCurrentConversationId] = useState<string | undefined>(undefined);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [isAppLoading, setIsAppLoading] = useState(true);
-    const [wakeWordDetected, setWakeWordDetected] = useState(false);
     const audioContext = useRef<AudioContext | null>(null);
     const sounds = useRef<Record<string, AudioBuffer>>({});
     const streamController = useRef<AbortController | null>(null);
@@ -272,7 +271,7 @@ const App: React.FC = () => {
 
     // Handle microphone button click for recording
     const handleMicClick = async () => {
-        console.log('🎤 handleMicClick called, current state:', { isRecording, isListening, wakeWordDetected });
+        console.log('🎤 handleMicClick called, current state:', { isRecording, isListening });
 
         // Only play activation sound for recording (as requested)
         if (!isRecording) {
@@ -681,58 +680,6 @@ const App: React.FC = () => {
         }
     };
 
-    // Add keyboard shortcut to test wake word detection
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            // Press Ctrl/Cmd + W to simulate wake word detection
-            if ((e.ctrlKey || e.metaKey) && e.key === 'w') {
-                e.preventDefault();
-                console.log('🎤 Simulating wake word detection via keyboard shortcut');
-                // Trigger the same event as the IPC
-                document.dispatchEvent(new CustomEvent('test-wake-word'));
-            }
-        };
-
-        const handleTestWakeWord = async () => {
-            console.log('🎤 Test wake word triggered');
-            setWakeWordDetected(true);
-            playSound('activation');
-
-            try {
-                await handleMicClick();
-                console.log('🎤 handleMicClick completed after test wake word');
-            } catch (error) {
-                console.error('🎤 Error in handleMicClick after test wake word:', error);
-            }
-
-            // Reset wake word detected state after visual feedback
-            setTimeout(() => {
-                setWakeWordDetected(false);
-            }, 2000);
-        };
-
-        const handleLiveWakeWord = async () => {
-            console.log('🎤 Live wake word detected');
-            playSound('activation');
-
-            try {
-                await handleMicClick();
-                console.log('🎤 handleMicClick completed after live wake word');
-            } catch (error) {
-                console.error('🎤 Error in handleMicClick after live wake word:', error);
-            }
-        };
-
-        document.addEventListener('keydown', handleKeyDown);
-        document.addEventListener('test-wake-word', handleTestWakeWord);
-        document.addEventListener('live-wake-word-detected', handleLiveWakeWord);
-
-        return () => {
-            document.removeEventListener('keydown', handleKeyDown);
-            document.removeEventListener('test-wake-word', handleTestWakeWord);
-            document.removeEventListener('live-wake-word-detected', handleLiveWakeWord);
-        };
-    }, []);
 
     // Handle click outside to close sidebars
     useEffect(() => {
@@ -995,7 +942,8 @@ const App: React.FC = () => {
                                                                 defaultOpen={false}
                                                                 isIncomplete={block.isIncomplete || false}
                                                                 isStreaming={block.isStreaming || false}
-                                                            />))}
+                                                            />
+                                                        ))}
 
                                                         {/* Render tool calls after thinking blocks */}
                                                         {associatedToolCalls.map((toolCall: any) => (
@@ -1077,7 +1025,7 @@ const App: React.FC = () => {
                                 disabled={isRecording}
                             />
                             <div className="button-group">
-                                <div className={`mic-button-wrapper ${isRecording ? 'is-recording' : ''} ${wakeWordDetected ? 'wake-word-detected' : ''} ${!isRecording ? 'is-listening' : ''}`}>
+                                <div className={`mic-button-wrapper ${isRecording ? 'is-recording' : ''} ${!isRecording ? 'is-listening' : ''}`}>
                                     <IconButton
                                         className="mic-button"
                                         onClick={handleMicClick}
