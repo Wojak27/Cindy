@@ -8,16 +8,18 @@ import { ChatStorageService } from './services/ChatStorageService';
 // import { DuckDBChatStorageService } from './services/DuckDBChatStorageService';
 // Re-enable core LLM functionality
 import { LLMProvider } from './services/LLMProvider';
-// Re-enable tool executor for web search
-import { LangChainToolExecutorService } from './services/LangChainToolExecutorService';
-// Keep other complex services disabled for now
+// Keep heavy services for dynamic loading only - no static imports
+// import { LangChainToolExecutorService } from './services/LangChainToolExecutorService';
 // import { LangChainCindyAgent } from './agents/LangChainCindyAgent';
 // import { LangChainMemoryService } from './services/LangChainMemoryService';
+// Keep vector store service disabled for now - using DuckDBVectorStore instead
 // import { LangChainVectorStoreService } from './services/LangChainVectorStoreService';
 import { DuckDBVectorStore } from './services/DuckDBVectorStore';
+import { ServiceManager } from './services/ServiceManager';
 import { SpeechToTextService } from './services/SpeechToTextService';
 import RealTimeTranscriptionService from './services/RealTimeTranscriptionService';
 import { LinkPreviewService } from './services/LinkPreviewService';
+import { TextToSpeechService } from './services/TextToSpeechService';
 
 import installExtension, {
     REDUX_DEVTOOLS,
@@ -451,6 +453,159 @@ const setupDatabaseIPC = () => {
     console.log('🔧 DEBUG: Database IPC handlers setup complete');
 };
 
+// Function to set up TTS-related IPC handlers
+const setupTTSIPC = () => {
+    console.log('🔧 DEBUG: Setting up TTS IPC handlers');
+
+    // Remove any existing handlers first
+    const handlersToRemove = [
+        'tts-synthesize',
+        'tts-synthesize-and-play',
+        'tts-get-options',
+        'tts-update-options',
+        'tts-is-ready',
+        'tts-cleanup'
+    ];
+
+    handlersToRemove.forEach(handler => {
+        try {
+            ipcMain.removeHandler(handler);
+        } catch (error) {
+            console.debug(`No existing handler for ${handler} to remove`);
+        }
+    });
+
+    // Synthesize text to audio file
+    ipcMain.handle('tts-synthesize', async (event, text: string, outputPath?: string) => {
+        console.log('Main process - tts-synthesize IPC called with text:', text.substring(0, 50) + '...');
+        try {
+            if (!textToSpeechService) {
+                return { success: false, error: 'TextToSpeechService not available' };
+            }
+
+            if (!text || typeof text !== 'string' || text.trim().length === 0) {
+                return { success: false, error: 'Invalid text input' };
+            }
+
+            // Lazy initialization on first use
+            if (!textToSpeechService.isReady()) {
+                console.log('Main process - Initializing TTS on first use...');
+                try {
+                    await textToSpeechService.initialize();
+                } catch (initError) {
+                    console.error('Main process - TTS initialization failed:', initError);
+                    return { success: false, error: 'Failed to initialize TTS service: ' + initError.message };
+                }
+            }
+
+            const result = await textToSpeechService.synthesize(text, outputPath);
+            console.log('Main process - tts-synthesize result:', result.success ? 'success' : result.error);
+            return result;
+        } catch (error) {
+            console.error('Main process - tts-synthesize error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // Synthesize text and play audio immediately
+    ipcMain.handle('tts-synthesize-and-play', async (event, text: string) => {
+        console.log('Main process - tts-synthesize-and-play IPC called with text:', text.substring(0, 50) + '...');
+        try {
+            if (!textToSpeechService) {
+                return { success: false, error: 'TextToSpeechService not available' };
+            }
+
+            if (!text || typeof text !== 'string' || text.trim().length === 0) {
+                return { success: false, error: 'Invalid text input' };
+            }
+
+            // Lazy initialization on first use
+            if (!textToSpeechService.isReady()) {
+                console.log('Main process - Initializing TTS on first use...');
+                try {
+                    await textToSpeechService.initialize();
+                } catch (initError) {
+                    console.error('Main process - TTS initialization failed:', initError);
+                    return { success: false, error: 'Failed to initialize TTS service: ' + initError.message };
+                }
+            }
+
+            const result = await textToSpeechService.synthesizeAndPlay(text);
+            console.log('Main process - tts-synthesize-and-play result:', result.success ? 'success' : result.error);
+            return result;
+        } catch (error) {
+            console.error('Main process - tts-synthesize-and-play error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // Get current TTS options
+    ipcMain.handle('tts-get-options', async () => {
+        try {
+            if (!textToSpeechService) {
+                return { success: false, error: 'TextToSpeechService not initialized' };
+            }
+
+            const options = textToSpeechService.getOptions();
+            return { success: true, options };
+        } catch (error) {
+            console.error('Main process - tts-get-options error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // Update TTS options
+    ipcMain.handle('tts-update-options', async (event, options: any) => {
+        console.log('Main process - tts-update-options IPC called with:', options);
+        try {
+            if (!textToSpeechService) {
+                return { success: false, error: 'TextToSpeechService not initialized' };
+            }
+
+            await textToSpeechService.updateOptions(options);
+            return { success: true };
+        } catch (error) {
+            console.error('Main process - tts-update-options error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // Check if TTS service is ready
+    ipcMain.handle('tts-is-ready', async () => {
+        try {
+            // Service is available if it exists (even if not initialized yet)
+            const available = !!textToSpeechService;
+            const initialized = textToSpeechService?.isReady() || false;
+            return {
+                success: true,
+                ready: initialized,
+                available: available,
+                requiresInitialization: available && !initialized
+            };
+        } catch (error) {
+            console.error('Main process - tts-is-ready error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // Cleanup TTS resources
+    ipcMain.handle('tts-cleanup', async () => {
+        console.log('Main process - tts-cleanup IPC called');
+        try {
+            if (textToSpeechService) {
+                await textToSpeechService.cleanup();
+                return { success: true };
+            }
+            return { success: false, error: 'TextToSpeechService not initialized' };
+        } catch (error) {
+            console.error('Main process - tts-cleanup error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    console.log('🔧 DEBUG: TTS IPC handlers setup complete');
+};
+
 async function waitForDevServer(maxRetries = 10, delay = 1000): Promise<boolean> {
     for (let i = 0; i < maxRetries; i++) {
         try {
@@ -481,18 +636,16 @@ let duckDBVectorStore: DuckDBVectorStore | null = null;
 // let langChainVectorStoreService: LangChainVectorStoreService | null = null;
 // @ts-ignore - temporarily unused
 let langChainVectorStoreService: any = null; // Type as any for now
-// let langChainMemoryService: LangChainMemoryService | null = null;
-// @ts-ignore - temporarily unused
-let langChainMemoryService: any = null; // Type as any for now
-// let langChainToolExecutorService: LangChainToolExecutorService | null = null;
-let langChainToolExecutorService: LangChainToolExecutorService | null = null;
-// let langChainCindyAgent: LangChainCindyAgent | null = null;
-// @ts-ignore - temporarily unused
-let langChainCindyAgent: any = null; // Type as any for now
+// Dynamic loading - no static types, will be loaded on-demand
+let serviceManager: ServiceManager | null = null;
+let langChainMemoryService: any = null;
+let langChainToolExecutorService: any = null;
+let langChainCindyAgent: any = null;
 let wakeWordService: any = null;
 let speechToTextService: SpeechToTextService | null = null;
 let realTimeTranscriptionService: RealTimeTranscriptionService | null = null;
 let linkPreviewService: LinkPreviewService | null = null;
+let textToSpeechService: TextToSpeechService | null = null;
 
 const createWindow = async (): Promise<void> => {
     console.log('🔧 DEBUG: Creating simplified window for testing');
@@ -717,6 +870,7 @@ app.on('ready', async () => {
     console.log('🔧 DEBUG: Setting up IPC handlers before window creation');
     setupSettingsIPC();
     setupDatabaseIPC();
+    setupTTSIPC();
 
     // Skip LLM services for now - will initialize them later
     console.log('🔧 DEBUG: Skipping LLM services initialization for startup speed');
@@ -750,6 +904,27 @@ app.on('ready', async () => {
             console.log('🔧 DEBUG: SpeechToTextService initialized successfully');
         } catch (error) {
             console.error('🚨 DEBUG: Failed to initialize SpeechToTextService:', error);
+        }
+    }
+
+    // Initialize TextToSpeechService (lazy initialization - will be initialized on first use)
+    if (!textToSpeechService) {
+        try {
+            const ttsOptions = {
+                modelName: 'microsoft/speecht5_tts',
+                speed: 1.0,
+                volume: 1.0,
+                pitch: 1.0,
+                dtype: 'fp32',
+                device: 'cpu'
+            };
+            textToSpeechService = new TextToSpeechService(ttsOptions);
+            // Don't initialize now - will initialize lazily on first use to avoid memory issues
+            console.log('🔧 DEBUG: TextToSpeechService created (will initialize lazily on first use)');
+        } catch (error) {
+            console.error('🚨 DEBUG: Failed to create TextToSpeechService:', error);
+            // Don't block app startup if TTS fails
+            textToSpeechService = null;
         }
     }
 
@@ -805,6 +980,10 @@ app.on('ready', async () => {
     //     console.log('🔧 DEBUG: LangChain CindyAgent initialized with full LangChain services integration');
     // }
 
+    // Initialize ServiceManager for dynamic loading of heavy services
+    serviceManager = new ServiceManager(settingsService, llmProvider);
+    console.log('🔧 DEBUG: ServiceManager initialized for dynamic service loading');
+    
     // Skip speech and wake word services for testing
     console.log('🔧 DEBUG: Minimal services initialization completed');
 
@@ -869,9 +1048,9 @@ app.on('ready', async () => {
     // IPC handler for full indexing (database + notes) - simplified version
     ipcMain.handle('start-full-indexing', async (_, databasePath: string, notesPath?: string) => {
         console.log('[IPC] Full indexing called - Database:', databasePath, 'Notes:', notesPath);
-        
+
         const fs = require('fs');
-        
+
         if (!databasePath) {
             return { success: false, message: 'Database path is required' };
         }
@@ -911,9 +1090,9 @@ app.on('ready', async () => {
             };
         } catch (error) {
             console.error('[IPC] Full indexing error:', error);
-            return { 
-                success: false, 
-                message: error instanceof Error ? error.message : 'Unknown error' 
+            return {
+                success: false,
+                message: error instanceof Error ? error.message : 'Unknown error'
             };
         }
     });
@@ -925,17 +1104,17 @@ app.on('ready', async () => {
             const { exec } = require('child_process');
             const { promisify } = require('util');
             const execAsync = promisify(exec);
-            
+
             const result = await execAsync('ollama list');
             const output = result.stdout;
-            
+
             // Parse the output to extract model names
             const lines = output.split('\n').filter((line: string) => line.trim() && !line.startsWith('NAME'));
             const models = lines.map((line: string) => {
                 const parts = line.trim().split(/\s+/);
                 return parts[0]; // First column is the model name
             }).filter((name: string) => name);
-            
+
             console.log('Main process - ollama-list-models: found models:', models);
             return models;
         } catch (error) {
@@ -950,10 +1129,10 @@ app.on('ready', async () => {
             const { exec } = require('child_process');
             const { promisify } = require('util');
             const execAsync = promisify(exec);
-            
+
             // Pull the model with timeout
             await execAsync(`ollama pull ${modelName}`, { timeout: 600000 }); // 10 minute timeout
-            
+
             console.log('Main process - ollama-pull-model: successfully pulled model:', modelName);
             return { success: true };
         } catch (error) {
@@ -968,9 +1147,9 @@ app.on('ready', async () => {
             const { exec } = require('child_process');
             const { promisify } = require('util');
             const execAsync = promisify(exec);
-            
+
             await execAsync(`ollama rm ${modelName}`);
-            
+
             console.log('Main process - ollama-remove-model: successfully removed model:', modelName);
             return { success: true };
         } catch (error) {
@@ -1003,7 +1182,7 @@ app.on('ready', async () => {
             'orca-mini:3b',
             'tinyllama:1.1b'
         ];
-        
+
         console.log('Main process - ollama-list-available-models: returning', availableModels.length, 'models');
         return availableModels;
     });
@@ -1141,7 +1320,7 @@ app.on('ready', async () => {
             // Check if API key is required for the selected provider
             const providersRequiringApiKey = ['openai', 'anthropic', 'openrouter', 'groq', 'google', 'cohere', 'azure', 'huggingface'];
             const selectedProvider = settings.provider || 'ollama';
-            
+
             if (providersRequiringApiKey.includes(selectedProvider) && !apiKey) {
                 return { success: false, message: `API key is required for ${selectedProvider} provider` };
             }
@@ -1168,22 +1347,83 @@ app.on('ready', async () => {
                 timeout: 15000
             };
 
-            llmProvider = new LLMProvider(llmConfig);
-            await llmProvider.initialize();
+            // Initialize LangChain services using ServiceManager (dynamic loading)
+            console.log('🔧 DEBUG: Initializing LangChain services with ServiceManager');
 
-            // Attach tools to the LLM for automatic tool calling
-            if (langChainToolExecutorService && llmProvider) {
-                const tools = langChainToolExecutorService.getToolsForAgent();
-                console.log(`🔧 DEBUG: Attaching ${tools.length} tools to LLM:`, tools.map(t => t.name));
-                
-                const modelWithTools = llmProvider.withTools(tools);
-                if (modelWithTools) {
-                    console.log('✅ DEBUG: Tools successfully attached to LLM model');
+            if (!serviceManager) {
+                return { success: false, message: 'Service manager not available' };
+            }
+
+            // Update ServiceManager with current providers
+            serviceManager.updateCoreServices(settingsService, llmProvider);
+
+            try {
+                console.log('🔧 DEBUG: Loading LangChain ToolExecutorService via ServiceManager');
+                langChainToolExecutorService = await serviceManager.getToolExecutorService();
+                console.log('✅ DEBUG: LangChain ToolExecutorService loaded successfully');
+            } catch (toolExecutorError) {
+                console.error('❌ DEBUG: Failed to load LangChain ToolExecutorService:', toolExecutorError);
+                console.error('Continuing without tool executor service');
+                langChainToolExecutorService = null;
+            }
+
+            try {
+                console.log('🔧 DEBUG: Loading LangChain MemoryService via ServiceManager');
+                langChainMemoryService = await serviceManager.getMemoryService();
+                console.log('✅ DEBUG: LangChain MemoryService loaded successfully');
+            } catch (memoryServiceError) {
+                console.error('❌ DEBUG: Failed to load LangChain MemoryService:', memoryServiceError);
+                console.error('Continuing without memory service');
+                langChainMemoryService = null;
+            }
+
+            try {
+                console.log('🔧 DEBUG: Creating LLM Provider');
+                llmProvider = new LLMProvider(llmConfig);
+
+                console.log('🔧 DEBUG: Initializing LLM Provider');
+                await llmProvider.initialize();
+                console.log('✅ DEBUG: LLM Provider initialized successfully');
+            } catch (llmProviderError) {
+                console.error('❌ DEBUG: Failed to initialize LLM Provider:', llmProviderError);
+                return { success: false, message: `LLM Provider initialization failed: ${llmProviderError.message}` };
+            }
+
+            // Initialize Cindy Agent after LLM and tools are ready (with error handling)
+            try {
+                if (!langChainCindyAgent && langChainMemoryService && langChainToolExecutorService && llmProvider) {
+                    console.log('🔧 DEBUG: Loading LangChain CindyAgent via ServiceManager');
+                    langChainCindyAgent = await serviceManager.getCindyAgent();
+                    console.log('✅ DEBUG: LangChain CindyAgent loaded successfully');
                 } else {
-                    console.warn('⚠️ DEBUG: Failed to attach tools - model may not support tool binding');
+                    console.warn('⚠️ DEBUG: Skipping Cindy Agent - required services not available');
+                    console.warn(`Memory service: ${!!langChainMemoryService}, Tool executor: ${!!langChainToolExecutorService}, LLM: ${!!llmProvider}`);
                 }
-            } else {
-                console.warn('⚠️ DEBUG: Tool executor service not available, skipping tool attachment');
+            } catch (agentError) {
+                console.error('❌ DEBUG: Failed to load Cindy Agent:', agentError);
+                console.error('Continuing without Cindy Agent');
+                langChainCindyAgent = null;
+            }
+
+            // Attach tools to the LLM for automatic tool calling (with error handling)
+            try {
+                if (langChainToolExecutorService && llmProvider) {
+                    console.log('🔧 DEBUG: Attaching tools to LLM model');
+                    const tools = langChainToolExecutorService.getToolsForAgent();
+                    console.log(`🔧 DEBUG: Found ${tools.length} tools:`, tools.map(t => t.name));
+
+                    const modelWithTools = llmProvider.withTools(tools);
+                    if (modelWithTools) {
+                        console.log('✅ DEBUG: Tools successfully attached to LLM model');
+                    } else {
+                        console.warn('⚠️ DEBUG: Failed to attach tools - model may not support tool binding');
+                    }
+                } else {
+                    console.warn('⚠️ DEBUG: Tool executor service or LLM provider not available, skipping tool attachment');
+                }
+            } catch (toolAttachmentError) {
+                console.error('❌ DEBUG: Failed to attach tools to LLM:', toolAttachmentError);
+                console.error('Continuing without tool attachment');
             }
 
             console.log('✅ DEBUG: LLM service initialized successfully via IPC');
@@ -1199,9 +1439,9 @@ app.on('ready', async () => {
     ipcMain.handle('process-message', async (event, message: string, conversationId: string): Promise<string> => {
         console.log('Main process - process-message IPC called with:', message);
         try {
-            // Use LangChain LLM router directly as fallback
-            if (!llmProvider) {
-                console.error('Main process - process-message: LangChain LLM router not initialized');
+            // Try to dynamically load Cindy Agent if not available, fallback to direct LLM
+            if (!langChainCindyAgent && !llmProvider) {
+                console.error('Main process - process-message: Neither Cindy Agent nor LLM provider initialized');
 
                 // Save user message first
                 if (chatStorageService) {
@@ -1258,9 +1498,53 @@ app.on('ready', async () => {
                 return errorMessage;
             }
 
-            console.log('Main process - using direct LangChain LLM router');
+            // Try to load Cindy Agent dynamically if not available but LLM is ready
+            if (!langChainCindyAgent && llmProvider && serviceManager) {
+                try {
+                    console.log('Main process - attempting to load Cindy Agent dynamically for message processing');
+                    serviceManager.updateCoreServices(settingsService, llmProvider);
+                    langChainCindyAgent = await serviceManager.getCindyAgent();
+                    console.log('Main process - Cindy Agent loaded dynamically');
+                } catch (error) {
+                    console.warn('Main process - failed to load Cindy Agent dynamically:', error.message);
+                    // Continue without agent, will use direct LLM
+                }
+            }
 
+            // Prefer Cindy Agent if available, fallback to direct LLM
+            if (langChainCindyAgent) {
+                console.log('Main process - using Cindy Agent for intelligent processing');
 
+                // Build agent context with conversation ID and any preferences
+                const agentContext = {
+                    conversationId,
+                    userId: undefined,
+                    sessionId: conversationId,
+                    timestamp: new Date(),
+                    preferences: {} // Could be loaded from settings if needed
+                };
+
+                let assistantContent = '';
+
+                try {
+                    // Use streaming processing from the agent
+                    for await (const chunk of langChainCindyAgent.processStreaming(message, agentContext)) {
+                        assistantContent += chunk;
+                        event.sender.send('stream-chunk', { chunk, conversationId });
+                    }
+
+                    event.sender.send('stream-complete', { conversationId });
+                    return assistantContent;
+
+                } catch (agentError) {
+                    console.error('Cindy Agent failed, falling back to direct LLM:', agentError);
+                    // Continue to fallback below
+                }
+            }
+
+            console.log('Main process - using direct LangChain LLM router as fallback');
+
+            // Fallback: Direct LLM processing (legacy behavior)
             // Get recent conversation history for context
             let conversationHistory: Array<{ role: 'system' | 'user' | 'assistant', content: string }> = [];
             if (chatStorageService) {
@@ -1281,54 +1565,8 @@ app.on('ready', async () => {
                 content: message
             });
 
-            // Check if the message might need web search
-            const needsWebSearch = message.toLowerCase().includes('search') ||
-                message.toLowerCase().includes('latest') ||
-                message.toLowerCase().includes('current') ||
-                message.toLowerCase().includes('recent') ||
-                message.toLowerCase().includes('news') ||
-                message.toLowerCase().includes('web');
-
-            let response;
-
-            if (needsWebSearch && langChainToolExecutorService) {
-                // Add a system message to encourage tool use
-                const toolAwareHistory = [
-                    {
-                        role: 'system' as const,
-                        content: 'You have access to a web_search tool. Use it when users ask for current, recent, or latest information. Always search the web for queries about current events, news, or recent developments.'
-                    },
-                    ...conversationHistory
-                ];
-
-                console.log('🔧 DEBUG: Message appears to need web search, using tool-aware processing');
-                response = await llmProvider.chat(toolAwareHistory);
-
-                // If the response looks like it should have used a tool but didn't, manually trigger web search
-                if (typeof response === 'string' && response.includes('based on my training data')) {
-                    console.log('🔧 DEBUG: Response indicates limitations, attempting web search');
-                    try {
-                        const searchResult = await langChainToolExecutorService.executeTool('web_search', { query: message });
-                        if (searchResult.success) {
-                            // Combine search results with AI response
-                            const enhancedHistory = [
-                                ...conversationHistory,
-                                {
-                                    role: 'system' as const,
-                                    content: `Web search results for "${message}":\n${searchResult.result}\n\nPlease provide a helpful response based on this current information.`
-                                }
-                            ];
-                            response = await llmProvider.chat(enhancedHistory);
-                        }
-                    } catch (searchError) {
-                        console.error('Web search failed:', searchError);
-                        // Continue with original response
-                    }
-                }
-            } else {
-                // Process message through LangChain LLM router normally
-                response = await llmProvider.chat(conversationHistory);
-            }
+            // Process message through direct LLM
+            const response = await llmProvider!.chat(conversationHistory);
 
             let assistantContent = '';
 
@@ -1596,6 +1834,11 @@ app.on('ready', async () => {
                         llmProvider = new LLMProvider(llmConfig);
                         await llmProvider.initialize();
                         console.log('✅ DEBUG: LLM services now available for chat!');
+
+                        // Update ServiceManager with new LLM provider
+                        if (serviceManager) {
+                            serviceManager.updateCoreServices(settingsService, llmProvider);
+                        }
 
                         // Notify renderer that LLM is ready (optional)
                         if (mainWindow && !mainWindow.isDestroyed()) {

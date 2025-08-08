@@ -235,14 +235,14 @@ export class LangChainVectorStoreService extends EventEmitter {
             // FAISS doesn't support direct document updates, so we need to:
             // 1. Remove the old document (by rebuilding without it)
             // 2. Add the updated document
-            
+
             // For now, we'll use a simpler approach: delete and re-add
             // In production, you might want to implement a more sophisticated
             // index management strategy with versioning
-            
+
             // First, mark the file as being updated
             const existingFile = this.indexedFiles.get(document.path);
-            
+
             // Split the updated document content into chunks
             const chunks = await this.textSplitter.createDocuments(
                 [document.content],
@@ -409,10 +409,10 @@ export class LangChainVectorStoreService extends EventEmitter {
 
             // Check if file has been modified since last indexing
             if (existingFile?.lastModified) {
-                const lastModified = existingFile.lastModified instanceof Date 
-                    ? existingFile.lastModified 
+                const lastModified = existingFile.lastModified instanceof Date
+                    ? existingFile.lastModified
                     : new Date(existingFile.lastModified);
-                
+
                 if (fileStats.mtime.getTime() <= lastModified.getTime()) {
                     console.log(`[LangChainVectorStoreService] File hasn't changed since last indexing, skipping: ${filePath}`);
                     return true;

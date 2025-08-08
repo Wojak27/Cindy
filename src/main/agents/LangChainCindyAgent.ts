@@ -61,13 +61,135 @@ class LangChainCindyAgent {
     }
 
     private async createAgentExecutor(): Promise<any> {
-        // Simplified approach - just return a mock executor for now
-        // TODO: Implement proper agent executor when LangChain dependencies are resolved
-        console.log('[LangChainCindyAgent] Using simplified agent approach');
+        console.log('[LangChainCindyAgent] Creating LangChain agent executor with tools');
+
+        // Validate dependencies
+        if (!this.llmProvider) {
+            throw new Error('LLM provider is not available for agent');
+        }
+
+        if (!this.toolExecutor) {
+            throw new Error('Tool executor is not available for agent');
+        }
+
+        // Get the LLM model from the provider with proper error handling
+        let llmModel;
+        try {
+            llmModel = this.llmProvider.getChatModel();
+        } catch (error) {
+            console.error('[LangChainCindyAgent] Failed to get LLM model:', error);
+            throw new Error('Failed to get LLM model for agent');
+        }
+
+        if (!llmModel) {
+            throw new Error('LLM model not available for agent - model is null');
+        }
+
+        // Get available tools with error handling
+        let tools;
+        try {
+            tools = this.toolExecutor.getToolsForAgent();
+        } catch (error) {
+            console.error('[LangChainCindyAgent] Failed to get tools:', error);
+            tools = []; // Continue with no tools
+        }
+
+        console.log(`[LangChainCindyAgent] Agent has access to ${tools.length} tools:`, tools.map(t => t.name));
+
+        // Create a custom agent executor that uses the LLM with tools
         return {
-            invoke: async (input: any) => {
-                return { output: 'Agent response from LangChain (simplified)' };
-            }
+            invoke: async (input: any): Promise<{ output: string }> => {
+                try {
+                    console.log('[LangChainCindyAgent] Agent processing input:', input);
+
+                    // Use the LLM provider's invoke method which should have tools attached
+                    const messages = [
+                        {
+                            role: 'system' as const,
+                            content: this.getSystemPrompt() + '\n\nYou have access to tools. Use them when appropriate to provide better answers.'
+                        },
+                        {
+                            role: 'user' as const,
+                            content: typeof input === 'string' ? input : input.input || JSON.stringify(input)
+                        }
+                    ];
+
+                    const response = await this.llmProvider.invoke(messages);
+                    const output = response.content as string;
+
+                    console.log('[LangChainCindyAgent] Agent response generated:', output.substring(0, 100) + '...');
+                    return { output };
+
+                } catch (error) {
+                    console.error('[LangChainCindyAgent] Agent executor error:', error);
+                    return {
+                        output: "I apologize, but I encountered an error while processing your request. Please try again."
+                    };
+                }
+            },
+
+            stream: async function* (input: any): AsyncGenerator<{ output: string }> {
+                const STREAM_TIMEOUT_MS = 30000; // 30 second timeout
+                const MAX_CHUNKS = 1000; // Prevent infinite generation
+                let chunkCount = 0;
+                let timeoutHandle: NodeJS.Timeout | null = null;
+
+                try {
+                    console.log('[LangChainCindyAgent] Agent streaming input:', input);
+
+                    const messages = [
+                        {
+                            role: 'system' as const,
+                            content: this.getSystemPrompt() + '\n\nYou have access to tools. Use them when appropriate to provide better answers.'
+                        },
+                        {
+                            role: 'user' as const,
+                            content: typeof input === 'string' ? input : input.input || JSON.stringify(input)
+                        }
+                    ];
+
+                    // Set up timeout protection
+                    timeoutHandle = setTimeout(() => {
+                        console.error('[LangChainCindyAgent] Agent streaming timed out');
+                    }, STREAM_TIMEOUT_MS);
+
+                    // Race between streaming and timeout
+                    const streamPromise = (async function* () {
+                        for await (const chunk of this.llmProvider.stream(messages)) {
+                            chunkCount++;
+
+                            // Prevent infinite loops
+                            if (chunkCount > MAX_CHUNKS) {
+                                console.warn('[LangChainCindyAgent] Max chunk limit reached, terminating stream');
+                                break;
+                            }
+
+                            yield { output: chunk };
+                        }
+                    }).bind(this)();
+
+                    // Stream with timeout protection
+                    try {
+                        for await (const chunk of streamPromise) {
+                            yield chunk;
+                        }
+                    } finally {
+                        if (timeoutHandle) {
+                            clearTimeout(timeoutHandle);
+                        }
+                    }
+
+                } catch (error) {
+                    if (timeoutHandle) {
+                        clearTimeout(timeoutHandle);
+                    }
+
+                    console.error('[LangChainCindyAgent] Agent streaming error:', error);
+                    yield {
+                        output: "I apologize, but I encountered an error while processing your request. Please try again."
+                    };
+                }
+            }.bind(this)
         };
     }
 
@@ -80,38 +202,52 @@ class LangChainCindyAgent {
 
     async process(input: string, context?: AgentContext): Promise<AsyncGenerator<string> | string> {
         try {
+            // Validate input and dependencies
+            if (!input || typeof input !== 'string') {
+                throw new Error('Invalid input provided to agent');
+            }
+
+            if (!this.llmProvider) {
+                throw new Error('LLM provider not available');
+            }
+
             // Initialize agent executor if not already done
             if (!this.agentExecutor) {
-                await this.createAgentExecutor();
+                this.agentExecutor = await this.createAgentExecutor();
                 if (!this.agentExecutor) {
                     throw new Error('Failed to initialize agent executor');
                 }
             }
 
-            // Retrieve conversation history from memory
-            const history = await this.memoryService.getConversationHistory(
-                context?.conversationId || 'default'
-            );
+            // Retrieve conversation history from memory with error protection
+            let history: any[] = [];
+            try {
+                if (this.memoryService) {
+                    history = await this.memoryService.getConversationHistory(
+                        context?.conversationId || 'default'
+                    );
+                }
+            } catch (memoryError) {
+                console.warn('[LangChainCindyAgent] Failed to retrieve conversation history:', memoryError);
+                history = []; // Continue with empty history
+            }
 
             // Extract user name from context preferences
             const userName = context?.preferences?.profile?.name || '';
 
-            // Create enhanced input with context
-            const enhancedInput = this.enhanceInputWithContext(input, history, userName);
+            console.log(`[LangChainCindyAgent] Processing input through agent: ${input}`);
+            console.log(`[LangChainCindyAgent] Using conversation context with ${history.length} previous messages`);
 
-            console.log(`[LangChainCindyAgent] Processing input: ${input}`);
-            console.log(`[LangChainCindyAgent] Enhanced input: ${enhancedInput.substring(0, 200)}...`);
-
-            // Use the agent executor to process the request (simplified)
-            await this.agentExecutor.invoke({
-                input: enhancedInput,
-                chat_history: this.formatHistoryForAgent(history)
+            // Use the real agent executor to process the request
+            const agentResult = await this.agentExecutor.invoke({
+                input: input,
+                chat_history: this.formatHistoryForAgent(history),
+                context: userName ? `User name: ${userName}` : ''
             });
 
-            // For now, fallback to direct LLM call for actual functionality
-            const response = await this.fallbackToDirectLLM(input, context);
+            const response = agentResult.output || agentResult;
 
-            console.log(`[LangChainCindyAgent] Generated response: ${response.substring(0, 200)}...`);
+            console.log(`[LangChainCindyAgent] Agent generated response: ${response.substring(0, 200)}...`);
 
             // Store the interaction in memory using available methods
             await this.memoryService.addMessage({
@@ -128,8 +264,7 @@ class LangChainCindyAgent {
                 timestamp: new Date(Date.now())
             });
 
-            // For now, return the complete response
-            // In the future, we could implement streaming by modifying the agent executor
+            // Return the complete response for non-streaming mode
             return response;
 
         } catch (error) {
@@ -137,6 +272,133 @@ class LangChainCindyAgent {
 
             // Fallback to direct LLM call without agent capabilities
             return this.fallbackToDirectLLM(input, context);
+        }
+    }
+
+    /**
+     * Process input with streaming response (with timeout protection)
+     */
+    async *processStreaming(input: string, context?: AgentContext): AsyncGenerator<string> {
+        try {
+            // Validate input and dependencies
+            if (!input || typeof input !== 'string') {
+                yield "I need a valid message to process.";
+                return;
+            }
+
+            if (!this.llmProvider) {
+                yield "I'm not properly configured. Please check the system setup.";
+                return;
+            }
+
+            // Initialize agent executor if not already done
+            if (!this.agentExecutor) {
+                this.agentExecutor = await this.createAgentExecutor();
+                if (!this.agentExecutor) {
+                    throw new Error('Failed to initialize agent executor');
+                }
+            }
+
+            // Retrieve conversation history from memory with error protection
+            let history: any[] = [];
+            try {
+                if (this.memoryService) {
+                    history = await this.memoryService.getConversationHistory(
+                        context?.conversationId || 'default'
+                    );
+                }
+            } catch (memoryError) {
+                console.warn('[LangChainCindyAgent] Failed to retrieve conversation history:', memoryError);
+                history = []; // Continue with empty history
+            }
+
+            const userName = context?.preferences?.profile?.name || '';
+
+            console.log(`[LangChainCindyAgent] Streaming processing input: ${input}`);
+            console.log(`[LangChainCindyAgent] Using conversation context with ${history.length} previous messages`);
+
+            // Check if agent executor supports streaming
+            if (this.agentExecutor.stream) {
+                console.log('[LangChainCindyAgent] Using agent executor streaming');
+
+                let fullResponse = '';
+                for await (const chunk of this.agentExecutor.stream({
+                    input: input,
+                    chat_history: this.formatHistoryForAgent(history),
+                    context: userName ? `User name: ${userName}` : ''
+                })) {
+                    const content = chunk.output || chunk;
+                    if (content) {
+                        fullResponse += content;
+                        yield content;
+                    }
+                }
+
+                // Store the interaction in memory (non-blocking)
+                await this.storeMessages(input, fullResponse, context?.conversationId || 'default');
+            } else {
+                // Fallback to non-streaming using direct LLM (avoid circular dependency)
+                console.log('[LangChainCindyAgent] Agent executor does not support streaming, using direct LLM fallback');
+
+                try {
+                    // Use direct LLM call without going through process() to avoid circular dependency
+                    const messages = this.buildDirectLLMMessages(input, history, userName);
+                    const result = await this.llmProvider.chat(messages);
+
+                    let fullResponse = '';
+                    if (typeof result === 'string') {
+                        fullResponse = result;
+                        yield result;
+                    } else if ('content' in result) {
+                        fullResponse = result.content;
+                        yield result.content;
+                    } else if (Symbol.asyncIterator in result) {
+                        // Handle streaming response
+                        for await (const chunk of result as AsyncGenerator<string>) {
+                            fullResponse += chunk;
+                            yield chunk;
+                        }
+                    }
+
+                    // Store messages after successful processing
+                    await this.storeMessages(input, fullResponse, context?.conversationId || 'default');
+
+                } catch (directError) {
+                    console.error('[LangChainCindyAgent] Direct LLM fallback failed:', directError);
+                    yield "I apologize, but I'm experiencing technical difficulties. Please try again.";
+                }
+            }
+
+        } catch (error) {
+            console.error('[LangChainCindyAgent] Error in streaming process:', error);
+            yield "I apologize, but I encountered an error while processing your request. Please try again.";
+        }
+    }
+
+
+    /**
+     * Helper method to store messages with error handling
+     */
+    private async storeMessages(userInput: string, assistantResponse: string, conversationId: string): Promise<void> {
+        try {
+            // Store user message
+            await this.memoryService.addMessage({
+                conversationId,
+                role: 'user',
+                content: userInput,
+                timestamp: new Date(Date.now())
+            });
+
+            // Store assistant message
+            await this.memoryService.addMessage({
+                conversationId,
+                role: 'assistant',
+                content: assistantResponse,
+                timestamp: new Date(Date.now())
+            });
+        } catch (storageError) {
+            // Non-fatal error - log but don't fail the whole operation
+            console.error('[LangChainCindyAgent] Failed to store messages:', storageError);
         }
     }
 
@@ -174,25 +436,6 @@ class LangChainCindyAgent {
         }
     }
 
-    private enhanceInputWithContext(input: string, history: any[], userName: string): string {
-        const contextParts = [];
-
-        if (userName) {
-            contextParts.push(`User name: ${userName}`);
-        }
-
-        if (history && history.length > 0) {
-            const recentHistory = history.slice(-5); // Last 5 exchanges
-            const historyContext = recentHistory.map(h =>
-                `${h.role}: ${h.content.substring(0, 100)}`
-            ).join('\n');
-            contextParts.push(`Recent conversation:\n${historyContext}`);
-        }
-
-        contextParts.push(`Current request: ${input}`);
-
-        return contextParts.join('\n\n');
-    }
 
     private formatHistoryForAgent(history: any[]): string {
         if (!history || history.length === 0) return '';

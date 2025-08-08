@@ -33,7 +33,9 @@ import {
     EditSquare as EditSquareIcon,
     Settings as SettingsIcon,
     Storage as DatabaseIcon,
-    Refresh as RetryIcon
+    Refresh as RetryIcon,
+    PlayArrow as PlayIcon,
+    ContentCopy as CopyIcon
 } from '@mui/icons-material';
 
 const App: React.FC = () => {
@@ -681,6 +683,40 @@ const App: React.FC = () => {
         }
     };
 
+    // TTS Functions
+    const handlePlayMessage = async (messageContent: string) => {
+        console.log('🔊 handlePlayMessage called with content:', messageContent.substring(0, 50) + '...');
+        try {
+            console.log('Playing message with TTS:', messageContent.substring(0, 50) + '...');
+            const result = await ipcRenderer.invoke('tts-synthesize-and-play', messageContent);
+
+            if (!result.success) {
+                console.error('TTS playback failed:', result.error);
+                // Optionally show error to user
+            }
+        } catch (error) {
+            console.error('Error playing message:', error);
+        }
+    };
+
+    const handleCopyMessage = async (messageContent: string) => {
+        try {
+            await navigator.clipboard.writeText(messageContent);
+            console.log('Message copied to clipboard');
+            // Optionally show success notification
+        } catch (error) {
+            console.error('Failed to copy message:', error);
+            // Fallback for older browsers
+            const textArea = document.createElement('textarea');
+            textArea.value = messageContent;
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+            console.log('Message copied to clipboard (fallback)');
+        }
+    };
+
 
     // Handle click outside to close sidebars
     useEffect(() => {
@@ -1004,6 +1040,43 @@ const App: React.FC = () => {
                                                     {msg.retryCount > 0 && !msg.failed && !msg.isStreaming && (
                                                         <div className="retry-indicator">
                                                             <small>Retry attempt #{msg.retryCount}</small>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Play and Copy buttons for assistant messages */}
+                                                    {msg.role === 'assistant' && msg.content && !msg.isStreaming && !msg.failed && (
+                                                        <div className="message-actions" style={{
+                                                            marginTop: '8px',
+                                                            display: 'flex',
+                                                            gap: '8px',
+                                                            alignItems: 'center',
+                                                            opacity: 0.7,
+                                                            fontSize: '12px'
+                                                        }}>
+                                                            <IconButton
+                                                                onClick={() => handlePlayMessage(msg.content)}
+                                                                size="small"
+                                                                title="Play message with text-to-speech"
+                                                                style={{
+                                                                    padding: '4px',
+                                                                    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+                                                                    borderRadius: '4px'
+                                                                }}
+                                                            >
+                                                                <PlayIcon fontSize="small" />
+                                                            </IconButton>
+                                                            <IconButton
+                                                                onClick={() => handleCopyMessage(msg.content)}
+                                                                size="small"
+                                                                title="Copy message to clipboard"
+                                                                style={{
+                                                                    padding: '4px',
+                                                                    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+                                                                    borderRadius: '4px'
+                                                                }}
+                                                            >
+                                                                <CopyIcon fontSize="small" />
+                                                            </IconButton>
                                                         </div>
                                                     )}
                                                 </div>

@@ -5,7 +5,7 @@ import { VectorStoreRetrieverMemory } from 'langchain/memory';
 import { ChatMessageHistory } from '@langchain/community/stores/message/in_memory';
 import { BaseMessage, HumanMessage, AIMessage, SystemMessage } from '@langchain/core/messages';
 import { ChatStorageService } from './ChatStorageService';
-import { LangChainVectorStoreService } from './LangChainVectorStoreService';
+// import { LangChainVectorStoreService } from './LangChainVectorStoreService'; // Unused - using DuckDBVectorStore instead
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 
 interface MemoryEntry {
@@ -28,7 +28,7 @@ interface ConversationContext {
 export class LangChainMemoryService extends EventEmitter {
     private memoryCache: Map<string, MemoryEntry> = new Map();
     private chatStorage: ChatStorageService;
-    private vectorStore?: LangChainVectorStoreService;
+    private vectorStore?: any; // Using DuckDBVectorStore instead of LangChainVectorStoreService
     private llmModel?: BaseChatModel;
     
     // Conversation-specific memory instances
@@ -38,7 +38,7 @@ export class LangChainMemoryService extends EventEmitter {
     private readonly DEFAULT_WINDOW_SIZE = 20; // Number of messages to keep in short-term memory
     private readonly MAX_TOKEN_LIMIT = 4000; // Token limit for conversation buffer
 
-    constructor(store: any, vectorStore?: LangChainVectorStoreService, llmModel?: BaseChatModel) {
+    constructor(store: any, vectorStore?: any, llmModel?: BaseChatModel) {
         super();
         this.chatStorage = new ChatStorageService();
         this.vectorStore = vectorStore;

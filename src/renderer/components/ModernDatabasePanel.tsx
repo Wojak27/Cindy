@@ -69,7 +69,7 @@ const ModernDatabasePanel: React.FC = () => {
     const dispatch = useDispatch();
     const settings = useSelector((state: any) => state.settings);
     const showDatabase = useSelector((state: any) => state.ui.showDatabase);
-    
+
     const [tabValue, setTabValue] = useState(0);
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
@@ -240,7 +240,7 @@ const ModernDatabasePanel: React.FC = () => {
                     right: 0,
                     width: 600,
                     height: '100vh',
-                    backgroundColor: theme.palette.mode === 'dark' 
+                    backgroundColor: theme.palette.mode === 'dark'
                         ? alpha(theme.palette.background.paper, 0.95)
                         : alpha(theme.palette.background.paper, 0.98),
                     backdropFilter: 'blur(10px)',
@@ -330,7 +330,7 @@ const ModernDatabasePanel: React.FC = () => {
                                         </Button>
                                     </Box>
                                     {pathValidation && (
-                                        <Alert 
+                                        <Alert
                                             severity={pathValidation.valid ? 'success' : 'error'}
                                             sx={{ mb: 2 }}
                                         >
@@ -372,10 +372,8 @@ const ModernDatabasePanel: React.FC = () => {
                                                 setHasUnsavedChanges(true);
                                             }}
                                         >
-                                            <MenuItem value="qwen3:8b">Qwen 3 8B</MenuItem>
+                                            <MenuItem value="qwen3:4b">Qwen 3 4B</MenuItem>
                                             <MenuItem value="llama3:8b">LLaMA 3 8B</MenuItem>
-                                            <MenuItem value="mistral:7b">Mistral 7B</MenuItem>
-                                            <MenuItem value="gemma:7b">Gemma 7B</MenuItem>
                                         </Select>
                                     </FormControl>
 
