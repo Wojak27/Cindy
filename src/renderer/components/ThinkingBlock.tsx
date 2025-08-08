@@ -15,6 +15,8 @@ interface ThinkingBlockProps {
     endTime?: number;
     duration?: string;
     defaultOpen?: boolean;
+    isIncomplete?: boolean;  // Flag for thinking blocks still being processed
+    isStreaming?: boolean;   // Flag for real-time streaming indication
     onToggle?: (isOpen: boolean) => void;
 }
 
@@ -25,6 +27,8 @@ const ThinkingBlock: React.FC<ThinkingBlockProps> = ({
     endTime,
     duration,
     defaultOpen = false,
+    isIncomplete = false,
+    isStreaming = false,
     onToggle
 }) => {
     const [isOpen, setIsOpen] = useState(defaultOpen);
@@ -63,22 +67,41 @@ const ThinkingBlock: React.FC<ThinkingBlockProps> = ({
         }
     };
 
+    // Determine the visual state classes and content based on incomplete/streaming flags
+    const blockClasses = [
+        'thinking-block',
+        isIncomplete ? 'thinking-incomplete' : '',
+        isStreaming ? 'thinking-streaming' : ''
+    ].filter(Boolean).join(' ');
+    
+    const toggleClasses = [
+        'thinking-toggle',
+        isOpen ? 'open' : 'closed',
+        isStreaming ? 'streaming' : ''
+    ].filter(Boolean).join(' ');
+    
+    const thinkingIcon = isStreaming ? '🧠' : (isIncomplete ? '💭' : '💡');
+    const thinkingLabel = isStreaming ? 'Thinking...' : (isIncomplete ? 'Processing' : 'Thinking');
+    
     return (
-        <div className="thinking-block">
+        <div className={blockClasses}>
             <button
-                className={`thinking-toggle ${isOpen ? 'open' : 'closed'}`}
+                className={toggleClasses}
                 onClick={toggleBlock}
                 aria-expanded={isOpen}
                 aria-controls={`${id}-content`}
             >
-                <span className="thinking-icon">💡</span>
-                <span className="thinking-label">Thinking</span>
-                <span className="thinking-duration">{displayDuration}</span>
+                <span className="thinking-icon">{thinkingIcon}</span>
+                <span className="thinking-label">{thinkingLabel}</span>
+                <span className="thinking-duration">
+                    {isStreaming ? '⏱️' : displayDuration}
+                    {isIncomplete && ' (in progress)'}
+                </span>
                 <span className="thinking-arrow">{isOpen ? '▼' : '▶'}</span>
             </button>
             <div
                 id={`${id}-content`}
-                className={`thinking-content ${isOpen ? 'expanded' : 'collapsed'}`}
+                className={`thinking-content ${isOpen ? 'expanded' : 'collapsed'} ${isStreaming ? 'streaming' : ''}`}
                 role="region"
                 aria-labelledby={`${id}-toggle`}
             >
@@ -88,6 +111,14 @@ const ThinkingBlock: React.FC<ThinkingBlockProps> = ({
                             {paragraph}
                         </p>
                     ))}
+                    {isStreaming && content && (
+                        <span className="thinking-cursor">|</span>
+                    )}
+                    {isStreaming && !content && (
+                        <p className="thinking-paragraph thinking-loading">
+                            <span className="thinking-dots">...</span>
+                        </p>
+                    )}
                 </div>
             </div>
         </div>

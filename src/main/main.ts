@@ -1,18 +1,21 @@
 import { app, BrowserWindow, Menu, nativeImage, NativeImage, ipcMain, desktopCapturer } from 'electron';
 import * as path from 'path';
 import { CindyMenu } from './menu';
-import { createStore, applyMiddleware } from 'redux';
 import { SettingsService, Settings } from './services/SettingsService';
 import { TrayService } from './services/TrayService';
-import { rootReducer } from '../store/reducers';
-import { persistenceMiddleware } from '../store/middleware/persistenceMiddleware';
 import axios from 'axios';
 import { ChatStorageService } from './services/ChatStorageService';
 import { LLMRouterService } from './services/LLMRouterService';
-import { CindyAgent } from './agents/CindyAgent';
-import { MemoryService } from './services/MemoryService';
-import { ToolExecutorService } from './services/ToolExecutorService';
+// Re-enable core LLM functionality
+import { LangChainLLMRouterService } from './services/LangChainLLMRouterService';
+// Re-enable tool executor for web search
+import { LangChainToolExecutorService } from './services/LangChainToolExecutorService';
+// Keep other complex services disabled for now
+// import { LangChainCindyAgent } from './agents/LangChainCindyAgent';
+// import { LangChainMemoryService } from './services/LangChainMemoryService';
+// import { LangChainVectorStoreService } from './services/LangChainVectorStoreService';
 import { VectorStoreService } from './services/VectorStoreService';
+import { DuckDBVectorStore } from './services/DuckDBVectorStore';
 import { SpeechToTextService } from './services/SpeechToTextService';
 import RealTimeTranscriptionService from './services/RealTimeTranscriptionService';
 import { LinkPreviewService } from './services/LinkPreviewService';
@@ -24,8 +27,6 @@ const setupSettingsIPC = () => {
     // Remove any existing handlers first to prevent duplicate registration
     const handlersToRemove = [
         'get-settings-service',
-        'grant-storage-permission',
-        'has-storage-permission',
         'settings-get',
         'settings-set',
         'settings-get-all',
@@ -53,40 +54,6 @@ const setupSettingsIPC = () => {
         return !!settingsService;
     });
 
-    // Storage permission handlers
-    ipcMain.handle('grant-storage-permission', async () => {
-        console.log('Main process - grant-storage-permission IPC called');
-        if (!settingsService) {
-            console.error('Main process - grant-storage-permission: settingsService not available');
-            return { success: false, error: 'Settings service not available' };
-        }
-        try {
-            console.log('Main process - grant-storage-permission: calling settingsService.grantStoragePermission()');
-            await settingsService.grantStoragePermission();
-            console.log('Main process - grant-storage-permission: successfully granted');
-            return { success: true };
-        } catch (error) {
-            console.error('Main process - grant-storage-permission: error granting permission:', error);
-            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-        }
-    });
-
-    ipcMain.handle('has-storage-permission', async () => {
-        console.log('Main process - has-storage-permission IPC called');
-        if (!settingsService) {
-            console.error('Main process - has-storage-permission: settingsService not available');
-            return { hasPermission: false, error: 'Settings service not available' };
-        }
-        try {
-            console.log('Main process - has-storage-permission: calling settingsService.hasStoragePermission()');
-            const hasPermission = await settingsService.hasStoragePermission();
-            console.log('Main process - has-storage-permission: current status:', hasPermission);
-            return { hasPermission };
-        } catch (error) {
-            console.error('Main process - has-storage-permission: error checking permission:', error);
-            return { hasPermission: false, error: error instanceof Error ? error.message : 'Unknown error' };
-        }
-    });
 
     // Settings CRUD handlers
     ipcMain.handle('settings-get', async (event, section: string) => {
@@ -94,7 +61,7 @@ const setupSettingsIPC = () => {
             throw new Error('SettingsService not initialized');
         }
 
-        const validSections = ['general', 'voice', 'llm', 'vault', 'research', 'privacy', 'system', 'database', 'profile', 'storage'];
+        const validSections = ['general', 'voice', 'llm', 'vault', 'research', 'privacy', 'system', 'database', 'profile'];
         if (!validSections.includes(section)) {
             throw new Error(`Invalid settings section: ${section}`);
         }
@@ -107,7 +74,7 @@ const setupSettingsIPC = () => {
             throw new Error('SettingsService not initialized');
         }
 
-        const validSections = ['general', 'voice', 'llm', 'vault', 'research', 'privacy', 'system', 'database', 'profile', 'storage'];
+        const validSections = ['general', 'voice', 'llm', 'vault', 'research', 'privacy', 'system', 'database', 'profile'];
         if (!validSections.includes(section)) {
             throw new Error(`Invalid settings section: ${section}`);
         }
@@ -312,8 +279,24 @@ const setupDatabaseIPC = () => {
                 return { success: false, message: 'Error accessing path or directory not writable' };
             }
 
-            // Create and initialize vector store service
-            const vectorStore = new VectorStoreService(options);
+            // Create and initialize DuckDB vector store
+            const apiKey = await settingsService?.getApiKey();
+            
+            if (!apiKey) {
+                return { 
+                    success: false, 
+                    message: 'OpenAI API key required for DuckDB vector store'
+                };
+            }
+            
+            const vectorStore = new DuckDBVectorStore({
+                databasePath: path.join(options.databasePath, 'duckdb-vector-store.db'),
+                openaiApiKey: apiKey,
+                embeddingModel: 'text-embedding-3-small',
+                chunkSize: 1000,
+                chunkOverlap: 200
+            });
+            
             await vectorStore.initialize();
             
             // Set up progress event forwarding
@@ -323,19 +306,15 @@ const setupDatabaseIPC = () => {
                 }
             });
             
-            // Start indexing
-            const result = await vectorStore.indexDirectory();
+            // Start indexing using DuckDB implementation
+            const result = await vectorStore.indexFolder(options.databasePath);
             
-            if (result.success) {
-                console.log('[IPC] Vector store creation completed successfully');
-                return { 
-                    success: true, 
-                    message: `Vector store created successfully. Indexed ${result.indexedFiles.length} files.`,
-                    indexedFiles: result.indexedFiles
-                };
-            } else {
-                return { success: false, message: result.error || 'Indexing failed' };
-            }
+            console.log('[IPC] DuckDB vector store creation completed successfully');
+            return { 
+                success: true, 
+                message: `DuckDB vector store created successfully. Indexed ${result.success} files with ${result.errors} errors.`,
+                indexedFiles: await vectorStore.getIndexedFiles()
+            };
         } catch (error) {
             console.error('[IPC] Error creating vector store:', error);
             return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
@@ -346,8 +325,19 @@ const setupDatabaseIPC = () => {
     ipcMain.handle('vector-store:get-indexed-items', async (event, databasePath) => {
         console.log('[IPC] Getting indexed items for path:', databasePath);
         try {
-            // In a real implementation, this would query the actual vector database
-            // For now, return empty array or cached results
+            // Use DuckDB vector store if available
+            if (duckDBVectorStore) {
+                const items = await duckDBVectorStore.getIndexedFiles();
+                return { success: true, items };
+            }
+            
+            // Use LangChain vector store if available
+            if (langChainVectorStoreService) {
+                const items = langChainVectorStoreService.getIndexedFiles();
+                return { success: true, items };
+            }
+            
+            // Fallback to legacy index file
             const indexFile = path.join(databasePath, '.vector_store', 'index.json');
             if (fs.existsSync(indexFile)) {
                 const indexData = JSON.parse(fs.readFileSync(indexFile, 'utf-8'));
@@ -388,8 +378,20 @@ let trayService: TrayService | null = null;
 let settingsService: SettingsService | null = null;
 let chatStorageService: ChatStorageService | null = null;
 let llmRouterService: LLMRouterService | null = null;
+let langChainLLMRouterService: LangChainLLMRouterService | null = null;
 let vectorStoreService: VectorStoreService | null = null;
-let cindyAgent: CindyAgent | null = null;
+let duckDBVectorStore: DuckDBVectorStore | null = null;
+// let langChainVectorStoreService: LangChainVectorStoreService | null = null;
+// @ts-ignore - temporarily unused
+let langChainVectorStoreService: any = null; // Type as any for now
+// let langChainMemoryService: LangChainMemoryService | null = null;
+// @ts-ignore - temporarily unused
+let langChainMemoryService: any = null; // Type as any for now
+// let langChainToolExecutorService: LangChainToolExecutorService | null = null;
+let langChainToolExecutorService: LangChainToolExecutorService | null = null;
+// let langChainCindyAgent: LangChainCindyAgent | null = null;
+// @ts-ignore - temporarily unused
+let langChainCindyAgent: any = null; // Type as any for now
 let wakeWordService: any = null;
 let speechToTextService: SpeechToTextService | null = null;
 let realTimeTranscriptionService: RealTimeTranscriptionService | null = null;
@@ -427,7 +429,7 @@ const createWindow = async (): Promise<void> => {
             // The security warning is resolved by removing unsafe-eval from the policy
         },
         width: 1000,
-        show: false, // Hide until content is loaded
+        show: true, // Show immediately for debugging
         backgroundColor: '#ffffff' // Set background to match theme
     });
 
@@ -435,6 +437,7 @@ const createWindow = async (): Promise<void> => {
     if (process.env.NODE_ENV === 'development') {
         const serverReady = await waitForDevServer();
         if (serverReady) {
+            console.log('Loading from dev server at http://localhost:3004');
             mainWindow.loadURL('http://localhost:3004');
         } else {
             console.error('Dev server failed to start. Falling back to production build.');
@@ -451,9 +454,13 @@ const createWindow = async (): Promise<void> => {
         mainWindow.webContents.openDevTools({ mode: 'detach' });
     }
 
-    // Show window when ready to avoid white flash
-    mainWindow.once('ready-to-show', () => {
-        mainWindow?.show();
+    // Log when content is loaded
+    mainWindow.webContents.on('did-finish-load', () => {
+        console.log('Window content finished loading');
+    });
+    
+    mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+        console.error('Window failed to load:', errorCode, errorDescription);
     });
 
     // Hide window instead of closing it
@@ -612,6 +619,11 @@ app.on('ready', async () => {
             };
             llmRouterService = new LLMRouterService(llmConfig);
             await llmRouterService.initialize();
+            
+            // Also initialize LangChain version
+            langChainLLMRouterService = new LangChainLLMRouterService(llmConfig);
+            await langChainLLMRouterService.initialize();
+            console.log('🔧 DEBUG: LangChain LLMRouterService initialized');
         }
     }
 
@@ -623,8 +635,35 @@ app.on('ready', async () => {
         console.error('Failed to initialize ChatStorageService:', error);
     }
 
-    // Initialize VectorStoreService
-    if (!vectorStoreService) {
+    // Initialize DuckDB Vector Store
+    if (!duckDBVectorStore) {
+        const databaseSettings = (await settingsService?.get('database') || {}) as any;
+        const apiKey = await settingsService?.getApiKey();
+        
+        if (apiKey) {
+            duckDBVectorStore = new DuckDBVectorStore({
+                databasePath: path.join(app.getPath('userData'), 'duckdb-vector-store.db'),
+                openaiApiKey: apiKey,
+                embeddingModel: 'text-embedding-3-small',
+                chunkSize: databaseSettings.chunkSize || 1000,
+                chunkOverlap: databaseSettings.chunkOverlap || 200
+            });
+            
+            try {
+                await duckDBVectorStore.initialize();
+                console.log('🔧 DEBUG: DuckDB VectorStore initialized successfully');
+            } catch (error) {
+                console.error('Failed to initialize DuckDB VectorStore:', error);
+                // Fall back to legacy vector store if DuckDB fails
+                duckDBVectorStore = null;
+            }
+        } else {
+            console.log('🔧 DEBUG: No OpenAI API key available, skipping DuckDB VectorStore initialization');
+        }
+    }
+    
+    // Initialize VectorStoreService (legacy) as fallback
+    if (!vectorStoreService && !duckDBVectorStore) {
         const databaseSettings = (await settingsService?.get('database') || {}) as any;
         vectorStoreService = new VectorStoreService({
             databasePath: databaseSettings.path || path.join(app.getPath('userData'), 'vector-store.db'),
@@ -634,7 +673,43 @@ app.on('ready', async () => {
             autoIndex: databaseSettings.autoIndex || true
         });
         await vectorStoreService.initialize();
-        console.log('🔧 DEBUG: VectorStoreService initialized');
+        console.log('🔧 DEBUG: VectorStoreService (legacy) initialized as fallback');
+    }
+
+    // Initialize LangChain VectorStoreService - DISABLED FOR DEBUGGING
+    // if (!langChainVectorStoreService) {
+    //     const databaseSettings = (await settingsService?.get('database') || {}) as any;
+    //     const apiKey = await settingsService?.getApiKey();
+    //     langChainVectorStoreService = new LangChainVectorStoreService({
+    //         databasePath: databaseSettings.path || path.join(app.getPath('userData'), 'vector-store'),
+    //         embeddingModel: 'text-embedding-3-small',
+    //         chunkSize: databaseSettings.chunkSize || 1000,
+    //         chunkOverlap: databaseSettings.chunkOverlap || 200,
+    //         autoIndex: databaseSettings.autoIndex || true,
+    //         openaiApiKey: apiKey || ''
+    //     });
+    //     await langChainVectorStoreService.initialize();
+    //     console.log('🔧 DEBUG: LangChain VectorStoreService initialized');
+    // }
+
+    // Initialize LangChain MemoryService - DISABLED FOR DEBUGGING
+    // if (!langChainMemoryService && langChainVectorStoreService && langChainLLMRouterService) {
+    //     const llmProvider = await langChainLLMRouterService.getCurrentProvider();
+    //     let llmModel = null;
+    //     if (llmProvider && typeof llmProvider === 'object' && 'chatModel' in llmProvider) {
+    //         llmModel = (llmProvider as any).chatModel;
+    //     }
+    //     langChainMemoryService = new LangChainMemoryService({}, langChainVectorStoreService, llmModel);
+    //     await langChainMemoryService.initialize();
+    //     console.log('🔧 DEBUG: LangChain MemoryService initialized');
+    // }
+
+    // Initialize LangChain ToolExecutorService for web search
+    if (!langChainToolExecutorService) {
+        // Pass null for now since we're not using the vector store parameter
+        langChainToolExecutorService = new LangChainToolExecutorService(null as any);
+        await langChainToolExecutorService.initialize();
+        console.log('🔧 DEBUG: LangChain ToolExecutorService initialized');
     }
     
     // Initialize LinkPreviewService
@@ -643,31 +718,24 @@ app.on('ready', async () => {
         console.log('🔧 DEBUG: LinkPreviewService initialized');
     }
 
-    // Initialize CindyAgent after other services
-    if (!cindyAgent && llmRouterService && settingsService && chatStorageService && vectorStoreService) {
-        // Initialize Redux store with persistence middleware
-        let store = createStore(
-            rootReducer,
-            applyMiddleware(persistenceMiddleware)
-        );
-        const memoryService = new MemoryService(store);
-        const toolExecutor = new ToolExecutorService(vectorStoreService);
+    // Initialize LangChain CindyAgent after other services - DISABLED FOR DEBUGGING
+    // if (!langChainCindyAgent && langChainLLMRouterService && settingsService && chatStorageService && langChainMemoryService && langChainToolExecutorService) {
+    //     // Get agent config from settings
+    //     const agentConfig = await settingsService.get('general') || {};
 
-        // Get agent config from settings
-        const agentConfig = await settingsService.get('general') || {};
-
-        cindyAgent = new CindyAgent({
-            store: {},
-            memoryService,
-            toolExecutor,
-            config: {
-                enableStreaming: true,
-                ...agentConfig
-            },
-            llmRouter: llmRouterService
-        });
-        console.log('🔧 DEBUG: CindyAgent initialized with RAG capabilities');
-    }
+    //     // Initialize LangChain agent with LangChain services
+    //     langChainCindyAgent = new LangChainCindyAgent({
+    //         store: {},
+    //         memoryService: langChainMemoryService as any, // Type cast for compatibility
+    //         toolExecutor: langChainToolExecutorService as any, // Type cast for compatibility
+    //         config: {
+    //             enableStreaming: true,
+    //             ...agentConfig
+    //         },
+    //         llmRouter: langChainLLMRouterService
+    //     });
+    //     console.log('🔧 DEBUG: LangChain CindyAgent initialized with full LangChain services integration');
+    // }
 
     // Initialize Speech-to-Text Service
     if (!speechToTextService) {
@@ -906,55 +974,114 @@ app.on('ready', async () => {
     ipcMain.handle('process-message', async (event, message: string, conversationId: string): Promise<string> => {
         console.log('Main process - process-message IPC called with:', message);
         try {
-            if (!cindyAgent) {
-                console.error('Main process - process-message: cindyAgent not initialized');
-                return "Sorry, I encountered an error processing your request. The assistant is not properly initialized.";
+            // Use LangChain LLM router directly as fallback
+            if (!langChainLLMRouterService) {
+                console.error('Main process - process-message: LangChain LLM router not initialized');
+                return "Sorry, I encountered an error processing your request. The LLM service is not properly initialized.";
+            }
+            
+            console.log('Main process - using direct LangChain LLM router');
+
+            // Save user message first
+            if (chatStorageService) {
+                try {
+                    await chatStorageService.saveMessage({
+                        conversationId,
+                        role: 'user',
+                        content: message,
+                        timestamp: Date.now()
+                    });
+                    console.log('🔧 DEBUG: User message persisted to ChatStorageService');
+                } catch (saveError) {
+                    console.error('🚨 DEBUG: Failed to persist user message:', saveError);
+                }
             }
 
-            // Get user settings for context
-            const userSettings = await settingsService?.getAll() || {};
-            
-            // Process message through the agent
-            const response = await cindyAgent.process(message, {
-                conversationId,
-                sessionId: Date.now().toString(),
-                timestamp: new Date(),
-                preferences: userSettings
+            // Get recent conversation history for context
+            let conversationHistory: Array<{role: 'system' | 'user' | 'assistant', content: string}> = [];
+            if (chatStorageService) {
+                try {
+                    const history = await chatStorageService.getConversationHistory(conversationId);
+                    conversationHistory = history.slice(-10).map(msg => ({
+                        role: msg.role as 'system' | 'user' | 'assistant',
+                        content: msg.content
+                    }));
+                } catch (error) {
+                    console.error('Failed to get conversation history:', error);
+                }
+            }
+
+            // Add current message to conversation
+            conversationHistory.push({
+                role: 'user',
+                content: message
             });
+
+            // Check if the message might need web search
+            const needsWebSearch = message.toLowerCase().includes('search') || 
+                                  message.toLowerCase().includes('latest') || 
+                                  message.toLowerCase().includes('current') ||
+                                  message.toLowerCase().includes('recent') ||
+                                  message.toLowerCase().includes('news') ||
+                                  message.toLowerCase().includes('web');
+
+            let response;
+            
+            if (needsWebSearch && langChainToolExecutorService) {
+                // Add a system message to encourage tool use
+                const toolAwareHistory = [
+                    {
+                        role: 'system' as const,
+                        content: 'You have access to a web_search tool. Use it when users ask for current, recent, or latest information. Always search the web for queries about current events, news, or recent developments.'
+                    },
+                    ...conversationHistory
+                ];
+                
+                console.log('🔧 DEBUG: Message appears to need web search, using tool-aware processing');
+                response = await langChainLLMRouterService.chat(toolAwareHistory);
+                
+                // If the response looks like it should have used a tool but didn't, manually trigger web search
+                if (typeof response === 'string' && response.includes('based on my training data')) {
+                    console.log('🔧 DEBUG: Response indicates limitations, attempting web search');
+                    try {
+                        const searchResult = await langChainToolExecutorService.executeTool('web_search', { query: message });
+                        if (searchResult.success) {
+                            // Combine search results with AI response
+                            const enhancedHistory = [
+                                ...conversationHistory,
+                                {
+                                    role: 'system' as const,
+                                    content: `Web search results for "${message}":\n${searchResult.result}\n\nPlease provide a helpful response based on this current information.`
+                                }
+                            ];
+                            response = await langChainLLMRouterService.chat(enhancedHistory);
+                        }
+                    } catch (searchError) {
+                        console.error('Web search failed:', searchError);
+                        // Continue with original response
+                    }
+                }
+            } else {
+                // Process message through LangChain LLM router normally
+                response = await langChainLLMRouterService.chat(conversationHistory);
+            }
 
             let assistantContent = '';
 
             // Handle streaming response
-            if (typeof response === 'object' && 'next' in response) {
+            if (typeof response === 'object' && Symbol.asyncIterator in response) {
                 // Stream chunks to renderer process
                 for await (const chunk of response as AsyncGenerator<string>) {
                     assistantContent += chunk;
                     event.sender.send('stream-chunk', { chunk, conversationId });
                 }
-
-                // Save assistant message to ChatStorageService when streaming is complete
-                if (chatStorageService && assistantContent.trim()) {
-                    try {
-                        await chatStorageService.saveMessage({
-                            conversationId,
-                            role: 'assistant',
-                            content: assistantContent,
-                            timestamp: Date.now()
-                        });
-                        console.log('🔧 DEBUG: Assistant streaming message persisted to ChatStorageService');
-                    } catch (saveError) {
-                        console.error('🚨 DEBUG: Failed to persist assistant streaming message:', saveError);
-                    }
-                }
-
-                event.sender.send('stream-complete', { conversationId });
-                return ""; // Return empty string since we're streaming
+            } else {
+                // Non-streaming response
+                assistantContent = typeof response === 'string' ? response : (response as any).content || '';
+                event.sender.send('stream-chunk', { chunk: assistantContent, conversationId });
             }
 
-            // Return direct response for non-streaming case
-            assistantContent = response as string;
-
-            // Save assistant message for non-streaming response
+            // Save assistant message to ChatStorageService
             if (chatStorageService && assistantContent.trim()) {
                 try {
                     await chatStorageService.saveMessage({
@@ -963,15 +1090,15 @@ app.on('ready', async () => {
                         content: assistantContent,
                         timestamp: Date.now()
                     });
-                    console.log('🔧 DEBUG: Assistant non-streaming message persisted to ChatStorageService');
+                    console.log('🔧 DEBUG: Assistant message persisted to ChatStorageService');
                 } catch (saveError) {
-                    console.error('🚨 DEBUG: Failed to persist assistant non-streaming message:', saveError);
+                    console.error('🚨 DEBUG: Failed to persist assistant message:', saveError);
                 }
             }
 
-            event.sender.send('stream-chunk', { chunk: assistantContent, conversationId });
             event.sender.send('stream-complete', { conversationId });
-            return "";
+            return assistantContent; // Return the full response
+
         } catch (error) {
             console.error('Main process - process-message: error processing message:', error);
             // Send error to renderer
@@ -979,8 +1106,8 @@ app.on('ready', async () => {
                 error: error instanceof Error ? error.message : 'Unknown error',
                 conversationId
             });
+            return "Sorry, I encountered an error processing your request.";
         }
-        return "Sorry, I encountered an error processing your request.";
     });
 
     // IPC handler for creating conversations
@@ -1046,6 +1173,21 @@ app.on('ready', async () => {
         } catch (error) {
             console.error('Main process - get-conversations: error getting conversations:', error);
             return [];
+        }
+    });
+
+    // IPC handler for getting latest human message in a conversation
+    ipcMain.handle('get-latest-human-message', async (_, conversationId: string) => {
+        console.log('Main process - get-latest-human-message IPC called for:', conversationId);
+        try {
+            if (!chatStorageService) {
+                console.error('Main process - get-latest-human-message: chatStorageService not available');
+                return null;
+            }
+            return await chatStorageService.getLatestHumanMessage(conversationId);
+        } catch (error) {
+            console.error('Main process - get-latest-human-message: error getting latest human message:', error);
+            return null;
         }
     });
 

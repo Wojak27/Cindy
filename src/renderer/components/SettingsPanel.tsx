@@ -167,42 +167,8 @@ const SettingsPanel: React.FC = () => {
         }
     };
 
-    // State for storage permission
-    const [hasStoragePermission, setHasStoragePermission] = useState<boolean>(false);
-    const [checkingPermission, setCheckingPermission] = useState<boolean>(true);
 
-    // Check storage permission on component mount
-    useEffect(() => {
-        const checkPermission = async () => {
-            try {
-                const result = await ipcRenderer.invoke('has-storage-permission');
-                setHasStoragePermission(result.hasPermission);
-            } catch (error) {
-                console.error('Failed to check storage permission:', error);
-            } finally {
-                setCheckingPermission(false);
-            }
-        };
 
-        checkPermission();
-    }, []);
-
-    // Request storage permission
-    const requestStoragePermission = async () => {
-        setCheckingPermission(true);
-        try {
-            const result = await ipcRenderer.invoke('grant-storage-permission');
-            if (result.success) {
-                setHasStoragePermission(true);
-            } else {
-                console.error('Failed to grant storage permission:', result.error);
-            }
-        } catch (error) {
-            console.error('Failed to grant storage permission:', error);
-        } finally {
-            setCheckingPermission(false);
-        }
-    };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -329,27 +295,6 @@ const SettingsPanel: React.FC = () => {
                 </IconButton>
             </div>
             <div className="settings-content">
-                {/* Storage Permission Section */}
-                {checkingPermission ? (
-                    <Alert severity="info">Checking storage permission...</Alert>
-                ) : !hasStoragePermission ? (
-                    <Alert
-                        severity="warning"
-                        action={
-                            <Button
-                                color="inherit"
-                                size="small"
-                                onClick={requestStoragePermission}
-                                disabled={checkingPermission}
-                            >
-                                Give Permission
-                            </Button>
-                        }
-                    >
-                        Storage access required. Click "Give Permission" to allow access to your files.
-                    </Alert>
-                ) : (
-                    <>
                         <Typography variant="subtitle1" gutterBottom>Profile</Typography>
                         <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1 }}>
                             <FormControl fullWidth margin="normal">
@@ -614,8 +559,6 @@ const SettingsPanel: React.FC = () => {
                                 <FormHelperText>The maximum number of tokens in the response.</FormHelperText>
                             </FormControl>
                         </Box>
-                    </>
-                )}
 
                 <Divider sx={{ my: 3 }} />
                 <Typography variant="subtitle1" gutterBottom>Appearance</Typography>

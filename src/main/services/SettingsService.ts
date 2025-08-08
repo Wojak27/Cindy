@@ -90,13 +90,6 @@ interface Settings {
         hasCompletedSetup: boolean;
     };
 
-    // Storage permissions
-    storage: {
-        // Flag to track if storage permission has been granted
-        permissionGranted: boolean;
-        // Timestamp of when permission was granted
-        permissionGrantedAt: string | null;
-    };
 }
 
 class SettingsService extends EventEmitter {
@@ -179,7 +172,6 @@ class SettingsService extends EventEmitter {
         // Save to persistence
         try {
             console.log('SettingsService.set() - About to save settings');
-            console.log('SettingsService.set() - Current storage permission status:', this.settings.storage.permissionGranted);
             console.log('SettingsService.set() - Settings object:', JSON.stringify(this.settings, null, 2));
             await this.save();
             console.log('SettingsService.set() - Settings saved successfully');
@@ -327,10 +319,6 @@ class SettingsService extends EventEmitter {
                 hasCompletedSetup: false
             },
 
-            storage: {
-                permissionGranted: false,
-                permissionGrantedAt: null
-            }
         };
     }
 
@@ -395,73 +383,6 @@ class SettingsService extends EventEmitter {
         return expression.split(' ').length === 5;
     }
 
-    /**
-     * Grant storage permission
-     */
-    async grantStoragePermission(): Promise<void> {
-        console.log('SettingsService.grantStoragePermission() - Method called');
-        if (!this.isInitialized) {
-            console.log('SettingsService.grantStoragePermission() - Service not initialized, initializing...');
-            await this.initialize();
-            console.log('SettingsService.grantStoragePermission() - Initialization completed');
-        }
-
-        this.settings.storage.permissionGranted = true;
-        this.settings.storage.permissionGrantedAt = new Date().toISOString();
-
-        // Save the updated settings
-        await this.save();
-
-        // Emit change event
-        this.emit('settingsChanged', {
-            section: 'storage',
-            value: {
-                permissionGranted: true,
-                permissionGrantedAt: this.settings.storage.permissionGrantedAt
-            }
-        });
-    }
-
-    /**
-     * Revoke storage permission
-     */
-    async revokeStoragePermission(): Promise<void> {
-        console.log('SettingsService.revokeStoragePermission() - Method called');
-        if (!this.isInitialized) {
-            console.log('SettingsService.revokeStoragePermission() - Service not initialized, initializing...');
-            await this.initialize();
-            console.log('SettingsService.revokeStoragePermission() - Initialization completed');
-        }
-
-        this.settings.storage.permissionGranted = false;
-        this.settings.storage.permissionGrantedAt = null;
-
-        // Save the updated settings
-        await this.save();
-
-        // Emit change event
-        this.emit('settingsChanged', {
-            section: 'storage',
-            value: {
-                permissionGranted: false,
-                permissionGrantedAt: null
-            }
-        });
-    }
-
-    /**
-     * Check if storage permission has been granted
-     */
-    async hasStoragePermission(): Promise<boolean> {
-        console.log('SettingsService.hasStoragePermission() - Method called');
-        if (!this.isInitialized) {
-            console.log('SettingsService.hasStoragePermission() - Service not initialized, initializing...');
-            await this.initialize();
-            console.log('SettingsService.hasStoragePermission() - Initialization completed');
-        }
-
-        return this.settings.storage.permissionGranted;
-    }
 }
 
 export { SettingsService, Settings };

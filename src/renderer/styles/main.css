@@ -486,6 +486,24 @@ html:not([data-theme="dark"]) .message-text {
     opacity: 0.8;
 }
 
+/* Highlighted message styles for scroll-to functionality */
+.message.highlighted {
+    background-color: var(--warning);
+    opacity: 0.1;
+    border-radius: var(--radius);
+    transition: background-color 0.3s ease, opacity 0.3s ease;
+}
+
+.message.highlighted .message-content {
+    transform: scale(1.02);
+    transition: transform 0.3s ease;
+}
+
+[data-theme="dark"] .message.highlighted {
+    background-color: #fbbf24;
+    opacity: 0.15;
+}
+
 .streaming-cursor {
     color: var(--primary);
     font-weight: bold;

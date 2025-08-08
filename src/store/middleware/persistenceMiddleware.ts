@@ -158,10 +158,6 @@ export const persistenceMiddleware = () => (next: any) => async (action: any) =>
                     chunkOverlap: action.payload.database?.chunkOverlap || 200,
                     autoIndex: action.payload.database?.autoIndex || true,
                     notesPath: action.payload.database?.notesPath || ''
-                },
-                storage: {
-                    permissionGranted: action.payload.storage?.permissionGranted || false,
-                    permissionGrantedAt: action.payload.storage?.permissionGrantedAt || null
                 }
             };
 
@@ -260,7 +256,11 @@ export const persistenceMiddleware = () => (next: any) => async (action: any) =>
                                 conversationId: messageData.conversationId || 'default',
                                 role: messageData.role,
                                 content: messageData.content,
-                                timestamp: messageData.timestamp || Date.now()
+                                timestamp: messageData.timestamp ? 
+                                    (typeof messageData.timestamp === 'string' ? 
+                                        new Date(messageData.timestamp).getTime() : 
+                                        messageData.timestamp
+                                    ) : Date.now()
                             });
                             console.log('🔧 DEBUG: Message persisted successfully:', result);
                             return result;
@@ -276,6 +276,11 @@ export const persistenceMiddleware = () => (next: any) => async (action: any) =>
                                 const failedMessages = JSON.parse(localStorage.getItem('voice-assistant-failed-messages') || '[]');
                                 failedMessages.push({
                                     ...messageData,
+                                    timestamp: messageData.timestamp ? 
+                                        (typeof messageData.timestamp === 'string' ? 
+                                            new Date(messageData.timestamp).getTime() : 
+                                            messageData.timestamp
+                                        ) : Date.now(),
                                     failedAt: Date.now(),
                                     retryCount: 0
                                 });

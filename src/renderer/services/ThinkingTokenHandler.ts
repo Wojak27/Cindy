@@ -25,7 +25,7 @@ export class ThinkingTokenHandler {
     private currentBlockId = 0;
     private readonly THINKING_START_TOKEN = '<think>';
     private readonly THINKING_END_TOKEN = '</think>';
-    private readonly TOKEN_REGEX = new RegExp(`${this.THINKING_START_TOKEN}|${this.THINKING_END_TOKEN}`, 'g');
+    private readonly TOKEN_REGEX_END = new RegExp(`${this.THINKING_START_TOKEN}|${this.THINKING_END_TOKEN}`, 'g');
 
     private constructor() { }
 
@@ -69,7 +69,7 @@ export class ThinkingTokenHandler {
         };
 
         // Reset regex lastIndex to ensure proper matching
-        this.TOKEN_REGEX.lastIndex = 0;
+        this.TOKEN_REGEX_END.lastIndex = 0;
 
         let match;
         let lastIndex = 0;
@@ -77,7 +77,7 @@ export class ThinkingTokenHandler {
         let inThinkingBlock = this.thinkingStack.length > 0;
 
         // Process all tokens in the chunk
-        while ((match = this.TOKEN_REGEX.exec(chunk)) !== null) {
+        while ((match = this.TOKEN_REGEX_END.exec(chunk)) !== null) {
             const token = match[0];
             const tokenIndex = match.index;
 
@@ -123,7 +123,7 @@ export class ThinkingTokenHandler {
                 inThinkingBlock = this.thinkingStack.length > 0;
             }
 
-            lastIndex = this.TOKEN_REGEX.lastIndex;
+            lastIndex = this.TOKEN_REGEX_END.lastIndex;
         }
 
         // Handle remaining content after the last token
@@ -199,7 +199,7 @@ export class ThinkingTokenHandler {
      */
     public getIncompleteThinkingBlocks(conversationId: string): ThinkingBlock[] {
         const incompleteBlocks: ThinkingBlock[] = [];
-        
+
         // Process current thinking stack content
         this.thinkingStack.forEach((thinkingContent, index) => {
             if (thinkingContent.trim()) {

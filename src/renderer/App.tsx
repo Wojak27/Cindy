@@ -61,6 +61,9 @@ const App: React.FC = () => {
     const sounds = useRef<Record<string, AudioBuffer>>({});
     const streamController = useRef<AbortController | null>(null);
     const speechTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const settingsSidebarRef = useRef<HTMLDivElement>(null);
+    const databaseSidebarRef = useRef<HTMLDivElement>(null);
+    const chatMessagesRef = useRef<HTMLDivElement>(null);
 
     // Memoize welcome message to prevent re-calculation on every render
     const welcomeMessage = useMemo(() => {
@@ -91,34 +94,48 @@ const App: React.FC = () => {
                 dispatch({ type: 'CLEAR_MESSAGES' });
                 dispatch({ type: 'CLEAR_THINKING_BLOCKS' });
                 dispatch({ type: 'CLEAR_TOOL_CALLS' });
-                
+
                 // Reset token handlers
                 thinkingTokenHandler.reset();
                 toolTokenHandler.reset();
-                
+
                 // Process existing messages for thinking tokens and code blocks
                 const { updatedMessages, extractedThinkingBlocks } = ContentProcessor.processExistingMessages(
-                    messages, 
+                    messages,
                     currentConversationId
                 );
-                
+
                 console.log('🔧 DEBUG: Processed', messages.length, 'messages, extracted', extractedThinkingBlocks.length, 'thinking blocks');
-                
+
                 // Load all processed messages at once to prevent duplication
                 dispatch({ type: 'LOAD_MESSAGES', payload: updatedMessages });
-                
+
+                // Find and scroll to latest human message after a short delay
+                setTimeout(async () => {
+                    try {
+                        const latestHumanMessage = await ipcRenderer.invoke('get-latest-human-message', currentConversationId);
+                        console.log('🔧 DEBUG: Latest human message found:', latestHumanMessage?.id);
+                        
+                        if (latestHumanMessage) {
+                            scrollToHumanMessage(latestHumanMessage.id);
+                        }
+                    } catch (error) {
+                        console.error('🚨 DEBUG: Error finding latest human message:', error);
+                    }
+                }, 500); // Wait for messages to be rendered
+
                 // Load extracted thinking blocks as batch
                 if (extractedThinkingBlocks.length > 0) {
                     dispatch({ type: 'LOAD_THINKING_BLOCKS', payload: extractedThinkingBlocks });
                     console.log('🔧 DEBUG: Loaded', extractedThinkingBlocks.length, 'extracted thinking blocks');
                 }
-                
+
                 // Load thinking blocks for this conversation
                 try {
                     console.log('🔧 DEBUG: Loading thinking blocks for conversation:', currentConversationId);
                     const conversationThinkingBlocks = await ipcRenderer.invoke('get-thinking-blocks', currentConversationId);
                     console.log('🔧 DEBUG: Loaded thinking blocks:', conversationThinkingBlocks?.length || 0, 'blocks');
-                    
+
                     if (conversationThinkingBlocks && conversationThinkingBlocks.length > 0) {
                         // Retroactively associate thinking blocks with messages if not already associated
                         const updatedBlocks = conversationThinkingBlocks.map((block: any) => {
@@ -129,7 +146,7 @@ const App: React.FC = () => {
                                     const blockTime = new Date(block.startTime).getTime();
                                     let closestMessage = assistantMessages[0];
                                     let smallestDiff = Math.abs(new Date(closestMessage.timestamp).getTime() - blockTime);
-                                    
+
                                     assistantMessages.forEach((msg: any) => {
                                         if (msg.timestamp) {
                                             const msgTime = new Date(msg.timestamp).getTime();
@@ -140,7 +157,7 @@ const App: React.FC = () => {
                                             }
                                         }
                                     });
-                                    
+
                                     // Associate if within 2 minutes
                                     if (smallestDiff <= 120000) { // 2 minutes
                                         console.log('🔧 DEBUG: Associated thinking block', block.id, 'with message', closestMessage.id);
@@ -150,7 +167,7 @@ const App: React.FC = () => {
                             }
                             return block;
                         });
-                        
+
                         // Add all thinking blocks to the store as batch (merge with existing)
                         dispatch({ type: 'LOAD_THINKING_BLOCKS', payload: [...extractedThinkingBlocks, ...updatedBlocks] });
                         console.log('🔧 DEBUG: Loaded', updatedBlocks.length, 'conversation thinking blocks to store');
@@ -170,12 +187,12 @@ const App: React.FC = () => {
 
     useEffect(() => {
         dispatch(getSettings());
-        
+
         // Hide loading screen after a delay to show the app is ready
         const timer = setTimeout(() => {
             setIsAppLoading(false);
         }, 2000); // Show loading blob for 2 seconds
-        
+
         return () => clearTimeout(timer);
     }, [dispatch]);
 
@@ -189,6 +206,29 @@ const App: React.FC = () => {
         setTimeout(() => {
             setWakeWordDetected(false);
         }, 2000);
+    }, []);
+
+    // Function to scroll to a specific human message
+    const scrollToHumanMessage = useCallback((messageId: number) => {
+        if (!chatMessagesRef.current) return;
+        
+        // Find the message element by ID
+        const messageElement = chatMessagesRef.current.querySelector(`[data-message-id="${messageId}"]`);
+        if (messageElement) {
+            console.log('🔧 DEBUG: Scrolling to human message:', messageId);
+            messageElement.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center'
+            });
+            
+            // Highlight the message briefly
+            messageElement.classList.add('highlighted');
+            setTimeout(() => {
+                messageElement.classList.remove('highlighted');
+            }, 2000);
+        } else {
+            console.warn('🚨 DEBUG: Could not find message element for ID:', messageId);
+        }
     }, []);
 
     // Start live transcription when app loads
@@ -292,7 +332,7 @@ const App: React.FC = () => {
     // Handle microphone button click for recording
     const handleMicClick = async () => {
         console.log('🎤 handleMicClick called, current state:', { isRecording, isListening, wakeWordDetected });
-        
+
         // Only play activation sound for recording (as requested)
         if (!isRecording) {
             playSound('activation');
@@ -321,7 +361,7 @@ const App: React.FC = () => {
                                 id: `user-${Date.now()}`,
                                 role: 'user',
                                 content: transcript,
-                                timestamp: new Date().toISOString(),
+                                timestamp: Date.now(),
                                 conversationId: currentConversationId
                             };
                             console.log('🔧 DEBUG: Adding user message (from voice) - will be persisted to ChatStorageService:', userMessage);
@@ -332,7 +372,7 @@ const App: React.FC = () => {
                                 id: `assistant-${Date.now()}`,
                                 role: 'assistant',
                                 content: '',
-                                timestamp: new Date().toISOString(),
+                                timestamp: Date.now(),
                                 isStreaming: true,
                                 conversationId: currentConversationId
                             };
@@ -345,12 +385,12 @@ const App: React.FC = () => {
                             } catch (error) {
                                 console.error('Error processing message:', error);
                                 // Mark the assistant message as failed
-                                dispatch({ 
-                                    type: 'MARK_MESSAGE_FAILED', 
-                                    payload: { 
-                                        messageId: assistantMessage.id, 
-                                        error: error instanceof Error ? error.message : 'Unknown error occurred' 
-                                    } 
+                                dispatch({
+                                    type: 'MARK_MESSAGE_FAILED',
+                                    payload: {
+                                        messageId: assistantMessage.id,
+                                        error: error instanceof Error ? error.message : 'Unknown error occurred'
+                                    }
                                 });
                                 dispatch({ type: 'STOP_THINKING' });
                             }
@@ -409,11 +449,11 @@ const App: React.FC = () => {
     // Retry a failed message
     const retryMessage = async (messageId: string, userMessage: any) => {
         console.log('Retrying message:', messageId, userMessage);
-        
+
         // Mark message as retrying
         dispatch({ type: 'RETRY_MESSAGE', payload: { messageId } });
         dispatch({ type: 'START_THINKING' });
-        
+
         try {
             // Find the user message content to retry
             const userContent = userMessage?.content || '';
@@ -423,12 +463,12 @@ const App: React.FC = () => {
             }
         } catch (error) {
             console.error('Error retrying message:', error);
-            dispatch({ 
-                type: 'MARK_MESSAGE_FAILED', 
-                payload: { 
-                    messageId: messageId, 
-                    error: error instanceof Error ? error.message : 'Unknown error occurred' 
-                } 
+            dispatch({
+                type: 'MARK_MESSAGE_FAILED',
+                payload: {
+                    messageId: messageId,
+                    error: error instanceof Error ? error.message : 'Unknown error occurred'
+                }
             });
             dispatch({ type: 'STOP_THINKING' });
         }
@@ -483,7 +523,7 @@ const App: React.FC = () => {
                 id: `user-${Date.now()}`,
                 role: 'user',
                 content: inputValue,
-                timestamp: new Date().toISOString(),
+                timestamp: Date.now(),
                 conversationId: currentConversationId
             };
             console.log('🔧 DEBUG: Adding user message (from text) - will be persisted to ChatStorageService:', userMessage);
@@ -494,7 +534,7 @@ const App: React.FC = () => {
                 id: `assistant-${Date.now()}`,
                 role: 'assistant',
                 content: '',
-                timestamp: new Date().toISOString(),
+                timestamp: Date.now(),
                 isStreaming: true,
                 conversationId: currentConversationId
             };
@@ -514,12 +554,12 @@ const App: React.FC = () => {
             } catch (error) {
                 console.error('Error processing message:', error);
                 // Mark the assistant message as failed
-                dispatch({ 
-                    type: 'MARK_MESSAGE_FAILED', 
-                    payload: { 
-                        messageId: assistantMessage.id, 
-                        error: error instanceof Error ? error.message : 'Unknown error occurred' 
-                    } 
+                dispatch({
+                    type: 'MARK_MESSAGE_FAILED',
+                    payload: {
+                        messageId: assistantMessage.id,
+                        error: error instanceof Error ? error.message : 'Unknown error occurred'
+                    }
                 });
                 dispatch({ type: 'STOP_THINKING' });
             }
@@ -553,6 +593,40 @@ const App: React.FC = () => {
                     dispatch({ type: 'ADD_THINKING_BLOCK', payload: enhancedBlock });
                 });
 
+                // IMMEDIATE THINKING DISPLAY: Check for incomplete thinking blocks and show them immediately
+                const incompleteBlocks = thinkingTokenHandler.getIncompleteThinkingBlocks(currentConversationId);
+                incompleteBlocks.forEach(incompleteBlock => {
+                    // Check if this incomplete block is already being displayed
+                    const existingBlock = thinkingBlocks.find((block: any) => 
+                        block.id === incompleteBlock.id && block.isIncomplete
+                    );
+                    
+                    if (!existingBlock) {
+                        // New incomplete thinking block - show it immediately
+                        const enhancedIncompleteBlock = {
+                            ...incompleteBlock,
+                            messageId: `assistant-${Date.now()}`,
+                            conversationId: currentConversationId,
+                            isIncomplete: true, // Flag to indicate this is still being processed
+                            isStreaming: true   // Flag for UI animation/styling
+                        };
+                        dispatch({ type: 'ADD_THINKING_BLOCK', payload: enhancedIncompleteBlock });
+                        console.log('🧠 IMMEDIATE THINKING: Showing incomplete thinking block:', {
+                            blockId: incompleteBlock.id,
+                            contentLength: incompleteBlock.content.length,
+                            contentPreview: incompleteBlock.content.substring(0, 50) + '...'
+                        });
+                    } else {
+                        // Update existing incomplete block with new content
+                        const updatedBlock = {
+                            ...existingBlock,
+                            content: incompleteBlock.content,
+                            isStreaming: true
+                        };
+                        dispatch({ type: 'UPDATE_THINKING_BLOCK', payload: updatedBlock });
+                    }
+                });
+
                 // Process the chunk for tool calls after thinking tokens
                 const processedTools = toolTokenHandler.processChunk(processedThinking.displayContent, currentConversationId);
 
@@ -579,13 +653,40 @@ const App: React.FC = () => {
 
         const handleStreamComplete = (_: any, data: { conversationId: string }) => {
             if (data.conversationId === currentConversationId) {
-                // Reset token handlers after stream completes
-                thinkingTokenHandler.reset();
-                toolTokenHandler.reset();
+                // FINALIZE INCOMPLETE THINKING BLOCKS: Convert any remaining incomplete blocks to completed ones
+                const remainingIncompleteBlocks = thinkingTokenHandler.getIncompleteThinkingBlocks(currentConversationId);
+                remainingIncompleteBlocks.forEach(incompleteBlock => {
+                    // Find the existing incomplete block in Redux
+                    const existingIncompleteBlock = thinkingBlocks.find((block: any) => 
+                        block.id === incompleteBlock.id && block.isIncomplete
+                    );
+                    
+                    if (existingIncompleteBlock) {
+                        // Mark the incomplete block as completed
+                        const completedBlock = {
+                            ...existingIncompleteBlock,
+                            content: incompleteBlock.content, // Final content
+                            endTime: Date.now(),
+                            isIncomplete: false,
+                            isStreaming: false,
+                            duration: '00:01' // Default duration for incomplete blocks
+                        };
+                        dispatch({ type: 'UPDATE_THINKING_BLOCK', payload: completedBlock });
+                        console.log('🧠 FINALIZED INCOMPLETE: Converted incomplete thinking block to completed:', {
+                            blockId: incompleteBlock.id,
+                            finalContentLength: incompleteBlock.content.length
+                        });
+                    }
+                });
                 
-                // Finalize any open thinking blocks
+                // DON'T reset thinking token handler - this causes thinking tokens 
+                // from subsequent messages to accumulate in the first thinking block
+                // Only reset tool token handler which doesn't need persistent state
+                toolTokenHandler.reset();
+
+                // Finalize any open thinking blocks (for properly closed thinking blocks)
                 const finalizedBlocks = thinkingTokenHandler.finalizeThinkingBlocks(
-                    thinkingBlocks.filter((block: any) => !block.endTime)
+                    thinkingBlocks.filter((block: any) => !block.endTime && !block.isIncomplete)
                 );
                 finalizedBlocks.forEach((block: any) => {
                     dispatch({ type: 'UPDATE_THINKING_BLOCK', payload: block });
@@ -599,15 +700,15 @@ const App: React.FC = () => {
                         lastMessage.id,
                         currentConversationId
                     );
-                    
+
                     if (processed.hasCodeBlocks) {
                         console.log('🔧 DEBUG: Processing code blocks for completed message');
-                        dispatch({ 
-                            type: 'UPDATE_LAST_ASSISTANT_MESSAGE', 
-                            payload: { 
-                                content: processed.displayContent, 
-                                hasCodeBlocks: processed.hasCodeBlocks 
-                            } 
+                        dispatch({
+                            type: 'UPDATE_LAST_ASSISTANT_MESSAGE',
+                            payload: {
+                                content: processed.displayContent,
+                                hasCodeBlocks: processed.hasCodeBlocks
+                            }
                         });
                     }
                 }
@@ -622,19 +723,19 @@ const App: React.FC = () => {
             if (data.conversationId === currentConversationId) {
                 dispatch(streamError(data.error));
                 dispatch({ type: 'STOP_THINKING' });
-                
+
                 // Find the last assistant message and mark it as failed
-                const lastAssistantMessage = messages.find(msg => 
+                const lastAssistantMessage = messages.find(msg =>
                     msg.role === 'assistant' && msg.conversationId === currentConversationId && msg.isStreaming
                 );
-                
+
                 if (lastAssistantMessage) {
-                    dispatch({ 
-                        type: 'MARK_MESSAGE_FAILED', 
-                        payload: { 
-                            messageId: lastAssistantMessage.id, 
-                            error: data.error 
-                        } 
+                    dispatch({
+                        type: 'MARK_MESSAGE_FAILED',
+                        payload: {
+                            messageId: lastAssistantMessage.id,
+                            error: data.error
+                        }
                     });
                 }
             }
@@ -662,7 +763,7 @@ const App: React.FC = () => {
                 streamController.current.abort();
             }
         };
-    }, [currentConversationId, dispatch, thinkingBlocks]);
+    }, [currentConversationId, dispatch]);
 
     // Handle input change
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -729,18 +830,40 @@ const App: React.FC = () => {
         };
     }, []);
 
+    // Handle click outside to close sidebars
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            // Close settings sidebar if clicking outside
+            if (showSettings && settingsSidebarRef.current && !settingsSidebarRef.current.contains(event.target as Node)) {
+                dispatch(toggleSettings());
+            }
+            // Close database sidebar if clicking outside
+            if (showDatabase && databaseSidebarRef.current && !databaseSidebarRef.current.contains(event.target as Node)) {
+                dispatch({ type: 'TOGGLE_DATABASE_SIDEBAR' });
+            }
+        };
+
+        if (showSettings || showDatabase) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [showSettings, showDatabase, dispatch]);
+
     // Show loading screen with just the blob
     if (isAppLoading) {
         return (
             <ThemeProvider>
                 <CssBaseline />
-                <div style={{ 
-                    width: '100vw', 
-                    height: '100vh', 
-                    display: 'flex', 
-                    justifyContent: 'center', 
+                <div style={{
+                    width: '100vw',
+                    height: '100vh',
+                    display: 'flex',
+                    justifyContent: 'center',
                     alignItems: 'center',
-                    backgroundColor: 'var(--background)' 
+                    backgroundColor: 'var(--background)'
                 }}>
                     <div style={{ position: "relative", width: "200px", height: "200px" }}>
                         <SoundReactiveBlob isActive={true} />
@@ -759,351 +882,362 @@ const App: React.FC = () => {
                         <ChatList
                             onSelectConversation={setCurrentConversationId}
                             onCreateNewChat={async () => {
-                        try {
-                            // Create new conversation through IPC handler
-                            const newId = await ipcRenderer.invoke('create-conversation');
-                            setCurrentConversationId(newId);
-                            // Clear messages for the new conversation
-                            dispatch({ type: 'CLEAR_MESSAGES' });
-                            // Reset token handlers for new conversation
-                            thinkingTokenHandler.reset();
-                            toolTokenHandler.reset();
-                        } catch (error) {
-                            console.error('Failed to create new conversation:', error);
-                            // Fallback to local ID generation if IPC fails
-                            const fallbackId = Date.now().toString();
-                            setCurrentConversationId(fallbackId);
-                            dispatch({ type: 'CLEAR_MESSAGES' });
-                        }
-                    }}
-                    currentConversationId={currentConversationId}
+                                try {
+                                    // Create new conversation through IPC handler
+                                    const newId = await ipcRenderer.invoke('create-conversation');
+                                    setCurrentConversationId(newId);
+                                    // Clear messages for the new conversation
+                                    dispatch({ type: 'CLEAR_MESSAGES' });
+                                    // Reset token handlers for new conversation
+                                    thinkingTokenHandler.reset();
+                                    toolTokenHandler.reset();
+                                } catch (error) {
+                                    console.error('Failed to create new conversation:', error);
+                                    // Fallback to local ID generation if IPC fails
+                                    const fallbackId = Date.now().toString();
+                                    setCurrentConversationId(fallbackId);
+                                    dispatch({ type: 'CLEAR_MESSAGES' });
+                                }
+                            }}
+                            currentConversationId={currentConversationId}
                         />
                     </div>
                 </div>
-            <div className="main-content">
-                <div className="window-controls" >
-                    {/* Compact blob at top after first message */}
-                    {messages.length > 0 && (
-                        <div className="compact-blob-container">
-                            <div style={{ position: "relative", width: "32px", height: "32px" }}>
-                                <SoundReactiveBlob isActive={isSpeaking || isRecording || isLiveListening} />
+                <div className="main-content">
+                    <div className="window-controls" >
+                        {/* Compact blob at top after first message */}
+                        {messages.length > 0 && (
+                            <div className="compact-blob-container">
+                                <div style={{ position: "relative", width: "32px", height: "32px" }}>
+                                    <SoundReactiveBlob isActive={isSpeaking || isRecording || isLiveListening} />
+                                </div>
+                            </div>
+                        )}
+                        <IconButton
+                            className="sidebar-toggle"
+                            onClick={() => setSidebarOpen(!sidebarOpen)}
+                            aria-label="Toggle sidebar"
+                            size="small"
+                        >
+                            <ViewSidebarIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                            className="new-chat"
+                            onClick={async () => {
+                                try {
+                                    // Create new conversation through IPC handler
+                                    const newId = await ipcRenderer.invoke('create-conversation');
+                                    setCurrentConversationId(newId);
+                                    // Clear messages for the new conversation
+                                    dispatch({ type: 'CLEAR_MESSAGES' });
+                                    // Reset token handlers for new conversation
+                                    thinkingTokenHandler.reset();
+                                    toolTokenHandler.reset();
+                                } catch (error) {
+                                    console.error('Failed to create new conversation:', error);
+                                    // Fallback to local ID generation if IPC fails
+                                    const fallbackId = Date.now().toString();
+                                    setCurrentConversationId(fallbackId);
+                                    dispatch({ type: 'CLEAR_MESSAGES' });
+                                }
+                            }}
+                            aria-label="New chat"
+                            size="small"
+                        >
+                            <EditSquareIcon fontSize="small" />
+                        </IconButton>
+                        <div className="window-draggable-area"></div>
+
+                        {/* Wake Word Status Indicator */}
+                        <IconButton
+                            className={`wake-word-indicator ${wakeWordDetected ? 'detected' :
+                                isLiveListening ? 'listening' :
+                                    wakeWordActive ? 'active' : 'inactive'
+                                }`}
+                            title={
+                                wakeWordDetected ? 'Wake word detected!' :
+                                    isLiveListening ? 'Live transcription active' :
+                                        wakeWordActive ? 'Wake word listening' : 'Wake word inactive'
+                            }
+                            size="small"
+                            onClick={() => {
+                                // Manual wake word trigger for testing
+                                console.log('🎤 Manual wake word trigger');
+                                document.dispatchEvent(new CustomEvent('test-wake-word'));
+                            }}
+                        >
+                            <WakeWordIcon fontSize="small" />
+                        </IconButton>
+
+                        <IconButton
+                            className="database-button"
+                            onClick={() => dispatch({ type: 'TOGGLE_DATABASE_SIDEBAR' })}
+                            aria-label="Open database settings"
+                            size="small"
+                        >
+                            <DatabaseIcon fontSize="small" />
+                        </IconButton>
+
+                        <IconButton
+                            className={`settings-button ${showSettings ? 'active' : ''}`}
+                            onClick={() => dispatch(toggleSettings())}
+                            aria-label={showSettings ? "Close settings" : "Open settings"}
+                            size="small"
+                        >
+                            <SettingsIcon fontSize="small" />
+                        </IconButton>
+                        <ThemeToggle variant="icon" />
+                    </div>
+
+                    <div className="chat-container">
+                        <div className="chat-messages-container">
+                            <div 
+                                ref={chatMessagesRef}
+                                className="chat-messages" 
+                                style={{ height: '100%', overflowY: 'auto', display: 'flex', flexDirection: 'column-reverse' }}
+                            >
+                                {/* Show sound reactive circle when no messages and no current input */}
+                                {messages.length === 0 && (
+                                    <div style={{ display: 'flex', justifyContent: 'center', flexDirection: "column", alignItems: 'center', height: '100%' }}>
+                                        <div>
+                                            <div style={{ position: "relative", width: "200px", height: "200px" }}>
+                                                <SoundReactiveBlob isActive={isLiveListening} />
+                                            </div>
+                                        </div>
+                                        <div style={{ maxWidth: '600px', textAlign: 'center', padding: '0 20px' }}>
+                                            {settings?.profile?.name && shouldShowWelcome(settings.profile.name, settings.profile.hasCompletedSetup) ? (
+                                                <div>
+                                                    <h2 style={{ marginBottom: '10px' }}>Welcome!</h2>
+                                                    <p style={{ fontSize: '16px', lineHeight: '1.5', color: 'var(--text-secondary)' }}>
+                                                        {welcomeMessage}
+                                                    </p>
+                                                </div>
+                                            ) : (
+                                                <h2>{personalizedGreeting}</h2>
+                                            )}
+                                            {isLiveListening && (
+                                                <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '10px' }}>
+                                                    Say "Hi Cindy" to start recording...
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                                {[...messages].reverse().map((msg: any, index: number) => {
+                                    const messageClass = `message ${msg.role} ${msg.isStreaming ? 'streaming' : ''} ${isSpeaking && msg.role === 'assistant' ? 'speaking' : ''} ${isLiveListening ? 'listening' : ''}`;
+
+                                    // Get thinking blocks associated with this specific message
+                                    // For older chats, associate thinking blocks with assistant messages based on timestamp proximity
+                                    const associatedBlocks = thinkingBlocks.filter((block: any) => {
+                                        // Direct association by messageId (new messages)
+                                        if (block.messageId === msg.id) {
+                                            return true;
+                                        }
+
+                                        // For assistant messages without direct association, use timestamp-based matching
+                                        if (msg.role === 'assistant' && !block.messageId) {
+                                            // Check if this is the closest assistant message to the thinking block
+                                            const msgTime = new Date(msg.timestamp).getTime();
+                                            const blockTime = new Date(block.startTime).getTime();
+                                            const timeDiff = Math.abs(msgTime - blockTime);
+
+                                            // Associate if within 30 seconds and no other assistant message is closer
+                                            if (timeDiff <= 30000) { // 30 seconds
+                                                const otherAssistantMessages = messages.filter((m: any) =>
+                                                    m.role === 'assistant' && m.id !== msg.id && m.timestamp
+                                                );
+
+                                                const isClosest = otherAssistantMessages.every((otherMsg: any) => {
+                                                    const otherMsgTime = new Date(otherMsg.timestamp).getTime();
+                                                    const otherTimeDiff = Math.abs(otherMsgTime - blockTime);
+                                                    return timeDiff <= otherTimeDiff;
+                                                });
+
+                                                return isClosest;
+                                            }
+                                        }
+
+                                        // Fallback: associate with current streaming message (for live messages)
+                                        return !block.messageId && msg.role === 'assistant' && msg.isStreaming;
+                                    });
+
+                                    // Get tool calls associated with this specific message
+                                    const associatedToolCalls = toolCalls.filter((toolCall: any) => {
+                                        // Direct association by messageId
+                                        if (toolCall.messageId === msg.id) {
+                                            return true;
+                                        }
+
+                                        // For assistant messages without direct association, use timestamp-based matching
+                                        if (msg.role === 'assistant' && !toolCall.messageId) {
+                                            const msgTime = new Date(msg.timestamp).getTime();
+                                            const toolTime = new Date(toolCall.startTime).getTime();
+                                            const timeDiff = Math.abs(msgTime - toolTime);
+
+                                            // Associate if within 30 seconds and no other assistant message is closer
+                                            if (timeDiff <= 30000) { // 30 seconds
+                                                const otherAssistantMessages = messages.filter((m: any) =>
+                                                    m.role === 'assistant' && m.id !== msg.id && m.timestamp
+                                                );
+
+                                                const isClosest = otherAssistantMessages.every((otherMsg: any) => {
+                                                    const otherMsgTime = new Date(otherMsg.timestamp).getTime();
+                                                    const otherTimeDiff = Math.abs(otherMsgTime - toolTime);
+                                                    return timeDiff <= otherTimeDiff;
+                                                });
+
+                                                return isClosest;
+                                            }
+                                        }
+
+                                        // Fallback: associate with current streaming message (for live messages)
+                                        return !toolCall.messageId && msg.role === 'assistant' && msg.isStreaming;
+                                    });
+
+                                    return (
+                                        <div
+                                            key={msg.id || index}
+                                            className={messageClass}
+                                            data-message-id={msg.id}
+                                        >
+                                            <div className="message-avatar">
+                                                {msg.role === 'user' ? '👤' : '🤖'}
+                                            </div>
+                                            <div className="message-content">
+                                                {msg.role === 'assistant' && (
+                                                    <>
+                                                        {/* Render thinking blocks before assistant content */}
+                                                        {associatedBlocks.map((block: any) => (
+                                                            <ThinkingBlock
+                                                                key={block.id}
+                                                                id={block.id}
+                                                                content={block.content}
+                                                                startTime={block.startTime}
+                                                                endTime={block.endTime}
+                                                                duration={block.duration}
+                                                                defaultOpen={false}
+                                                                isIncomplete={block.isIncomplete || false}
+                                                                isStreaming={block.isStreaming || false}
+                                                            />
+                                                        ))}
+
+                                                        {/* Render tool calls after thinking blocks */}
+                                                        {associatedToolCalls.map((toolCall: any) => (
+                                                            <ToolBlock
+                                                                key={toolCall.id}
+                                                                toolCall={toolCall}
+                                                                defaultOpen={false}
+                                                            />
+                                                        ))}
+                                                    </>
+                                                )}
+
+                                                {/* Display the message content */}
+                                                <div className="message-text">
+                                                    {msg.failed ? (
+                                                        <div className="error-message">
+                                                            <div className="error-content">
+                                                                <span className="error-icon">⚠️</span>
+                                                                <span className="error-text">
+                                                                    {msg.error || 'Something went wrong. Please try again.'}
+                                                                </span>
+                                                            </div>
+                                                            <div className="error-actions">
+                                                                <IconButton
+                                                                    className="retry-button"
+                                                                    onClick={() => {
+                                                                        // Find the corresponding user message
+                                                                        const messageIndex = messages.findIndex((m: any) => m.id === msg.id);
+                                                                        const userMessage = messageIndex > 0 ? messages[messageIndex - 1] : null;
+                                                                        if (userMessage && userMessage.role === 'user') {
+                                                                            retryMessage(msg.id, userMessage);
+                                                                        }
+                                                                    }}
+                                                                    size="small"
+                                                                    title="Retry message"
+                                                                >
+                                                                    <RetryIcon fontSize="small" />
+                                                                </IconButton>
+                                                            </div>
+                                                        </div>
+                                                    ) : msg.hasCodeBlocks ? (
+                                                        <div dangerouslySetInnerHTML={{ __html: msg.content || '' }} />
+                                                    ) : (
+                                                        // Enhanced rendering for AI messages with markdown and link support
+                                                        msg.role === 'assistant' && msg.content && hasMarkdown(msg.content) ? (
+                                                            // Full markdown rendering with link previews for AI responses
+                                                            renderMarkdown(msg.content)
+                                                        ) : msg.content && hasLinks(msg.content) ? (
+                                                            // Simple link preview for messages with links but no markdown
+                                                            renderTextWithLinks(msg.content)
+                                                        ) : (
+                                                            // Plain text or streaming content
+                                                            msg.content || (msg.isStreaming ? '...' : '')
+                                                        )
+                                                    )}
+                                                    {msg.isStreaming && <span className="streaming-cursor">▋</span>}
+                                                    {msg.retryCount > 0 && !msg.failed && !msg.isStreaming && (
+                                                        <div className="retry-indicator">
+                                                            <small>Retry attempt #{msg.retryCount}</small>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
-                    )}
-                    <IconButton
-                        className="sidebar-toggle"
-                        onClick={() => setSidebarOpen(!sidebarOpen)}
-                        aria-label="Toggle sidebar"
-                        size="small"
-                    >
-                        <ViewSidebarIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton
-                        className="new-chat"
-                        onClick={async () => {
-                            try {
-                                // Create new conversation through IPC handler
-                                const newId = await ipcRenderer.invoke('create-conversation');
-                                setCurrentConversationId(newId);
-                                // Clear messages for the new conversation
-                                dispatch({ type: 'CLEAR_MESSAGES' });
-                                // Reset token handlers for new conversation
-                                thinkingTokenHandler.reset();
-                                toolTokenHandler.reset();
-                            } catch (error) {
-                                console.error('Failed to create new conversation:', error);
-                                // Fallback to local ID generation if IPC fails
-                                const fallbackId = Date.now().toString();
-                                setCurrentConversationId(fallbackId);
-                                dispatch({ type: 'CLEAR_MESSAGES' });
-                            }
-                        }}
-                        aria-label="New chat"
-                        size="small"
-                    >
-                        <EditSquareIcon fontSize="small" />
-                    </IconButton>
-                    <div className="window-draggable-area"></div>
-                    
-                    {/* Wake Word Status Indicator */}
-                    <IconButton
-                        className={`wake-word-indicator ${
-                            wakeWordDetected ? 'detected' : 
-                            isLiveListening ? 'listening' : 
-                            wakeWordActive ? 'active' : 'inactive'
-                        }`}
-                        title={
-                            wakeWordDetected ? 'Wake word detected!' :
-                            isLiveListening ? 'Live transcription active' :
-                            wakeWordActive ? 'Wake word listening' : 'Wake word inactive'
-                        }
-                        size="small"
-                        onClick={() => {
-                            // Manual wake word trigger for testing
-                            console.log('🎤 Manual wake word trigger');
-                            document.dispatchEvent(new CustomEvent('test-wake-word'));
-                        }}
-                    >
-                        <WakeWordIcon fontSize="small" />
-                    </IconButton>
-                    
-                    <IconButton
-                        className="database-button"
-                        onClick={() => dispatch({ type: 'TOGGLE_DATABASE_SIDEBAR' })}
-                        aria-label="Open database settings"
-                        size="small"
-                    >
-                        <DatabaseIcon fontSize="small" />
-                    </IconButton>
-                    
-                    <IconButton
-                        className={`settings-button ${showSettings ? 'active' : ''}`}
-                        onClick={() => dispatch(toggleSettings())}
-                        aria-label={showSettings ? "Close settings" : "Open settings"}
-                        size="small"
-                    >
-                        <SettingsIcon fontSize="small" />
-                    </IconButton>
-                    <ThemeToggle variant="icon" />
-                </div>
 
-                <div className="chat-container">
-                    <div className="chat-messages-container">
-                        <div className="chat-messages" style={{ height: '100%', overflowY: 'auto', display: 'flex', flexDirection: 'column-reverse' }}>
-                            {/* Show sound reactive circle when no messages and no current input */}
-                            {messages.length === 0 && (
-                                <div style={{ display: 'flex', justifyContent: 'center', flexDirection: "column", alignItems: 'center', height: '100%' }}>
-                                    <div>
-                                        <div style={{ position: "relative", width: "200px", height: "200px" }}>
-                                            <SoundReactiveBlob isActive={isLiveListening} />
-                                        </div>
-                                    </div>
-                                    <div style={{ maxWidth: '600px', textAlign: 'center', padding: '0 20px' }}>
-                                        {settings?.profile?.name && shouldShowWelcome(settings.profile.name, settings.profile.hasCompletedSetup) ? (
-                                            <div>
-                                                <h2 style={{ marginBottom: '10px' }}>Welcome!</h2>
-                                                <p style={{ fontSize: '16px', lineHeight: '1.5', color: 'var(--text-secondary)' }}>
-                                                    {welcomeMessage}
-                                                </p>
-                                            </div>
-                                        ) : (
-                                            <h2>{personalizedGreeting}</h2>
-                                        )}
-                                        {isLiveListening && (
-                                            <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '10px' }}>
-                                                Say "Hi Cindy" to start recording...
-                                            </p>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-                            {[...messages].reverse().map((msg: any, index: number) => {
-                                const messageClass = `message ${msg.role} ${msg.isStreaming ? 'streaming' : ''} ${isSpeaking && msg.role === 'assistant' ? 'speaking' : ''} ${isLiveListening ? 'listening' : ''}`;
 
-                                // Get thinking blocks associated with this specific message
-                                // For older chats, associate thinking blocks with assistant messages based on timestamp proximity
-                                const associatedBlocks = thinkingBlocks.filter((block: any) => {
-                                    // Direct association by messageId (new messages)
-                                    if (block.messageId === msg.id) {
-                                        return true;
-                                    }
-                                    
-                                    // For assistant messages without direct association, use timestamp-based matching
-                                    if (msg.role === 'assistant' && !block.messageId) {
-                                        // Check if this is the closest assistant message to the thinking block
-                                        const msgTime = new Date(msg.timestamp).getTime();
-                                        const blockTime = new Date(block.startTime).getTime();
-                                        const timeDiff = Math.abs(msgTime - blockTime);
-                                        
-                                        // Associate if within 30 seconds and no other assistant message is closer
-                                        if (timeDiff <= 30000) { // 30 seconds
-                                            const otherAssistantMessages = messages.filter((m: any) => 
-                                                m.role === 'assistant' && m.id !== msg.id && m.timestamp
-                                            );
-                                            
-                                            const isClosest = otherAssistantMessages.every((otherMsg: any) => {
-                                                const otherMsgTime = new Date(otherMsg.timestamp).getTime();
-                                                const otherTimeDiff = Math.abs(otherMsgTime - blockTime);
-                                                return timeDiff <= otherTimeDiff;
-                                            });
-                                            
-                                            return isClosest;
-                                        }
-                                    }
-                                    
-                                    // Fallback: associate with current streaming message (for live messages)
-                                    return !block.messageId && msg.role === 'assistant' && msg.isStreaming;
-                                });
-
-                                // Get tool calls associated with this specific message
-                                const associatedToolCalls = toolCalls.filter((toolCall: any) => {
-                                    // Direct association by messageId
-                                    if (toolCall.messageId === msg.id) {
-                                        return true;
-                                    }
-                                    
-                                    // For assistant messages without direct association, use timestamp-based matching
-                                    if (msg.role === 'assistant' && !toolCall.messageId) {
-                                        const msgTime = new Date(msg.timestamp).getTime();
-                                        const toolTime = new Date(toolCall.startTime).getTime();
-                                        const timeDiff = Math.abs(msgTime - toolTime);
-                                        
-                                        // Associate if within 30 seconds and no other assistant message is closer
-                                        if (timeDiff <= 30000) { // 30 seconds
-                                            const otherAssistantMessages = messages.filter((m: any) => 
-                                                m.role === 'assistant' && m.id !== msg.id && m.timestamp
-                                            );
-                                            
-                                            const isClosest = otherAssistantMessages.every((otherMsg: any) => {
-                                                const otherMsgTime = new Date(otherMsg.timestamp).getTime();
-                                                const otherTimeDiff = Math.abs(otherMsgTime - toolTime);
-                                                return timeDiff <= otherTimeDiff;
-                                            });
-                                            
-                                            return isClosest;
-                                        }
-                                    }
-                                    
-                                    // Fallback: associate with current streaming message (for live messages)
-                                    return !toolCall.messageId && msg.role === 'assistant' && msg.isStreaming;
-                                });
-
-                                return (
-                                    <div
-                                        key={msg.id || index}
-                                        className={messageClass}
+                        <div className="input-area">
+                            <input
+                                type="text"
+                                placeholder="Type your message..."
+                                className="message-input"
+                                value={inputValue}
+                                onChange={handleInputChange}
+                                onKeyDown={handleKeyPress}
+                                disabled={isRecording}
+                            />
+                            <div className="button-group">
+                                <div className={`mic-button-wrapper ${isRecording ? 'is-recording' : ''} ${wakeWordDetected ? 'wake-word-detected' : ''} ${isLiveListening && !isRecording ? 'is-listening' : ''}`}>
+                                    <IconButton
+                                        className="mic-button"
+                                        onClick={handleMicClick}
+                                        aria-label={isRecording ? "Stop recording" : "Start recording"}
+                                        size="small"
                                     >
-                                        <div className="message-avatar">
-                                            {msg.role === 'user' ? '👤' : '🤖'}
-                                        </div>
-                                        <div className="message-content">
-                                            {msg.role === 'assistant' && (
-                                                <>
-                                                    {/* Render thinking blocks before assistant content */}
-                                                    {associatedBlocks.map((block: any) => (
-                                                        <ThinkingBlock
-                                                            key={block.id}
-                                                            id={block.id}
-                                                            content={block.content}
-                                                            startTime={block.startTime}
-                                                            endTime={block.endTime}
-                                                            duration={block.duration}
-                                                            defaultOpen={false}
-                                                        />
-                                                    ))}
-
-                                                    {/* Render tool calls after thinking blocks */}
-                                                    {associatedToolCalls.map((toolCall: any) => (
-                                                        <ToolBlock
-                                                            key={toolCall.id}
-                                                            toolCall={toolCall}
-                                                            defaultOpen={false}
-                                                        />
-                                                    ))}
-                                                </>
-                                            )}
-
-                                            {/* Display the message content */}
-                                            <div className="message-text">
-                                                {msg.failed ? (
-                                                    <div className="error-message">
-                                                        <div className="error-content">
-                                                            <span className="error-icon">⚠️</span>
-                                                            <span className="error-text">
-                                                                {msg.error || 'Something went wrong. Please try again.'}
-                                                            </span>
-                                                        </div>
-                                                        <div className="error-actions">
-                                                            <IconButton
-                                                                className="retry-button"
-                                                                onClick={() => {
-                                                                    // Find the corresponding user message
-                                                                    const messageIndex = messages.findIndex(m => m.id === msg.id);
-                                                                    const userMessage = messageIndex > 0 ? messages[messageIndex - 1] : null;
-                                                                    if (userMessage && userMessage.role === 'user') {
-                                                                        retryMessage(msg.id, userMessage);
-                                                                    }
-                                                                }}
-                                                                size="small"
-                                                                title="Retry message"
-                                                            >
-                                                                <RetryIcon fontSize="small" />
-                                                            </IconButton>
-                                                        </div>
-                                                    </div>
-                                                ) : msg.hasCodeBlocks ? (
-                                                    <div dangerouslySetInnerHTML={{ __html: msg.content || '' }} />
-                                                ) : (
-                                                    // Enhanced rendering for AI messages with markdown and link support
-                                                    msg.role === 'assistant' && msg.content && hasMarkdown(msg.content) ? (
-                                                        // Full markdown rendering with link previews for AI responses
-                                                        renderMarkdown(msg.content)
-                                                    ) : msg.content && hasLinks(msg.content) ? (
-                                                        // Simple link preview for messages with links but no markdown
-                                                        renderTextWithLinks(msg.content)
-                                                    ) : (
-                                                        // Plain text or streaming content
-                                                        msg.content || (msg.isStreaming ? '...' : '')
-                                                    )
-                                                )}
-                                                {msg.isStreaming && <span className="streaming-cursor">▋</span>}
-                                                {msg.retryCount > 0 && !msg.failed && !msg.isStreaming && (
-                                                    <div className="retry-indicator">
-                                                        <small>Retry attempt #{msg.retryCount}</small>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-
-
-                    <div className="input-area">
-                        <input
-                            type="text"
-                            placeholder="Type your message..."
-                            className="message-input"
-                            value={inputValue}
-                            onChange={handleInputChange}
-                            onKeyDown={handleKeyPress}
-                            disabled={isRecording}
-                        />
-                        <div className="button-group">
-                            <div className={`mic-button-wrapper ${isRecording ? 'is-recording' : ''} ${wakeWordDetected ? 'wake-word-detected' : ''} ${isLiveListening && !isRecording ? 'is-listening' : ''}`}>
+                                        <MicIcon fontSize="small" />
+                                    </IconButton>
+                                </div>
                                 <IconButton
-                                    className="mic-button"
-                                    onClick={handleMicClick}
-                                    aria-label={isRecording ? "Stop recording" : "Start recording"}
+                                    className="send-button"
+                                    onClick={handleSendClick}
+                                    aria-label="Send message"
                                     size="small"
+                                    disabled={!inputValue.trim() || isRecording}
                                 >
-                                    <MicIcon fontSize="small" />
+                                    <SendIcon fontSize="small" />
                                 </IconButton>
                             </div>
-                            <IconButton
-                                className="send-button"
-                                onClick={handleSendClick}
-                                aria-label="Send message"
-                                size="small"
-                                disabled={!inputValue.trim() || isRecording}
-                            >
-                                <SendIcon fontSize="small" />
-                            </IconButton>
                         </div>
                     </div>
-                </div>
 
 
-                <div className={`settings-sidebar-container ${showSettings ? 'open' : ''}`}>
-                    <SettingsPanel />
-                </div>
-                <div className={`database-sidebar-container ${showDatabase ? 'open' : ''}`}>
-                    <DatabasePanel />
+                    {/* Dark overlay when sidebars are open */}
+                    {(showSettings || showDatabase) && (
+                        <div className="sidebar-overlay" />
+                    )}
+                    
+                    <div ref={settingsSidebarRef} className={`settings-sidebar-container ${showSettings ? 'open' : ''}`}>
+                        <SettingsPanel />
+                    </div>
+                    <div ref={databaseSidebarRef} className={`database-sidebar-container ${showDatabase ? 'open' : ''}`}>
+                        <DatabasePanel />
+                    </div>
                 </div>
             </div>
-        </div>
         </ThemeProvider>
     );
 };
