@@ -49,7 +49,7 @@ const App: React.FC = () => {
     const isListening = false; // No longer used for real-time transcription, kept for display compatibility
     const [inputValue, setInputValue] = useState('');
     const messages = useSelector((state: any) => state.messages?.messages || []);
-    const [currentConversationId, setCurrentConversationId] = useState<string>(Date.now().toString());
+    const [currentConversationId, setCurrentConversationId] = useState<string | undefined>(undefined);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [isAppLoading, setIsAppLoading] = useState(true);
     const [wakeWordDetected, setWakeWordDetected] = useState(false);
@@ -408,19 +408,22 @@ const App: React.FC = () => {
         }
     };
 
+    const getNewConversationId = () => {
+        return Date.now().toString();
+    }
 
     // Handle send button click
     const handleSendClick = async () => {
         if (inputValue.trim()) {
             // Only play recording activation sound, no other sound effects
-
+            const convID = currentConversationId || getNewConversationId();
             // Add user message to store with unique ID
             const userMessage = {
                 id: `user-${Date.now()}`,
                 role: 'user',
                 content: inputValue,
                 timestamp: Date.now(),
-                conversationId: currentConversationId
+                conversationId: convID
             };
             dispatch({ type: 'ADD_MESSAGE', payload: userMessage });
 
@@ -431,7 +434,7 @@ const App: React.FC = () => {
                 content: '',
                 timestamp: Date.now(),
                 isStreaming: true,
-                conversationId: currentConversationId
+                conversationId: convID
             };
             dispatch({ type: 'ADD_MESSAGE', payload: assistantMessage });
             dispatch({ type: 'START_THINKING' });
@@ -445,7 +448,7 @@ const App: React.FC = () => {
 
             try {
                 // Process message through agent with conversation ID
-                await ipcRenderer.invoke('process-message', messageToProcess, currentConversationId);
+                await ipcRenderer.invoke('process-message', messageToProcess, convID);
             } catch (error) {
                 console.error('Error processing message:', error);
                 // Mark the assistant message as failed
@@ -458,6 +461,7 @@ const App: React.FC = () => {
                 });
                 dispatch({ type: 'STOP_THINKING' });
             }
+            setCurrentConversationId(convID);
         }
     };
 

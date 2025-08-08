@@ -18,7 +18,7 @@ const ChatList: React.FC<{
 
     useEffect(() => {
         loadConversations();
-    }, []);
+    }, [currentConversationId]);
 
     const loadConversations = async () => {
         try {
@@ -86,28 +86,28 @@ const ChatList: React.FC<{
                         {conversations
                             .sort((a, b) => b.lastMessageAt - a.lastMessageAt) // Sort by most recent first
                             .map((conversation) => (
-                        <div
-                            key={conversation.id}
-                            className={`chat-item ${conversation.id === currentConversationId ? 'active' : ''}`}
-                             onClick={() => {
-                                 console.log('Chat item clicked:', conversation.id);
-                                 console.log('Current conversation ID:', currentConversationId);
-                                 onSelectConversation(conversation.id);
-                             }}
-                            role="button"
-                            tabIndex={0}
-                            aria-label={`Conversation: ${getConversationTitle(conversation)}`}
-                        >
-                            <div className="chat-item-content">
-                                <div className="chat-item-title" title={getConversationTitle(conversation)}>
-                                    {getConversationTitle(conversation)}
+                                <div
+                                    key={conversation.id}
+                                    className={`chat-item ${conversation.id === currentConversationId ? 'active' : ''}`}
+                                    onClick={() => {
+                                        console.log('Chat item clicked:', conversation.id);
+                                        console.log('Current conversation ID:', currentConversationId);
+                                        onSelectConversation(conversation.id);
+                                    }}
+                                    role="button"
+                                    tabIndex={0}
+                                    aria-label={`Conversation: ${getConversationTitle(conversation)}`}
+                                >
+                                    <div className="chat-item-content">
+                                        <div className="chat-item-title" title={getConversationTitle(conversation)}>
+                                            {getConversationTitle(conversation)}
+                                        </div>
+                                        <div className="chat-item-time">
+                                            {formatTimeAgo(conversation.lastMessageAt)}
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="chat-item-time">
-                                    {formatTimeAgo(conversation.lastMessageAt)}
-                                </div>
-                            </div>
-                        </div>
-                        ))}
+                            ))}
                     </div>
                 )}
             </div>
