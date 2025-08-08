@@ -5,6 +5,7 @@ import { SettingsService, Settings } from './services/SettingsService';
 import { TrayService } from './services/TrayService';
 import axios from 'axios';
 import { ChatStorageService } from './services/ChatStorageService';
+// import { DuckDBChatStorageService } from './services/DuckDBChatStorageService';
 import { LLMRouterService } from './services/LLMRouterService';
 // Re-enable core LLM functionality
 import { LangChainLLMRouterService } from './services/LangChainLLMRouterService';
@@ -321,6 +322,89 @@ const setupDatabaseIPC = () => {
         }
     });
     
+    // Index directory handler
+    ipcMain.handle('vector-store:index-directory', async (event, directoryPath, options = {}) => {
+        console.log('[IPC] Indexing directory:', directoryPath);
+        try {
+            if (!directoryPath) {
+                return { success: false, message: 'Directory path is required' };
+            }
+
+            // Validate directory exists
+            if (!fs.existsSync(directoryPath)) {
+                return { success: false, message: 'Directory does not exist' };
+            }
+
+            // Use DuckDB vector store if available
+            if (duckDBVectorStore) {
+                // Set up progress event forwarding
+                const progressListener = (data: any) => {
+                    if (mainWindow) {
+                        mainWindow.webContents.send('vector-store:indexing-progress', data);
+                    }
+                };
+
+                const fileIndexedListener = (data: any) => {
+                    if (mainWindow) {
+                        mainWindow.webContents.send('vector-store:file-indexed', data);
+                    }
+                };
+
+                const indexingCompletedListener = (data: any) => {
+                    if (mainWindow) {
+                        mainWindow.webContents.send('vector-store:indexing-completed', data);
+                    }
+                };
+
+                duckDBVectorStore.on('progress', progressListener);
+                duckDBVectorStore.on('fileIndexed', fileIndexedListener);
+                duckDBVectorStore.on('indexingCompleted', indexingCompletedListener);
+
+                try {
+                    const result = await duckDBVectorStore.indexFolder(directoryPath);
+                    return { 
+                        success: true, 
+                        message: `Directory indexed successfully. ${result.success} files indexed, ${result.errors} errors.`,
+                        indexed: result.success,
+                        errors: result.errors
+                    };
+                } finally {
+                    // Clean up event listeners
+                    duckDBVectorStore.off('progress', progressListener);
+                    duckDBVectorStore.off('fileIndexed', fileIndexedListener);
+                    duckDBVectorStore.off('indexingCompleted', indexingCompletedListener);
+                }
+            }
+
+            // Fallback to legacy vector store
+            if (vectorStoreService) {
+                try {
+                    // VectorStoreService may not have indexFolder method, check if it exists
+                    if (typeof (vectorStoreService as any).indexFolder === 'function') {
+                        const result = await (vectorStoreService as any).indexFolder(directoryPath);
+                        return { 
+                            success: true, 
+                            message: `Directory indexed successfully using legacy store.`,
+                            indexed: result.indexed || result.success || 0,
+                            errors: result.errors || 0
+                        };
+                    } else {
+                        return { success: false, message: 'Legacy vector store does not support directory indexing' };
+                    }
+                } catch (error) {
+                    console.error('[IPC] Error with legacy vector store:', error);
+                    return { success: false, message: `Legacy store error: ${error.message}` };
+                }
+            }
+
+            return { success: false, message: 'No vector store available' };
+
+        } catch (error) {
+            console.error('[IPC] Error indexing directory:', error);
+            return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
+        }
+    });
+
     // Get indexed items handler
     ipcMain.handle('vector-store:get-indexed-items', async (event, databasePath) => {
         console.log('[IPC] Getting indexed items for path:', databasePath);
@@ -377,6 +461,7 @@ let mainWindow: BrowserWindow | null = null;
 let trayService: TrayService | null = null;
 let settingsService: SettingsService | null = null;
 let chatStorageService: ChatStorageService | null = null;
+// let duckDBChatStorageService: DuckDBChatStorageService | null = null;
 let llmRouterService: LLMRouterService | null = null;
 let langChainLLMRouterService: LangChainLLMRouterService | null = null;
 let vectorStoreService: VectorStoreService | null = null;
@@ -398,78 +483,75 @@ let realTimeTranscriptionService: RealTimeTranscriptionService | null = null;
 let linkPreviewService: LinkPreviewService | null = null;
 
 const createWindow = async (): Promise<void> => {
-    // Ensure settings service is initialized
-    if (!settingsService) {
-        settingsService = new SettingsService();
-        await settingsService.initialize();
-    }
+    console.log('🔧 DEBUG: Creating simplified window for testing');
 
-    // Create the browser window.
-    mainWindow = new BrowserWindow({
-        height: 600,
-        minWidth: 400,
-        // Remove maxWidth to allow free resizing
-        titleBarStyle: 'hidden',
-        titleBarOverlay: {
-            color: '#f5f7fa',
-            symbolColor: '#2c3e50',
-            height: 32
-        },
-        frame: false,
+    try {
+        console.log('🔧 DEBUG: About to create BrowserWindow...');
+        // Create the simplest possible browser window with forced visibility
+        mainWindow = new BrowserWindow({
+            width: 1000,
+            height: 700,
+            x: 100,    // Force position on screen
+            y: 100,
+            show: false, // Start hidden, show after loading
+            titleBarStyle: 'hidden', // Hide the title bar
+            webPreferences: {
+                nodeIntegration: true,
+                contextIsolation: false,
+            }
+        });
+        
+        console.log('🔧 DEBUG: BrowserWindow created successfully!');
 
-        webPreferences: {
-            nodeIntegration: true,
-            contextIsolation: false,
-            sandbox: false,
-            // Use a secure Content Security Policy that prevents unsafe-eval
-            // This fixes the Electron security warning
-            webSecurity: true,
-            allowRunningInsecureContent: false,
-            // Note: CSP is now properly set in the renderer process via meta tag
-            // The security warning is resolved by removing unsafe-eval from the policy
-        },
-        width: 1000,
-        show: true, // Show immediately for debugging
-        backgroundColor: '#ffffff' // Set background to match theme
-    });
+        // Show the window once it's ready
+        mainWindow.once('ready-to-show', () => {
+            console.log('🔧 DEBUG: Window ready-to-show event fired');
+            mainWindow?.show();
+            mainWindow?.focus();
+            console.log('🔧 DEBUG: Window shown and focused');
+        });
 
-    // and load the index.html of the app.
-    if (process.env.NODE_ENV === 'development') {
-        const serverReady = await waitForDevServer();
-        if (serverReady) {
-            console.log('Loading from dev server at http://localhost:3004');
-            mainWindow.loadURL('http://localhost:3004');
+        // Load content
+        if (process.env.NODE_ENV === 'development') {
+            console.log('🔧 DEBUG: Checking dev server...');
+            const serverReady = await waitForDevServer();
+            if (serverReady) {
+                console.log('🔧 DEBUG: Loading from dev server at http://localhost:3004');
+                await mainWindow.loadURL('http://localhost:3004');
+            } else {
+                console.log('🔧 DEBUG: Dev server not ready, loading static file');
+                await mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+            }
         } else {
-            console.error('Dev server failed to start. Falling back to production build.');
-            mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+            console.log('🔧 DEBUG: Loading static file for production');
+            await mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
         }
-    } else {
-        mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+
+        console.log('🔧 DEBUG: Content loading initiated');
+
+        // Log loading events
+        mainWindow.webContents.on('did-finish-load', () => {
+            console.log('🔧 DEBUG: Window content finished loading successfully');
+        });
+        
+        mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+            console.error('🔧 DEBUG: Window failed to load:', errorCode, errorDescription);
+        });
+
+        // Simple close handling
+        mainWindow.on('close', (event: Electron.Event) => {
+            if (!(app as any).quitting) {
+                event.preventDefault();
+                mainWindow?.hide();
+            }
+        });
+
+        console.log('🔧 DEBUG: Window setup complete');
+        
+    } catch (error) {
+        console.error('🚨 DEBUG: Error creating window:', error);
+        throw error;
     }
-
-    // Open the DevTools in development mode using Electron's native debugging
-    if (process.env.NODE_ENV === 'development') {
-        // Use Electron's built-in devtools instead of Webpack's
-        // This bypasses the protocol scheme restriction
-        mainWindow.webContents.openDevTools({ mode: 'detach' });
-    }
-
-    // Log when content is loaded
-    mainWindow.webContents.on('did-finish-load', () => {
-        console.log('Window content finished loading');
-    });
-    
-    mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
-        console.error('Window failed to load:', errorCode, errorDescription);
-    });
-
-    // Hide window instead of closing it
-    mainWindow.on('close', (event: Electron.Event) => {
-        if (!(app as any).quitting) {
-            event.preventDefault();
-            mainWindow?.hide();
-        }
-    });
 };
 
 const createTray = async (): Promise<void> => {
@@ -584,14 +666,21 @@ app.on('ready', async () => {
         }
     });
 
-    // Initialize settings service first (before creating window)
+    // Test SettingsService initialization
+    console.log('🔧 DEBUG: Testing SettingsService initialization');
+
+    // Initialize SettingsService
     if (!settingsService) {
-        console.log('🔧 DEBUG: Initializing SettingsService (first time)');
-        settingsService = new SettingsService();
-        await settingsService.initialize();
-        console.log('🔧 DEBUG: SettingsService initialized successfully');
-    } else {
-        console.log('🔧 DEBUG: SettingsService already exists, skipping initialization');
+        try {
+            console.log('🔧 DEBUG: Initializing SettingsService...');
+            settingsService = new SettingsService();
+            await settingsService.initialize();
+            console.log('🔧 DEBUG: SettingsService initialized successfully');
+        } catch (error) {
+            console.error('🚨 DEBUG: Failed to initialize SettingsService:', error);
+            console.error('🚨 DEBUG: Error stack:', error.stack);
+            // Continue without settings service for now
+        }
     }
 
     // Set up IPC handlers for settings service methods BEFORE creating window
@@ -600,81 +689,23 @@ app.on('ready', async () => {
     setupSettingsIPC();
     setupDatabaseIPC();
 
-    // Initialize LLMRouterService
-    if (!llmRouterService) {
-        const settings = await settingsService?.get('llm');
-        if (settings) {
-            // Get the API key from secure storage
-            const apiKey = await settingsService?.getApiKey();
-
-            // Create a complete config with all required properties
-            const llmConfig = {
-                ...settings,
-                openai: {
-                    ...settings.openai,
-                    apiKey: apiKey || ''  // Provide empty string if no API key
-                },
-                streaming: true,
-                timeout: 30000
-            };
-            llmRouterService = new LLMRouterService(llmConfig);
-            await llmRouterService.initialize();
-            
-            // Also initialize LangChain version
-            langChainLLMRouterService = new LangChainLLMRouterService(llmConfig);
-            await langChainLLMRouterService.initialize();
-            console.log('🔧 DEBUG: LangChain LLMRouterService initialized');
-        }
-    }
+    // Skip LLM services for now - will initialize them later
+    console.log('🔧 DEBUG: Skipping LLM services initialization for startup speed');
 
     // Initialize ChatStorageService
-    try {
-        chatStorageService = new ChatStorageService();
-        await chatStorageService.initialize();
-    } catch (error) {
-        console.error('Failed to initialize ChatStorageService:', error);
-    }
-
-    // Initialize DuckDB Vector Store
-    if (!duckDBVectorStore) {
-        const databaseSettings = (await settingsService?.get('database') || {}) as any;
-        const apiKey = await settingsService?.getApiKey();
-        
-        if (apiKey) {
-            duckDBVectorStore = new DuckDBVectorStore({
-                databasePath: path.join(app.getPath('userData'), 'duckdb-vector-store.db'),
-                openaiApiKey: apiKey,
-                embeddingModel: 'text-embedding-3-small',
-                chunkSize: databaseSettings.chunkSize || 1000,
-                chunkOverlap: databaseSettings.chunkOverlap || 200
-            });
-            
-            try {
-                await duckDBVectorStore.initialize();
-                console.log('🔧 DEBUG: DuckDB VectorStore initialized successfully');
-            } catch (error) {
-                console.error('Failed to initialize DuckDB VectorStore:', error);
-                // Fall back to legacy vector store if DuckDB fails
-                duckDBVectorStore = null;
-            }
-        } else {
-            console.log('🔧 DEBUG: No OpenAI API key available, skipping DuckDB VectorStore initialization');
+    if (!chatStorageService) {
+        try {
+            console.log('🔧 DEBUG: Initializing ChatStorageService...');
+            chatStorageService = new ChatStorageService();
+            await chatStorageService.initialize();
+            console.log('🔧 DEBUG: ChatStorageService initialized successfully');
+        } catch (error) {
+            console.error('🚨 DEBUG: Failed to initialize ChatStorageService:', error);
+            // Continue without chat storage for now
         }
     }
-    
-    // Initialize VectorStoreService (legacy) as fallback
-    if (!vectorStoreService && !duckDBVectorStore) {
-        const databaseSettings = (await settingsService?.get('database') || {}) as any;
-        vectorStoreService = new VectorStoreService({
-            databasePath: databaseSettings.path || path.join(app.getPath('userData'), 'vector-store.db'),
-            embeddingModel: databaseSettings.embeddingModel || 'qwen3:8b',
-            chunkSize: databaseSettings.chunkSize || 1000,
-            chunkOverlap: databaseSettings.chunkOverlap || 200,
-            autoIndex: databaseSettings.autoIndex || true
-        });
-        await vectorStoreService.initialize();
-        console.log('🔧 DEBUG: VectorStoreService (legacy) initialized as fallback');
-    }
+
+    // Skip vector store initialization for testing
 
     // Initialize LangChain VectorStoreService - DISABLED FOR DEBUGGING
     // if (!langChainVectorStoreService) {
@@ -704,19 +735,8 @@ app.on('ready', async () => {
     //     console.log('🔧 DEBUG: LangChain MemoryService initialized');
     // }
 
-    // Initialize LangChain ToolExecutorService for web search
-    if (!langChainToolExecutorService) {
-        // Pass null for now since we're not using the vector store parameter
-        langChainToolExecutorService = new LangChainToolExecutorService(null as any);
-        await langChainToolExecutorService.initialize();
-        console.log('🔧 DEBUG: LangChain ToolExecutorService initialized');
-    }
-    
-    // Initialize LinkPreviewService
-    if (!linkPreviewService) {
-        linkPreviewService = new LinkPreviewService();
-        console.log('🔧 DEBUG: LinkPreviewService initialized');
-    }
+    // Skip tool executor for now
+    console.log('🔧 DEBUG: Skipping ToolExecutorService for startup speed');
 
     // Initialize LangChain CindyAgent after other services - DISABLED FOR DEBUGGING
     // if (!langChainCindyAgent && langChainLLMRouterService && settingsService && chatStorageService && langChainMemoryService && langChainToolExecutorService) {
@@ -737,67 +757,8 @@ app.on('ready', async () => {
     //     console.log('🔧 DEBUG: LangChain CindyAgent initialized with full LangChain services integration');
     // }
 
-    // Initialize Speech-to-Text Service
-    if (!speechToTextService) {
-        const sttConfig = {
-            provider: 'offline' as const,
-            language: 'en-US',
-            autoPunctuation: true,
-            profanityFilter: false,
-            offlineModel: 'base' as const
-        };
-        speechToTextService = new SpeechToTextService(sttConfig);
-    }
-
-    // Initialize real-time transcription service
-    if (mainWindow && !realTimeTranscriptionService) {
-        realTimeTranscriptionService = new RealTimeTranscriptionService(mainWindow);
-        console.log('🎤 Real-time transcription service initialized');
-    }
-
-    // Initialize wake word service after settings service
-    if (settingsService && mainWindow && !wakeWordService) {
-        try {
-            const WakeWordService = require('./services/WakeWordService').default;
-            if (!WakeWordService) {
-                console.error('🎤 WakeWordService import failed - default export not found');
-                console.log('🎤 Available exports:', Object.keys(require('./services/WakeWordService')));
-            } else {
-                wakeWordService = new WakeWordService(settingsService, mainWindow);
-            }
-        } catch (importError) {
-            console.error('🎤 Failed to import WakeWordService:', importError);
-        }
-        
-        // Listen for wake word detection events only if service was successfully created
-        if (wakeWordService) {
-            wakeWordService.on('wakeWordDetected', () => {
-                console.log('🎤 Wake word detected! Activating voice recording...');
-                if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-                    mainWindow.webContents.send('wake-word-detected');
-                    // Optionally bring window to front
-                    if (!mainWindow.isVisible()) {
-                        mainWindow.show();
-                    }
-                    if (mainWindow.isMinimized()) {
-                        mainWindow.restore();
-                    }
-                    mainWindow.focus();
-                }
-            });
-
-            // Start wake word listening when app is ready
-            try {
-                await wakeWordService.startListening();
-                console.log('🎤 Whisper-based wake word service started successfully');
-            } catch (error) {
-                console.error('🎤 Failed to start wake word service:', error);
-            }
-        }
-    }
-
-    // REMOVED: Duplicate service initialization (services already initialized above)
-    console.log('🔧 DEBUG: Other services initialization completed');
+    // Skip speech and wake word services for testing
+    console.log('🔧 DEBUG: Minimal services initialization completed');
 
 
 
@@ -970,6 +931,47 @@ app.on('ready', async () => {
         }
     });
 
+    // IPC handler for manually initializing LLM services
+    ipcMain.handle('initialize-llm', async () => {
+        console.log('Main process - initialize-llm IPC called');
+        try {
+            if (langChainLLMRouterService) {
+                return { success: true, message: 'LLM service is already initialized' };
+            }
+
+            if (!settingsService) {
+                return { success: false, message: 'Settings service not available' };
+            }
+
+            const settings = await settingsService.get('llm');
+            const apiKey = await settingsService.getApiKey();
+            
+            if (!apiKey) {
+                return { success: false, message: 'OpenAI API key is required' };
+            }
+
+            const llmConfig = {
+                ...settings,
+                openai: {
+                    ...settings.openai,
+                    apiKey: apiKey
+                },
+                streaming: true,
+                timeout: 15000
+            };
+            
+            langChainLLMRouterService = new LangChainLLMRouterService(llmConfig);
+            await langChainLLMRouterService.initialize();
+            
+            console.log('✅ DEBUG: LLM service initialized successfully via IPC');
+            return { success: true, message: 'LLM service initialized successfully' };
+            
+        } catch (error) {
+            console.error('🚨 DEBUG: Manual LLM initialization failed:', error);
+            return { success: false, message: `Failed to initialize: ${error.message}` };
+        }
+    });
+
     // IPC handler for processing messages with streaming
     ipcMain.handle('process-message', async (event, message: string, conversationId: string): Promise<string> => {
         console.log('Main process - process-message IPC called with:', message);
@@ -977,7 +979,60 @@ app.on('ready', async () => {
             // Use LangChain LLM router directly as fallback
             if (!langChainLLMRouterService) {
                 console.error('Main process - process-message: LangChain LLM router not initialized');
-                return "Sorry, I encountered an error processing your request. The LLM service is not properly initialized.";
+                
+                // Save user message first
+                if (chatStorageService) {
+                    try {
+                        await chatStorageService.saveMessage({
+                            conversationId,
+                            role: 'user',
+                            content: message,
+                            timestamp: Date.now()
+                        });
+                        console.log('🔧 DEBUG: User message persisted to ChatStorageService');
+                    } catch (saveError) {
+                        console.error('🚨 DEBUG: Failed to persist user message:', saveError);
+                    }
+                }
+                
+                // Check LLM settings and provider to give appropriate message
+                const llmSettings = await settingsService?.get('llm');
+                const provider = llmSettings?.provider || 'auto';
+                
+                let errorMessage;
+                if (provider === 'ollama') {
+                    errorMessage = "I'm starting up with Ollama... please wait a moment and try again! The LLM service is initializing. ⏳";
+                } else if (provider === 'openai' || provider === 'auto') {
+                    const apiKey = await settingsService?.getApiKey();
+                    if (!apiKey) {
+                        errorMessage = "Hi! I need an OpenAI API key to chat with you. Please go to Settings → LLM and add your OpenAI API key, then I'll be ready to help! 🤖";
+                    } else {
+                        errorMessage = "I'm still starting up... please wait a moment and try again! The LLM service is initializing. ⏳";
+                    }
+                } else {
+                    errorMessage = "I'm still starting up... please wait a moment and try again! The LLM service is initializing. ⏳";
+                }
+                
+                // Send error message via streaming system so renderer receives it
+                event.sender.send('stream-chunk', { chunk: errorMessage, conversationId });
+                
+                // Save assistant error message
+                if (chatStorageService) {
+                    try {
+                        await chatStorageService.saveMessage({
+                            conversationId,
+                            role: 'assistant',
+                            content: errorMessage,
+                            timestamp: Date.now()
+                        });
+                        console.log('🔧 DEBUG: Error message persisted to ChatStorageService');
+                    } catch (saveError) {
+                        console.error('🚨 DEBUG: Failed to persist error message:', saveError);
+                    }
+                }
+                
+                event.sender.send('stream-complete', { conversationId });
+                return errorMessage;
             }
             
             console.log('Main process - using direct LangChain LLM router');
@@ -1081,16 +1136,27 @@ app.on('ready', async () => {
                 event.sender.send('stream-chunk', { chunk: assistantContent, conversationId });
             }
 
-            // Save assistant message to ChatStorageService
+            // Save assistant message to ChatStorageService (clean up thinking tokens first)
             if (chatStorageService && assistantContent.trim()) {
                 try {
-                    await chatStorageService.saveMessage({
-                        conversationId,
-                        role: 'assistant',
-                        content: assistantContent,
-                        timestamp: Date.now()
-                    });
-                    console.log('🔧 DEBUG: Assistant message persisted to ChatStorageService');
+                    // Remove thinking tokens before saving to database
+                    const cleanContent = assistantContent
+                        .replace(/<think>[\s\S]*?<\/think>/g, '') // Remove complete thinking blocks
+                        .replace(/<think>[\s\S]*$/g, '') // Remove incomplete thinking blocks at the end
+                        .trim();
+                    
+                    // Only save if there's actual content after cleaning
+                    if (cleanContent) {
+                        await chatStorageService.saveMessage({
+                            conversationId,
+                            role: 'assistant',
+                            content: cleanContent,
+                            timestamp: Date.now()
+                        });
+                        console.log('🔧 DEBUG: Assistant message persisted to ChatStorageService (cleaned)');
+                    } else {
+                        console.log('🔧 DEBUG: Assistant message was only thinking tokens, not saved');
+                    }
                 } catch (saveError) {
                     console.error('🚨 DEBUG: Failed to persist assistant message:', saveError);
                 }
@@ -1261,6 +1327,61 @@ app.on('ready', async () => {
         }
     });
 
-
     Menu.setApplicationMenu(menu);
+
+    // Initialize LLM services AFTER window is created and shown (non-blocking)
+    setTimeout(async () => {
+        if (!langChainLLMRouterService && settingsService) {
+            try {
+                console.log('🔧 DEBUG: Post-startup LLM initialization...');
+                const settings = await settingsService.get('llm');
+                if (settings) {
+                    const provider = settings.provider;
+                    const apiKey = await settingsService.getApiKey();
+                    console.log('🔧 DEBUG: Provider:', provider, 'API key available:', apiKey ? 'yes (length: ' + apiKey.length + ')' : 'no');
+
+                    // Check if we can initialize based on provider
+                    let canInitialize = false;
+                    if (provider === 'ollama') {
+                        canInitialize = true; // Ollama doesn't need API key
+                        console.log('🔧 DEBUG: Using Ollama provider, no API key required');
+                    } else if (provider === 'openai' || provider === 'auto') {
+                        canInitialize = !!apiKey; // OpenAI or auto needs API key
+                        if (!apiKey) {
+                            console.log('⚠️  DEBUG: OpenAI/auto provider requires API key, user will need to add one in settings');
+                        }
+                    }
+
+                    if (canInitialize) {
+                        console.log('🔧 DEBUG: Starting LLM service initialization...');
+                        const llmConfig = {
+                            ...settings,
+                            openai: {
+                                ...settings.openai,
+                                apiKey: apiKey || '' // Empty string for Ollama
+                            },
+                            streaming: true,
+                            timeout: 15000
+                        };
+                        
+                        langChainLLMRouterService = new LangChainLLMRouterService(llmConfig);
+                        await langChainLLMRouterService.initialize();
+                        console.log('✅ DEBUG: LLM services now available for chat!');
+                        
+                        // Notify renderer that LLM is ready (optional)
+                        if (mainWindow && !mainWindow.isDestroyed()) {
+                            mainWindow.webContents.send('llm-ready');
+                        }
+                    }
+                } else {
+                    console.log('⚠️  DEBUG: No LLM settings found');
+                }
+            } catch (error) {
+                console.error('🚨 DEBUG: Post-startup LLM init failed:', error);
+                console.error('🚨 DEBUG: Error details:', error.stack);
+            }
+        } else if (langChainLLMRouterService) {
+            console.log('✅ DEBUG: LLM service already initialized');
+        }
+    }, 5000); // 5 second delay after app startup
 });

@@ -1,5 +1,4 @@
 import { EventEmitter } from 'events';
-import { ConfigManager } from '../utils/ConfigManager';
 import { PathValidator } from '../utils/PathValidator';
 import keytar from 'keytar';
 
@@ -93,7 +92,7 @@ interface Settings {
 }
 
 class SettingsService extends EventEmitter {
-    private configManager: ConfigManager;
+    private store: any;
     private settings: Settings;
     private isInitialized: boolean = false;
     private readonly SERVICE_NAME = 'Cindy';
@@ -101,29 +100,44 @@ class SettingsService extends EventEmitter {
 
     constructor() {
         super();
-        this.configManager = new ConfigManager();
         this.settings = this.getDefaultSettings();
+        // store will be initialized dynamically in initialize()
     }
 
     async initialize(): Promise<void> {
         if (this.isInitialized) return;
 
         try {
-            console.log('Starting SettingsService initialization');
-            console.log('Config path:', this.configManager.getConfigPath());
-
-            // Load settings from persistence
-            console.log('Attempting to load settings from config manager');
-            const loadedSettings = await this.configManager.load();
-            console.log('ConfigManager.load() returned:', loadedSettings);
-
-            if (loadedSettings) {
-                console.log('Merging loaded settings with defaults');
-                this.settings = this.mergeSettings(this.settings, loadedSettings);
-                console.log('Settings merged successfully');
-            } else {
-                console.log('No settings found, using defaults');
+            console.log('Starting SettingsService initialization with electron-store');
+            
+            // Use dynamic import for electron-store with eval to prevent ts-node interference
+            let Store;
+            try {
+                // Use eval to prevent TypeScript compilation issues
+                const dynamicImport = eval('(moduleName) => import(moduleName)');
+                const electronStoreModule = await dynamicImport('electron-store');
+                Store = electronStoreModule.default || electronStoreModule;
+                console.log('Successfully imported electron-store using eval approach');
+            } catch (importError) {
+                console.error('Failed to dynamically import electron-store:', importError);
+                throw new Error('Unable to load electron-store module');
             }
+            
+            // Initialize electron-store with schema and migrations
+            this.store = new Store({
+                name: 'cindy-settings',
+                defaults: this.getDefaultSettings(),
+                clearInvalidConfig: true,
+                fileExtension: 'json',
+                serialize: (value: any) => JSON.stringify(value, null, 2)
+            });
+            
+            console.log('Store path:', (this.store as any).path);
+
+            // Load settings from electron-store
+            console.log('Loading settings from electron-store');
+            this.settings = { ...this.getDefaultSettings(), ...(this.store as any).store as Partial<Settings> };
+            console.log('Settings loaded successfully from electron-store');
 
             // Validate critical settings
             console.log('Validating settings');
@@ -169,12 +183,15 @@ class SettingsService extends EventEmitter {
         // Validate updated settings
         await this.validateSection(section);
 
-        // Save to persistence
+        // Save to electron-store
         try {
-            console.log('SettingsService.set() - About to save settings');
-            console.log('SettingsService.set() - Settings object:', JSON.stringify(this.settings, null, 2));
-            await this.save();
-            console.log('SettingsService.set() - Settings saved successfully');
+            if (!this.store) {
+                console.warn('Store not initialized, skipping save');
+                return;
+            }
+            console.log('SettingsService.set() - About to save settings to electron-store');
+            (this.store as any).store = this.settings;
+            console.log('SettingsService.set() - Settings saved successfully to electron-store');
         } catch (error) {
             console.error('Failed to save settings after update:', error);
             console.error('SettingsService.set() - Error details:', error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : error);
@@ -203,14 +220,18 @@ class SettingsService extends EventEmitter {
         }
 
         try {
-            console.log('SettingsService.save() - Starting save process');
-            console.log('SettingsService.save() - Config path:', this.configManager.getConfigPath());
+            if (!this.store) {
+                console.warn('Store not initialized, skipping save');
+                return;
+            }
+            
+            console.log('SettingsService.save() - Starting save process with electron-store');
+            console.log('SettingsService.save() - Store path:', (this.store as any).path);
             console.log('SettingsService.save() - Settings object keys:', Object.keys(this.settings));
-            console.log('SettingsService.save() - Attempting to save settings with length:', JSON.stringify(this.settings, null, 2).length);
 
-            await this.configManager.save(this.settings);
+            (this.store as any).store = this.settings;
 
-            console.log('SettingsService.save() - Settings saved successfully');
+            console.log('SettingsService.save() - Settings saved successfully to electron-store');
             this.emit('settingsSaved');
         } catch (error) {
             console.error('SettingsService.save() - Failed to save settings:', error);
@@ -223,8 +244,15 @@ class SettingsService extends EventEmitter {
     }
 
     async resetToDefaults(): Promise<void> {
+        if (!this.isInitialized) {
+            await this.initialize();
+        }
+        
         this.settings = this.getDefaultSettings();
-        await this.save();
+        if (this.store) {
+            (this.store as any).clear();
+            (this.store as any).store = this.settings;
+        }
         this.emit('settingsReset');
     }
 
@@ -322,20 +350,6 @@ class SettingsService extends EventEmitter {
         };
     }
 
-    private mergeSettings(defaultSettings: Settings, loadedSettings: Partial<Settings>): Settings {
-        const merged = { ...defaultSettings };
-
-        for (const [section, values] of Object.entries(loadedSettings)) {
-            if (merged[section as keyof Settings] && values) {
-                merged[section as keyof Settings] = {
-                    ...merged[section as keyof Settings],
-                    ...values
-                } as any;
-            }
-        }
-
-        return merged;
-    }
 
     private async validateSettings(): Promise<void> {
         // Validate each section

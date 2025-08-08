@@ -159,6 +159,50 @@ const DatabasePanel: React.FC = () => {
         }
     };
 
+    const indexDirectory = async (directoryPath?: string) => {
+        const pathToIndex = directoryPath || notesPath || databasePath;
+        
+        if (!pathToIndex) {
+            setNotificationMessage('Please set a directory path to index');
+            setNotificationSeverity('error');
+            setShowNotification(true);
+            return;
+        }
+
+        setIsIndexing(true);
+        setIndexingProgress(0);
+        
+        try {
+            console.log('Starting directory indexing for:', pathToIndex);
+            const result = await ipcRenderer.invoke('vector-store:index-directory', pathToIndex);
+            
+            if (result.success) {
+                setNotificationMessage(`Successfully indexed ${result.indexed} files${result.errors > 0 ? ` with ${result.errors} errors` : ''}`);
+                setNotificationSeverity('success');
+                setShowNotification(true);
+                
+                // Reload indexed items
+                const itemsResult = await ipcRenderer.invoke('vector-store:get-indexed-items', databasePath);
+                if (itemsResult.success && itemsResult.items) {
+                    setIndexedItems(itemsResult.items);
+                }
+            } else {
+                console.error('Failed to index directory:', result.message);
+                setNotificationMessage(`Failed to index directory: ${result.message}`);
+                setNotificationSeverity('error');
+                setShowNotification(true);
+            }
+        } catch (error) {
+            console.error('Error indexing directory:', error);
+            setNotificationMessage(`Error: ${error}`);
+            setNotificationSeverity('error');
+            setShowNotification(true);
+        } finally {
+            setIsIndexing(false);
+            setIndexingProgress(100);
+        }
+    };
+
     const createVectorStore = async () => {
         try {
             setIsIndexing(true);
@@ -442,16 +486,28 @@ const DatabasePanel: React.FC = () => {
                                 >
                                     Save Settings
                                 </Button>
-                                <Button
-                                    variant="outlined"
-                                    color="secondary"
-                                    onClick={createVectorStore}
-                                    fullWidth
-                                    disabled={isIndexing}
-                                    startIcon={isIndexing ? <CircularProgress size={20} /> : null}
-                                >
-                                    {isIndexing ? 'Indexing...' : 'Create Vector Store from Directory'}
-                                </Button>
+                                <Box sx={{ display: 'flex', gap: 1, flexDirection: 'column' }}>
+                                    <Button
+                                        variant="outlined"
+                                        color="secondary"
+                                        onClick={createVectorStore}
+                                        fullWidth
+                                        disabled={isIndexing}
+                                        startIcon={isIndexing ? <CircularProgress size={20} /> : null}
+                                    >
+                                        {isIndexing ? 'Indexing...' : 'Create Vector Store from Directory'}
+                                    </Button>
+                                    <Button
+                                        variant="outlined"
+                                        color="primary"
+                                        onClick={() => indexDirectory()}
+                                        fullWidth
+                                        disabled={isIndexing || !databasePath}
+                                        startIcon={<FolderIcon />}
+                                    >
+                                        Index Directory Only
+                                    </Button>
+                                </Box>
                             </Box>
                             <FormHelperText>
                                 This will index PDF, Word documents (.doc/.docx), text, markdown, and code files in the selected directory for RAG queries.

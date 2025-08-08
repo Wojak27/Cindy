@@ -115,7 +115,7 @@ const App: React.FC = () => {
                     try {
                         const latestHumanMessage = await ipcRenderer.invoke('get-latest-human-message', currentConversationId);
                         console.log('🔧 DEBUG: Latest human message found:', latestHumanMessage?.id);
-                        
+
                         if (latestHumanMessage) {
                             scrollToHumanMessage(latestHumanMessage.id);
                         }
@@ -211,7 +211,7 @@ const App: React.FC = () => {
     // Function to scroll to a specific human message
     const scrollToHumanMessage = useCallback((messageId: number) => {
         if (!chatMessagesRef.current) return;
-        
+
         // Find the message element by ID
         const messageElement = chatMessagesRef.current.querySelector(`[data-message-id="${messageId}"]`);
         if (messageElement) {
@@ -220,7 +220,7 @@ const App: React.FC = () => {
                 behavior: 'smooth',
                 block: 'center'
             });
-            
+
             // Highlight the message briefly
             messageElement.classList.add('highlighted');
             setTimeout(() => {
@@ -597,10 +597,10 @@ const App: React.FC = () => {
                 const incompleteBlocks = thinkingTokenHandler.getIncompleteThinkingBlocks(currentConversationId);
                 incompleteBlocks.forEach(incompleteBlock => {
                     // Check if this incomplete block is already being displayed
-                    const existingBlock = thinkingBlocks.find((block: any) => 
+                    const existingBlock = thinkingBlocks.find((block: any) =>
                         block.id === incompleteBlock.id && block.isIncomplete
                     );
-                    
+
                     if (!existingBlock) {
                         // New incomplete thinking block - show it immediately
                         const enhancedIncompleteBlock = {
@@ -657,10 +657,10 @@ const App: React.FC = () => {
                 const remainingIncompleteBlocks = thinkingTokenHandler.getIncompleteThinkingBlocks(currentConversationId);
                 remainingIncompleteBlocks.forEach(incompleteBlock => {
                     // Find the existing incomplete block in Redux
-                    const existingIncompleteBlock = thinkingBlocks.find((block: any) => 
+                    const existingIncompleteBlock = thinkingBlocks.find((block: any) =>
                         block.id === incompleteBlock.id && block.isIncomplete
                     );
-                    
+
                     if (existingIncompleteBlock) {
                         // Mark the incomplete block as completed
                         const completedBlock = {
@@ -678,7 +678,7 @@ const App: React.FC = () => {
                         });
                     }
                 });
-                
+
                 // DON'T reset thinking token handler - this causes thinking tokens 
                 // from subsequent messages to accumulate in the first thinking block
                 // Only reset tool token handler which doesn't need persistent state
@@ -991,9 +991,9 @@ const App: React.FC = () => {
 
                     <div className="chat-container">
                         <div className="chat-messages-container">
-                            <div 
+                            <div
                                 ref={chatMessagesRef}
-                                className="chat-messages" 
+                                className="chat-messages"
                                 style={{ height: '100%', overflowY: 'auto', display: 'flex', flexDirection: 'column-reverse' }}
                             >
                                 {/* Show sound reactive circle when no messages and no current input */}
@@ -1108,7 +1108,7 @@ const App: React.FC = () => {
                                                     <>
                                                         {/* Render thinking blocks before assistant content */}
                                                         {associatedBlocks.map((block: any) => (
-                                                            <ThinkingBlock
+                                                            block.isIncomplete ? <ThinkingBlock
                                                                 key={block.id}
                                                                 id={block.id}
                                                                 content={block.content}
@@ -1118,7 +1118,7 @@ const App: React.FC = () => {
                                                                 defaultOpen={false}
                                                                 isIncomplete={block.isIncomplete || false}
                                                                 isStreaming={block.isStreaming || false}
-                                                            />
+                                                            /> : <></>
                                                         ))}
 
                                                         {/* Render tool calls after thinking blocks */}
@@ -1229,7 +1229,7 @@ const App: React.FC = () => {
                     {(showSettings || showDatabase) && (
                         <div className="sidebar-overlay" />
                     )}
-                    
+
                     <div ref={settingsSidebarRef} className={`settings-sidebar-container ${showSettings ? 'open' : ''}`}>
                         <SettingsPanel />
                     </div>

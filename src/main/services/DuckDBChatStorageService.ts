@@ -1,8 +1,8 @@
-import { open } from 'sqlite';
-import { Database } from 'sqlite3';
+import { Database } from 'duckdb-async';
 import path from 'path';
 import { app } from 'electron';
 import * as fs from 'fs';
+
 export interface ChatMessage {
     id?: number;
     conversationId: string;
@@ -16,8 +16,8 @@ interface StorageConfig {
     lastCleanup: number;
 }
 
-export class ChatStorageService {
-    private db: any | null = null; // eslint-disable-line @typescript-eslint/no-explicit-any
+export class DuckDBChatStorageService {
+    private db: Database | null = null;
     private DB_PATH: string;
     private configPath: string;
     private config: StorageConfig;
@@ -34,7 +34,7 @@ export class ChatStorageService {
                 return JSON.parse(data);
             }
         } catch (error) {
-            console.warn('[ChatStorageService] Failed to load config:', error);
+            console.warn('[DuckDBChatStorageService] Failed to load config:', error);
         }
         
         return {
@@ -47,7 +47,7 @@ export class ChatStorageService {
         try {
             fs.writeFileSync(this.configPath, JSON.stringify(this.config, null, 2));
         } catch (error) {
-            console.error('[ChatStorageService] Failed to save config:', error);
+            console.error('[DuckDBChatStorageService] Failed to save config:', error);
         }
     }
 
@@ -61,55 +61,75 @@ export class ChatStorageService {
     }
 
     async initialize(): Promise<void> {
-        console.log('🔧 DEBUG: ChatStorageService.initialize() called at:', new Date().toISOString());
+        console.log('🦆 DEBUG: DuckDBChatStorageService.initialize() called at:', new Date().toISOString());
         if (this.db) {
-            console.log('🔧 DEBUG: ChatStorageService.initialize() - Database already initialized, skipping');
+            console.log('🦆 DEBUG: DuckDBChatStorageService.initialize() - Database already initialized, skipping');
             return;
         }
 
         // Initialize paths when needed
         if (!this.DB_PATH) {
-            this.DB_PATH = path.join(app.getPath('userData'), 'chat-history.db');
+            this.DB_PATH = path.join(app.getPath('userData'), 'cindy-chat.db');
             this.configPath = path.join(app.getPath('userData'), 'chat-storage.json');
             this.config = this.loadConfig();
-            console.log('🔧 DEBUG: ChatStorageService.initialize() - Database path set to:', this.DB_PATH);
         }
 
         try {
-            console.log('🔧 DEBUG: ChatStorageService.initialize() - Opening SQLite database...');
-            this.db = await open({
-                filename: this.DB_PATH,
-                driver: Database as any
-            });
-            console.log('🔧 DEBUG: ChatStorageService.initialize() - Database opened successfully');
+            console.log('🦆 DEBUG: DuckDBChatStorageService.initialize() - Opening DuckDB database at:', this.DB_PATH);
+            this.db = await Database.create(this.DB_PATH);
+            console.log('🦆 DEBUG: DuckDBChatStorageService.initialize() - Database opened successfully');
 
-            console.log('🔧 DEBUG: ChatStorageService.initialize() - Creating tables and indexes...');
+            console.log('🦆 DEBUG: DuckDBChatStorageService.initialize() - Creating tables and indexes...');
+            
+            // Create messages table
             await this.db.exec(`
-          CREATE TABLE IF NOT EXISTS messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            conversationId TEXT NOT NULL,
-            role TEXT NOT NULL,
-            content TEXT NOT NULL,
-            timestamp INTEGER NOT NULL
-          );
-          CREATE INDEX IF NOT EXISTS idx_conversation ON messages(conversationId);
-          CREATE INDEX IF NOT EXISTS idx_timestamp ON messages(timestamp);
-        `);
-            console.log('🔧 DEBUG: ChatStorageService.initialize() - Tables and indexes created successfully');
+                CREATE TABLE IF NOT EXISTS messages (
+                    id INTEGER PRIMARY KEY,
+                    conversationId VARCHAR NOT NULL,
+                    role VARCHAR NOT NULL,
+                    content TEXT NOT NULL,
+                    timestamp BIGINT NOT NULL
+                );
+            `);
+
+            // Create indexes for better performance
+            await this.db.exec(`
+                CREATE INDEX IF NOT EXISTS idx_conversation ON messages(conversationId);
+                CREATE INDEX IF NOT EXISTS idx_timestamp ON messages(timestamp);
+                CREATE INDEX IF NOT EXISTS idx_conversation_timestamp ON messages(conversationId, timestamp);
+            `);
+
+            // Create conversations table for metadata
+            await this.db.exec(`
+                CREATE TABLE IF NOT EXISTS conversations (
+                    id VARCHAR PRIMARY KEY,
+                    title VARCHAR,
+                    created_at BIGINT NOT NULL,
+                    updated_at BIGINT NOT NULL,
+                    message_count INTEGER DEFAULT 0
+                );
+            `);
+
+            // Create index on conversations
+            await this.db.exec(`
+                CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at);
+            `);
+
+            console.log('🦆 DEBUG: DuckDBChatStorageService.initialize() - Tables and indexes created successfully');
 
             // Verify database is working by running a test query
-            const tableCheck = await this.db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='messages'");
-            if (tableCheck) {
-                console.log('🔧 DEBUG: ChatStorageService.initialize() - Database verification successful, messages table exists');
-            } else {
-                console.error('🚨 DEBUG: ChatStorageService.initialize() - Database verification failed, messages table not found');
+            try {
+                const tableCheck = await this.db.all("SHOW TABLES");
+                console.log('🦆 DEBUG: DuckDBChatStorageService.initialize() - Database verification successful, tables:', tableCheck);
+            } catch (verifyError) {
+                console.error('🚨 DEBUG: DuckDBChatStorageService.initialize() - Database verification failed:', verifyError);
             }
 
             // Perform cleanup on initialization if needed
             await this.performMaintenanceCleanup();
         } catch (error) {
-            console.error('🚨 DEBUG: ChatStorageService.initialize() - Failed to initialize database:', error);
-            console.error('🚨 DEBUG: ChatStorageService.initialize() - Error details:', {
+            console.error('🚨 DEBUG: DuckDBChatStorageService.initialize() - Failed to initialize database:', error);
+            console.error('🚨 DEBUG: DuckDBChatStorageService.initialize() - Error details:', {
                 name: error.name,
                 message: error.message,
                 stack: error.stack
@@ -119,7 +139,7 @@ export class ChatStorageService {
     }
 
     async saveMessage(message: Omit<ChatMessage, 'id'>): Promise<number> {
-        console.log('🔧 DEBUG: ChatStorageService.saveMessage() called with:', {
+        console.log('🦆 DEBUG: DuckDBChatStorageService.saveMessage() called with:', {
             conversationId: message.conversationId,
             role: message.role,
             contentLength: message.content.length,
@@ -127,31 +147,49 @@ export class ChatStorageService {
         });
 
         if (!this.db) {
-            console.log('🔧 DEBUG: ChatStorageService.saveMessage() - Database not initialized, initializing...');
+            console.log('🦆 DEBUG: DuckDBChatStorageService.saveMessage() - Database not initialized, initializing...');
             await this.initialize();
         }
 
         try {
-            console.log('🔧 DEBUG: ChatStorageService.saveMessage() - Inserting message into database...');
-            const result = await this.db!.run(
+            console.log('🦆 DEBUG: DuckDBChatStorageService.saveMessage() - Inserting message into database...');
+            
+            // Insert message
+            const result = await this.db.run(
                 `INSERT INTO messages (conversationId, role, content, timestamp)
-               VALUES (?, ?, ?, ?)`,
+                 VALUES (?, ?, ?, ?) RETURNING id`,
                 [message.conversationId, message.role, message.content, message.timestamp]
-            ) as any;
+            );
 
-            console.log('🔧 DEBUG: ChatStorageService.saveMessage() - Message saved successfully with ID:', result.lastID);
+            const messageId = result[0]?.id || Date.now(); // Fallback ID
+            console.log('🦆 DEBUG: DuckDBChatStorageService.saveMessage() - Message saved successfully with ID:', messageId);
+
+            // Update or create conversation metadata
+            await this.db.run(`
+                INSERT INTO conversations (id, title, created_at, updated_at, message_count)
+                VALUES (?, ?, ?, ?, 1)
+                ON CONFLICT (id) DO UPDATE SET
+                    updated_at = ?,
+                    message_count = message_count + 1
+            `, [
+                message.conversationId,
+                message.content.substring(0, 50) + (message.content.length > 50 ? '...' : ''),
+                message.timestamp,
+                message.timestamp,
+                message.timestamp
+            ]);
 
             // Verify the save worked by counting messages in this conversation
-            const messageCount = await this.db!.get(
+            const messageCount = await this.db.all(
                 `SELECT COUNT(*) as count FROM messages WHERE conversationId = ?`,
                 [message.conversationId]
             );
-            console.log('🔧 DEBUG: ChatStorageService.saveMessage() - Total messages in conversation:', messageCount.count);
+            console.log('🦆 DEBUG: DuckDBChatStorageService.saveMessage() - Total messages in conversation:', messageCount[0]?.count);
 
-            return result.lastID;
+            return messageId;
         } catch (error) {
-            console.error('🚨 DEBUG: ChatStorageService.saveMessage() - Failed to save message:', error);
-            console.error('🚨 DEBUG: ChatStorageService.saveMessage() - Error details:', {
+            console.error('🚨 DEBUG: DuckDBChatStorageService.saveMessage() - Failed to save message:', error);
+            console.error('🚨 DEBUG: DuckDBChatStorageService.saveMessage() - Error details:', {
                 name: error.name,
                 message: error.message,
                 stack: error.stack
@@ -167,12 +205,13 @@ export class ChatStorageService {
         if (!this.db) await this.initialize();
 
         // First get all messages for this conversation
-        const rows = await (this.db! as any).all(
+        const rows = await this.db.all(
             `SELECT id, conversationId, role, content, timestamp
-           FROM messages
-           WHERE conversationId = ?
-           ORDER BY timestamp ASC, id ASC`,
-            [conversationId]
+             FROM messages
+             WHERE conversationId = ?
+             ORDER BY timestamp ASC, id ASC
+             LIMIT ?`,
+            [conversationId, limit]
         );
 
         const messages = rows.map(row => ({
@@ -186,8 +225,7 @@ export class ChatStorageService {
         // Clean up duplicates and fix ordering
         const cleanedMessages = this.cleanupAndFixMessageOrder(messages);
         
-        // Apply limit after cleanup
-        return cleanedMessages.slice(0, limit);
+        return cleanedMessages;
     }
 
     /**
@@ -196,7 +234,7 @@ export class ChatStorageService {
     private cleanupAndFixMessageOrder(messages: ChatMessage[]): ChatMessage[] {
         if (messages.length === 0) return messages;
 
-        console.log('🔧 DEBUG: Cleaning up message order for conversation, input:', messages.length, 'messages');
+        console.log('🦆 DEBUG: Cleaning up message order for conversation, input:', messages.length, 'messages');
 
         // Step 1: Remove exact duplicates based on content and role
         const deduped: ChatMessage[] = [];
@@ -210,7 +248,7 @@ export class ChatStorageService {
                 seen.add(key);
                 deduped.push(message);
             } else {
-                console.log('🔧 DEBUG: Removing duplicate message:', message.role, message.content.substring(0, 50) + '...');
+                console.log('🦆 DEBUG: Removing duplicate message:', message.role, message.content.substring(0, 50) + '...');
             }
         }
 
@@ -244,7 +282,7 @@ export class ChatStorageService {
                 if (current.role === 'user') {
                     alternated.push(current);
                 } else {
-                    console.log('🔧 DEBUG: Skipping orphaned assistant message at start:', current.content.substring(0, 50) + '...');
+                    console.log('🦆 DEBUG: Skipping orphaned assistant message at start:', current.content.substring(0, 50) + '...');
                 }
                 continue;
             }
@@ -275,17 +313,17 @@ export class ChatStorageService {
             if (shouldInclude) {
                 alternated.push(current);
             } else {
-                console.log('🔧 DEBUG: Skipping message that breaks alternation:', 
+                console.log('🦆 DEBUG: Skipping message that breaks alternation:', 
                     current.role, 'after', lastNonSystemMessage.role, 
                     current.content.substring(0, 50) + '...');
             }
         }
 
-        console.log('🔧 DEBUG: Message cleanup complete. Input:', messages.length, '-> Output:', alternated.length, 'messages');
+        console.log('🦆 DEBUG: Message cleanup complete. Input:', messages.length, '-> Output:', alternated.length, 'messages');
         
         // Final verification: log the final order
         const messageOrder = alternated.map((msg, idx) => `${idx + 1}. ${msg.role}`).join(', ');
-        console.log('🔧 DEBUG: Final message order:', messageOrder);
+        console.log('🦆 DEBUG: Final message order:', messageOrder);
         
         return alternated;
     }
@@ -296,14 +334,16 @@ export class ChatStorageService {
     async getLatestHumanMessage(conversationId: string): Promise<ChatMessage | null> {
         if (!this.db) await this.initialize();
 
-        const row = await (this.db! as any).get(
+        const rows = await this.db.all(
             `SELECT id, conversationId, role, content, timestamp
-           FROM messages
-           WHERE conversationId = ? AND role = 'user'
-           ORDER BY timestamp DESC, id DESC
-           LIMIT 1`,
+             FROM messages
+             WHERE conversationId = ? AND role = 'user'
+             ORDER BY timestamp DESC, id DESC
+             LIMIT 1`,
             [conversationId]
         );
+        
+        const row = rows[0];
 
         if (!row) return null;
 
@@ -319,8 +359,13 @@ export class ChatStorageService {
     async clearConversation(conversationId: string): Promise<void> {
         if (!this.db) await this.initialize();
 
-        await this.db!.run(
+        await this.db.run(
             `DELETE FROM messages WHERE conversationId = ?`,
+            [conversationId]
+        );
+
+        await this.db.run(
+            `DELETE FROM conversations WHERE id = ?`,
             [conversationId]
         );
     }
@@ -335,30 +380,24 @@ export class ChatStorageService {
     async getConversations(): Promise<Array<{ id: string; title: string; lastMessageAt: number }>> {
         if (!this.db) await this.initialize();
 
-        const rows = await (this.db! as any).all(
-            `SELECT conversationId, MAX(timestamp) as lastMessageAt
-             FROM messages 
-             GROUP BY conversationId 
-             ORDER BY lastMessageAt ASC`
+        const rows = await this.db.all(
+            `SELECT c.id, c.title, c.updated_at as lastMessageAt, c.message_count
+             FROM conversations c
+             WHERE c.message_count > 0
+             ORDER BY c.updated_at DESC`
         );
 
-        // For each conversation, get the first message to use as title
-        const conversations = await Promise.all(rows.map(async (row: any) => {
-            const firstMessage = await this.getFirstMessage(row.conversationId);
-            return {
-                id: row.conversationId,
-                title: firstMessage ? firstMessage.substring(0, 50) + (firstMessage.length > 50 ? '...' : '') : `Conversation ${new Date(row.lastMessageAt).toLocaleDateString()}`,
-                lastMessageAt: row.lastMessageAt
-            };
+        return rows.map(row => ({
+            id: row.id,
+            title: row.title || `Conversation ${new Date(row.lastMessageAt).toLocaleDateString()}`,
+            lastMessageAt: row.lastMessageAt
         }));
-
-        return conversations;
     }
 
     async getFirstMessage(conversationId: string): Promise<string | null> {
         if (!this.db) await this.initialize();
 
-        const row = await (this.db! as any).get(
+        const rows = await this.db.all(
             `SELECT content 
              FROM messages 
              WHERE conversationId = ? 
@@ -366,12 +405,14 @@ export class ChatStorageService {
              LIMIT 1`,
             [conversationId]
         );
+        
+        const row = rows[0];
 
         return row ? row.content : null;
     }
+
     /**
      * Creates a new conversation by saving a system message
-     * This ensures the conversation appears in getConversations()
      */
     async createConversation(): Promise<string> {
         if (!this.db) await this.initialize();
@@ -396,13 +437,13 @@ export class ChatStorageService {
      * This is a placeholder for future implementation
      */
     async getThinkingBlocks(conversationId: string): Promise<any[]> {
-        console.log('🔧 DEBUG: ChatStorageService.getThinkingBlocks() called for conversation:', conversationId);
+        console.log('🦆 DEBUG: DuckDBChatStorageService.getThinkingBlocks() called for conversation:', conversationId);
         
         // TODO: Implement thinking blocks storage in database
         // For now, return empty array as thinking blocks are not stored in the database
         // They are managed in Redux store during the session
         
-        console.log('🔧 DEBUG: Thinking blocks not implemented in storage yet, returning empty array');
+        console.log('🦆 DEBUG: Thinking blocks not implemented in storage yet, returning empty array');
         return [];
     }
 
@@ -419,18 +460,18 @@ export class ChatStorageService {
         }
 
         try {
-            console.log('🔧 DEBUG: Performing maintenance cleanup of chat messages');
+            console.log('🦆 DEBUG: Performing maintenance cleanup of chat messages');
             
             // Get all conversations
             const conversations = await this.getConversations();
             
             for (const conversation of conversations) {
                 // Get raw messages for this conversation
-                const rawMessages = await (this.db! as any).all(
+                const rawMessages = await this.db!.all(
                     `SELECT id, conversationId, role, content, timestamp
-                   FROM messages
-                   WHERE conversationId = ?
-                   ORDER BY timestamp ASC, id ASC`,
+                     FROM messages
+                     WHERE conversationId = ?
+                     ORDER BY timestamp ASC, id ASC`,
                     [conversation.id]
                 );
 
@@ -449,28 +490,83 @@ export class ChatStorageService {
                 
                 // If messages were cleaned up, update the database
                 if (cleanedMessages.length !== messages.length) {
-                    console.log(`🔧 DEBUG: Conversation ${conversation.id}: ${messages.length} -> ${cleanedMessages.length} messages after cleanup`);
+                    console.log(`🦆 DEBUG: Conversation ${conversation.id}: ${messages.length} -> ${cleanedMessages.length} messages after cleanup`);
                     
                     // Delete all messages for this conversation
                     await this.clearConversation(conversation.id);
                     
                     // Re-insert cleaned messages
                     for (const message of cleanedMessages) {
-                        await (this.db! as any).run(
+                        await this.db!.run(
                             `INSERT INTO messages (conversationId, role, content, timestamp)
-                           VALUES (?, ?, ?, ?)`,
+                             VALUES (?, ?, ?, ?)`,
                             [message.conversationId, message.role, message.content, message.timestamp]
                         );
                     }
+                    
+                    // Update conversation metadata
+                    await this.db!.run(`
+                        INSERT INTO conversations (id, title, created_at, updated_at, message_count)
+                        VALUES (?, ?, ?, ?, ?)
+                        ON CONFLICT (id) DO UPDATE SET
+                            message_count = ?,
+                            updated_at = ?
+                    `, [
+                        conversation.id,
+                        cleanedMessages.length > 0 ? cleanedMessages[0].content.substring(0, 50) + '...' : 'Empty Conversation',
+                        cleanedMessages.length > 0 ? cleanedMessages[0].timestamp : Date.now(),
+                        Date.now(),
+                        cleanedMessages.length,
+                        cleanedMessages.length,
+                        Date.now()
+                    ]);
                 }
             }
 
             // Update last cleanup time
             this.setConfigValue('lastCleanup', now);
-            console.log('🔧 DEBUG: Maintenance cleanup completed');
+            console.log('🦆 DEBUG: Maintenance cleanup completed');
             
         } catch (error) {
             console.error('🚨 DEBUG: Error during maintenance cleanup:', error);
+        }
+    }
+
+    /**
+     * Migrate data from SQLite ChatStorageService
+     */
+    async migrateFromSQLite(sqliteService: any): Promise<void> {
+        try {
+            console.log('🦆 DEBUG: Starting migration from SQLite to DuckDB...');
+            
+            // Get all conversations from SQLite
+            const conversations = await sqliteService.getConversations();
+            console.log(`🦆 DEBUG: Found ${conversations.length} conversations to migrate`);
+            
+            for (const conversation of conversations) {
+                console.log(`🦆 DEBUG: Migrating conversation ${conversation.id}...`);
+                
+                // Get all messages for this conversation from SQLite
+                const messages = await sqliteService.getConversationHistory(conversation.id, 1000);
+                console.log(`🦆 DEBUG: Found ${messages.length} messages in conversation ${conversation.id}`);
+                
+                // Insert messages into DuckDB
+                for (const message of messages) {
+                    await this.saveMessage({
+                        conversationId: message.conversationId,
+                        role: message.role,
+                        content: message.content,
+                        timestamp: message.timestamp
+                    });
+                }
+                
+                console.log(`🦆 DEBUG: Migrated ${messages.length} messages for conversation ${conversation.id}`);
+            }
+            
+            console.log('🦆 DEBUG: Migration from SQLite to DuckDB completed successfully');
+        } catch (error) {
+            console.error('🚨 DEBUG: Error during SQLite to DuckDB migration:', error);
+            throw error;
         }
     }
 }

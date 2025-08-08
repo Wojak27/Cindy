@@ -27,8 +27,8 @@ const ThinkingBlock: React.FC<ThinkingBlockProps> = ({
     endTime,
     duration,
     defaultOpen = false,
-    isIncomplete = false,
     isStreaming = false,
+    isIncomplete = false,
     onToggle
 }) => {
     const [isOpen, setIsOpen] = useState(defaultOpen);
@@ -70,19 +70,19 @@ const ThinkingBlock: React.FC<ThinkingBlockProps> = ({
     // Determine the visual state classes and content based on incomplete/streaming flags
     const blockClasses = [
         'thinking-block',
-        isIncomplete ? 'thinking-incomplete' : '',
+        'thinking-incomplete',
         isStreaming ? 'thinking-streaming' : ''
     ].filter(Boolean).join(' ');
-    
+
     const toggleClasses = [
         'thinking-toggle',
         isOpen ? 'open' : 'closed',
         isStreaming ? 'streaming' : ''
     ].filter(Boolean).join(' ');
-    
-    const thinkingIcon = isStreaming ? '🧠' : (isIncomplete ? '💭' : '💡');
-    const thinkingLabel = isStreaming ? 'Thinking...' : (isIncomplete ? 'Processing' : 'Thinking');
-    
+
+    const thinkingIcon = '💡';
+    const thinkingLabel = isStreaming ? 'Thinking...' : (isIncomplete ? 'Thinking' : 'Thought for You');
+
     return (
         <div className={blockClasses}>
             <button
@@ -95,7 +95,6 @@ const ThinkingBlock: React.FC<ThinkingBlockProps> = ({
                 <span className="thinking-label">{thinkingLabel}</span>
                 <span className="thinking-duration">
                     {isStreaming ? '⏱️' : displayDuration}
-                    {isIncomplete && ' (in progress)'}
                 </span>
                 <span className="thinking-arrow">{isOpen ? '▼' : '▶'}</span>
             </button>
