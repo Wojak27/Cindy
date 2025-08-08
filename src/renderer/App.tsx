@@ -22,7 +22,6 @@ import './styles/main.css';
 import './styles/database-sidebar.css';
 import { ipcRenderer } from 'electron';
 import ChatList from './components/ChatList';
-import { simpleLiveTranscriptionService } from './services/SimpleLiveTranscriptionService';
 import {
     IconButton,
     CssBaseline
@@ -54,11 +53,9 @@ const App: React.FC = () => {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [isAppLoading, setIsAppLoading] = useState(true);
     const [wakeWordDetected, setWakeWordDetected] = useState(false);
-    const [isLiveListening, setIsLiveListening] = useState(false);
     const audioContext = useRef<AudioContext | null>(null);
     const sounds = useRef<Record<string, AudioBuffer>>({});
     const streamController = useRef<AbortController | null>(null);
-    const speechTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const settingsSidebarRef = useRef<HTMLDivElement>(null);
     const databaseSidebarRef = useRef<HTMLDivElement>(null);
     const chatMessagesRef = useRef<HTMLDivElement>(null);
@@ -84,7 +81,10 @@ const App: React.FC = () => {
             if (!currentConversationId) return;
 
             try {
-                const messages = await ipcRenderer.invoke('load-conversation', currentConversationId);
+                // Get ALL messages without any filtering (duplicates, ordering fixes, etc.)
+                // To use filtered messages (with cleanup), change to: 'load-conversation'
+                const messages = await ipcRenderer.invoke('load-all-conversation-messages', currentConversationId);
+                console.log('📝 Loading ALL unfiltered messages:', messages.length, 'messages found');
 
                 // Clear current messages, thinking blocks, and tool calls
                 dispatch({ type: 'CLEAR_MESSAGES' });
@@ -187,17 +187,6 @@ const App: React.FC = () => {
         return () => clearTimeout(timer);
     }, [dispatch]);
 
-    // Memoized callback function to prevent infinite re-renders
-    const onWakeWord = useCallback(() => {
-        console.log('🎤 Wake word detected via live transcription!');
-        setWakeWordDetected(true);
-        // Trigger wake word detection event instead of calling handleMicClick directly
-        document.dispatchEvent(new CustomEvent('live-wake-word-detected'));
-        // Reset wake word detected state after visual feedback
-        setTimeout(() => {
-            setWakeWordDetected(false);
-        }, 2000);
-    }, []);
 
     // Function to scroll to a specific human message
     const scrollToHumanMessage = useCallback((messageId: number) => {
@@ -222,27 +211,6 @@ const App: React.FC = () => {
         }
     }, []);
 
-    // Start live transcription when app loads
-    useEffect(() => {
-        const startLiveTranscription = async () => {
-            try {
-                await simpleLiveTranscriptionService.startLiveTranscription(onWakeWord);
-                setIsLiveListening(true);
-                console.log('🎤 Live transcription started successfully');
-            } catch (error) {
-                console.error('🎤 Failed to start live transcription:', error);
-            }
-        };
-
-        if (!isAppLoading) {
-            startLiveTranscription();
-        }
-
-        // Cleanup on unmount
-        return () => {
-            simpleLiveTranscriptionService.stopLiveTranscription();
-        };
-    }, [isAppLoading, onWakeWord]);
 
 
 
@@ -440,44 +408,6 @@ const App: React.FC = () => {
         }
     };
 
-    // Listen for wake word detection events
-    useEffect(() => {
-        const handleWakeWordDetected = async () => {
-            console.log('🎤 Wake word detected in renderer! Activating recording...');
-            setWakeWordDetected(true);
-            playSound('activation');
-
-            // Activate the same function as microphone click
-            try {
-                await handleMicClick();
-                console.log('🎤 handleMicClick completed after wake word');
-            } catch (error) {
-                console.error('🎤 Error in handleMicClick after wake word:', error);
-            }
-
-            // Reset wake word detected state after visual feedback
-            setTimeout(() => {
-                setWakeWordDetected(false);
-            }, 2000);
-        };
-
-        const handleWakeWordTimeout = () => {
-            console.log('🎤 Wake word timeout');
-        };
-
-
-        ipcRenderer.on('wake-word-detected', handleWakeWordDetected);
-        ipcRenderer.on('wake-word-timeout', handleWakeWordTimeout);
-
-        // Cleanup listeners on unmount
-        return () => {
-            ipcRenderer.off('wake-word-detected', handleWakeWordDetected);
-            ipcRenderer.off('wake-word-timeout', handleWakeWordTimeout);
-            if (speechTimeoutRef.current) {
-                clearTimeout(speechTimeoutRef.current);
-            }
-        };
-    }, []);
 
     // Handle send button click
     const handleSendClick = async () => {
@@ -874,7 +804,7 @@ const App: React.FC = () => {
                         {messages.length > 0 && (
                             <div className="compact-blob-container">
                                 <div style={{ position: "relative", width: "32px", height: "32px" }}>
-                                    <SoundReactiveBlob isActive={isSpeaking || isRecording || isLiveListening} />
+                                    <SoundReactiveBlob isActive={isSpeaking || isRecording} />
                                 </div>
                             </div>
                         )}
@@ -946,7 +876,7 @@ const App: React.FC = () => {
                                     <div style={{ display: 'flex', justifyContent: 'center', flexDirection: "column", alignItems: 'center', height: '100%' }}>
                                         <div>
                                             <div style={{ position: "relative", width: "200px", height: "200px" }}>
-                                                <SoundReactiveBlob isActive={isLiveListening} />
+                                                <SoundReactiveBlob isActive={true} />
                                             </div>
                                         </div>
                                         <div style={{ maxWidth: '600px', textAlign: 'center', padding: '0 20px' }}>
@@ -960,16 +890,12 @@ const App: React.FC = () => {
                                             ) : (
                                                 <h2>{personalizedGreeting}</h2>
                                             )}
-                                            {isLiveListening && (
-                                                <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '10px' }}>
-                                                    Say "Hi Cindy" to start recording...
-                                                </p>
-                                            )}
+
                                         </div>
                                     </div>
                                 )}
                                 {[...messages].reverse().map((msg: any, index: number) => {
-                                    const messageClass = `message ${msg.role} ${msg.isStreaming ? 'streaming' : ''} ${isSpeaking && msg.role === 'assistant' ? 'speaking' : ''} ${isLiveListening ? 'listening' : ''}`;
+                                    const messageClass = `message ${msg.role} ${msg.isStreaming ? 'streaming' : ''} ${isSpeaking && msg.role === 'assistant' ? 'speaking' : ''} ''}`;
                                     console.log('Rendering message:', msg)
                                     // Get thinking blocks associated with this specific message
                                     // For older chats, associate thinking blocks with assistant messages based on timestamp proximity
@@ -1143,7 +1069,7 @@ const App: React.FC = () => {
                                 disabled={isRecording}
                             />
                             <div className="button-group">
-                                <div className={`mic-button-wrapper ${isRecording ? 'is-recording' : ''} ${wakeWordDetected ? 'wake-word-detected' : ''} ${isLiveListening && !isRecording ? 'is-listening' : ''}`}>
+                                <div className={`mic-button-wrapper ${isRecording ? 'is-recording' : ''} ${wakeWordDetected ? 'wake-word-detected' : ''} ${!isRecording ? 'is-listening' : ''}`}>
                                     <IconButton
                                         className="mic-button"
                                         onClick={handleMicClick}

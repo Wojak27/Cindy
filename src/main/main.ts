@@ -1049,20 +1049,6 @@ app.on('ready', async () => {
 
             console.log('Main process - using direct LangChain LLM router');
 
-            // Save user message first
-            if (chatStorageService) {
-                try {
-                    await chatStorageService.saveMessage({
-                        conversationId,
-                        role: 'user',
-                        content: message,
-                        timestamp: Date.now()
-                    });
-                    console.log('🔧 DEBUG: User message persisted to ChatStorageService');
-                } catch (saveError) {
-                    console.error('🚨 DEBUG: Failed to persist user message:', saveError);
-                }
-            }
 
             // Get recent conversation history for context
             let conversationHistory: Array<{ role: 'system' | 'user' | 'assistant', content: string }> = [];
@@ -1151,24 +1137,16 @@ app.on('ready', async () => {
             // Save assistant message to ChatStorageService (clean up thinking tokens first)
             if (chatStorageService && assistantContent.trim()) {
                 try {
-                    // Remove thinking tokens before saving to database
-                    const cleanContent = assistantContent
-                        .replace(/<think>[\s\S]*?<\/think>/g, '') // Remove complete thinking blocks
-                        .replace(/<think>[\s\S]*$/g, '') // Remove incomplete thinking blocks at the end
-                        .trim();
 
                     // Only save if there's actual content after cleaning
-                    if (cleanContent) {
-                        await chatStorageService.saveMessage({
-                            conversationId,
-                            role: 'assistant',
-                            content: cleanContent,
-                            timestamp: Date.now()
-                        });
-                        console.log('🔧 DEBUG: Assistant message persisted to ChatStorageService (cleaned)');
-                    } else {
-                        console.log('🔧 DEBUG: Assistant message was only thinking tokens, not saved');
-                    }
+                    await chatStorageService.saveMessage({
+                        conversationId,
+                        role: 'assistant',
+                        content: assistantContent,
+                        timestamp: Date.now()
+                    });
+                    console.log('🔧 DEBUG: Assistant message persisted to ChatStorageService (cleaned)');
+
                 } catch (saveError) {
                     console.error('🚨 DEBUG: Failed to persist assistant message:', saveError);
                 }
@@ -1213,6 +1191,23 @@ app.on('ready', async () => {
             return loadedMessages;
         } catch (error) {
             console.error('Main process - load-conversation: error loading conversation:', error);
+            return [];
+        }
+    });
+
+    // IPC handler for loading ALL messages without filtering
+    ipcMain.handle('load-all-conversation-messages', async (_, conversationId: string) => {
+        console.log('Main process - load-all-conversation-messages IPC called for:', conversationId);
+        try {
+            if (!chatStorageService) {
+                console.error('Main process - load-all-conversation-messages: chatStorageService not available');
+                return [];
+            }
+            const allMessages = await chatStorageService.getAllConversationMessages(conversationId);
+            console.log('Main process - Returning', allMessages.length, 'unfiltered messages');
+            return allMessages;
+        } catch (error) {
+            console.error('Main process - load-all-conversation-messages: error loading messages:', error);
             return [];
         }
     });
@@ -1263,7 +1258,7 @@ app.on('ready', async () => {
                 console.error('Main process - get-latest-human-message: chatStorageService not available');
                 return null;
             }
-            return await chatStorageService.getLatestHumanMessage(conversationId);
+            return await chatStorageService.getMessagesForChat(conversationId);
         } catch (error) {
             console.error('Main process - get-latest-human-message: error getting latest human message:', error);
             return null;
