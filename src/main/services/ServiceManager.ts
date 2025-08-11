@@ -11,12 +11,12 @@ import { LLMProvider } from './LLMProvider';
 export class ServiceManager extends EventEmitter {
     private settingsService: SettingsService | null;
     private llmProvider: LLMProvider | null;
-    
+
     // Dynamic service references
     private langChainToolExecutorService: any = null;
     private langChainMemoryService: any = null;
     private langChainCindyAgent: any = null;
-    
+
     // Loading state tracking
     private isLoadingToolExecutor = false;
     private isLoadingMemoryService = false;
@@ -52,20 +52,20 @@ export class ServiceManager extends EventEmitter {
         }
 
         this.isLoadingToolExecutor = true;
-        
+
         try {
             console.log('[ServiceManager] Dynamically loading LangChainToolExecutorService...');
-            
+
             // Dynamic import to avoid loading at startup - using completely lightweight version with NO LangChain imports
-            const { LangChainToolExecutorService } = await import('./LangChainToolExecutorService_lightweight');
-            
+            const { LangChainToolExecutorService } = await import('./LangChainToolExecutorService');
+
             // Pass DuckDB vector store instead of LangChain vector store
             this.langChainToolExecutorService = new LangChainToolExecutorService(duckdbVectorStore);
             await this.langChainToolExecutorService.initialize();
-            
+
             console.log('[ServiceManager] LangChainToolExecutorService loaded successfully');
             this.emit('toolExecutorLoaded', this.langChainToolExecutorService);
-            
+
             return this.langChainToolExecutorService;
         } catch (error) {
             console.error('[ServiceManager] Failed to load LangChainToolExecutorService:', error);
@@ -91,16 +91,16 @@ export class ServiceManager extends EventEmitter {
         }
 
         this.isLoadingMemoryService = true;
-        
+
         try {
             console.log('[ServiceManager] Dynamically loading LangChainMemoryService...');
-            
+
             // Dynamic import to avoid loading at startup
             const { LangChainMemoryService } = await import('./LangChainMemoryService');
-            
+
             // Vector store not needed - using DuckDBVectorStore directly
             let vectorStore = null;
-            
+
             // Get the actual chat model from LLM provider
             let llmModel = null;
             if (this.llmProvider) {
@@ -110,13 +110,13 @@ export class ServiceManager extends EventEmitter {
                     console.warn('[ServiceManager] Could not get chat model from LLM provider:', error.message);
                 }
             }
-            
+
             this.langChainMemoryService = new LangChainMemoryService({}, vectorStore, llmModel);
             await this.langChainMemoryService.initialize();
-            
+
             console.log('[ServiceManager] LangChainMemoryService loaded successfully');
             this.emit('memoryServiceLoaded', this.langChainMemoryService);
-            
+
             return this.langChainMemoryService;
         } catch (error) {
             console.error('[ServiceManager] Failed to load LangChainMemoryService:', error);
@@ -144,10 +144,10 @@ export class ServiceManager extends EventEmitter {
         }
 
         this.isLoadingCindyAgent = true;
-        
+
         try {
             console.log('[ServiceManager] Dynamically loading ThinkingCindyAgent...');
-            
+
             if (!this.llmProvider) {
                 throw new Error('LLM provider required for Cindy agent initialization');
             }
@@ -155,14 +155,14 @@ export class ServiceManager extends EventEmitter {
             if (!this.settingsService) {
                 throw new Error('Settings service required for Cindy agent initialization');
             }
-            
+
             // Load dependencies
             const memoryService = await this.getMemoryService();
             const toolExecutorService = await this.getToolExecutorService(duckdbVectorStore);
-            
+
             // Dynamic import to avoid loading at startup - using new ThinkingCindyAgent
             const { ThinkingCindyAgent } = await import('../agents/ThinkingCindyAgent');
-            
+
             // Get agent config from settings
             const agentConfig = await this.settingsService.get('general') || {};
 
@@ -177,10 +177,10 @@ export class ServiceManager extends EventEmitter {
                 },
                 llmRouter: this.llmProvider
             });
-            
+
             console.log('[ServiceManager] ThinkingCindyAgent loaded successfully');
             this.emit('cindyAgentLoaded', this.langChainCindyAgent);
-            
+
             return this.langChainCindyAgent;
         } catch (error) {
             console.error('[ServiceManager] Failed to load LangChainCindyAgent:', error);
@@ -225,31 +225,31 @@ export class ServiceManager extends EventEmitter {
      */
     async cleanup(): Promise<void> {
         console.log('[ServiceManager] Cleaning up loaded services...');
-        
+
         try {
             // Clean up each service if it has cleanup methods
             if (this.langChainCindyAgent && typeof this.langChainCindyAgent.cleanup === 'function') {
                 await this.langChainCindyAgent.cleanup();
             }
-            
+
             if (this.langChainMemoryService && typeof this.langChainMemoryService.cleanup === 'function') {
                 await this.langChainMemoryService.cleanup();
             }
-            
+
             if (this.langChainToolExecutorService && typeof this.langChainToolExecutorService.cleanup === 'function') {
                 await this.langChainToolExecutorService.cleanup();
             }
-            
+
             // Vector store cleanup handled by DuckDBVectorStore in main.ts
         } catch (error) {
             console.error('[ServiceManager] Error during cleanup:', error);
         }
-        
+
         // Reset all references
         this.langChainCindyAgent = null;
         this.langChainMemoryService = null;
         this.langChainToolExecutorService = null;
-        
+
         console.log('[ServiceManager] Cleanup complete');
     }
 }
