@@ -7,7 +7,7 @@ import { z } from 'zod';
 // import { LangChainVectorStoreService } from './LangChainVectorStoreService'; // Removed - using DuckDBVectorStore instead
 import * as fs from 'fs';
 import * as path from 'path';
-import axios from 'axios';
+// import axios from 'axios'; // Removed - unused
 
 interface ToolResult {
     success: boolean;
@@ -25,11 +25,10 @@ interface ToolDefinition {
 
 export class LangChainToolExecutorService extends EventEmitter {
     private tools: Map<string, ToolDefinition> = new Map();
-    private vectorStore?: any; // DuckDBVectorStore instance passed from main
 
-    constructor(vectorStore?: any) {
+    constructor(_vectorStore?: any) {
         super();
-        this.vectorStore = vectorStore;
+        // vectorStore parameter kept for compatibility but not used in this implementation
         // Don't call async initialization in constructor
         console.log('[LangChainToolExecutorService] Created, awaiting initialization');
     }
@@ -363,48 +362,6 @@ export class LangChainToolExecutorService extends EventEmitter {
         };
     }
 
-    private createWebSearchTool(): any {
-        return new DynamicStructuredTool({
-            name: 'web_search',
-            description: 'Search the web for current information',
-            schema: z.object({
-                query: z.string().describe('Search query'),
-                num_results: z.number().optional().describe('Number of results to return (max 5)')
-            }),
-            func: async (params: any) => {
-                const { query, num_results = 3 } = params;
-                try {
-                    console.log(`[WebSearchTool] Searching for: ${query}`);
-                    
-                    // Use DuckDuckGo search API (no API key required)
-                    const searchUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
-                    const response = await axios.get(searchUrl, { timeout: 10000 });
-                    
-                    if (response.data && response.data.AbstractText) {
-                        const result = {
-                            query: query,
-                            answer: response.data.AbstractText,
-                            source: response.data.AbstractURL || 'DuckDuckGo',
-                            related_topics: response.data.RelatedTopics?.slice(0, num_results).map((topic: any) => ({
-                                text: topic.Text,
-                                url: topic.FirstURL
-                            })) || []
-                        };
-                        
-                        console.log(`[WebSearchTool] Found answer for "${query}"`);
-                        return JSON.stringify(result, null, 2);
-                    }
-                    
-                    // Fallback to explaining search limitations
-                    return `I searched for "${query}" but couldn't find specific current information. Here's what I can tell you based on my training data up to April 2024, and I recommend checking recent sources for the most up-to-date information.`;
-                    
-                } catch (error) {
-                    console.error(`[WebSearchTool] Error searching for "${query}":`, error);
-                    return `I encountered an error while searching for "${query}". I can provide information based on my training data up to April 2024, but for the most current information, I recommend checking recent online sources directly.`;
-                }
-            }
-        });
-    }
 }
 
 export { ToolResult, ToolDefinition };

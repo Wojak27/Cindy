@@ -109,7 +109,7 @@ export const persistenceMiddleware = () => (next: any) => async (action: any) =>
                 llm: action.payload.llm || {
                     provider: 'ollama',
                     ollama: {
-                        model: 'qwen3:8b',
+                        model: 'qwen3:1.7b',
                         baseUrl: 'http://127.0.0.1:11434',
                         temperature: 0.7
                     },
@@ -153,7 +153,7 @@ export const persistenceMiddleware = () => (next: any) => async (action: any) =>
                 },
                 database: {
                     path: action.payload.database?.path || '',
-                    embeddingModel: action.payload.database?.embeddingModel || 'qwen3:8b',
+                    embeddingModel: action.payload.database?.embeddingModel || 'qwen3:1.7b',
                     chunkSize: action.payload.database?.chunkSize || 1000,
                     chunkOverlap: action.payload.database?.chunkOverlap || 200,
                     autoIndex: action.payload.database?.autoIndex || true,
@@ -198,7 +198,7 @@ export const persistenceMiddleware = () => (next: any) => async (action: any) =>
                 console.log('🔧 DEBUG: Settings saved successfully using atomic method');
             } catch (newMethodError) {
                 console.log('🔧 DEBUG: Falling back to individual IPC calls');
-                
+
                 // Fallback: Update settings in individual sections (old method)
                 await invokeWithRetry('settings-set', 'general', transformedForService.general);
                 await invokeWithRetry('settings-set', 'voice', transformedForService.voice);
@@ -256,9 +256,9 @@ export const persistenceMiddleware = () => (next: any) => async (action: any) =>
                                 conversationId: messageData.conversationId || 'default',
                                 role: messageData.role,
                                 content: messageData.content,
-                                timestamp: messageData.timestamp ? 
-                                    (typeof messageData.timestamp === 'string' ? 
-                                        new Date(messageData.timestamp).getTime() : 
+                                timestamp: messageData.timestamp ?
+                                    (typeof messageData.timestamp === 'string' ?
+                                        new Date(messageData.timestamp).getTime() :
                                         messageData.timestamp
                                     ) : Date.now()
                             });
@@ -276,9 +276,9 @@ export const persistenceMiddleware = () => (next: any) => async (action: any) =>
                                 const failedMessages = JSON.parse(localStorage.getItem('voice-assistant-failed-messages') || '[]');
                                 failedMessages.push({
                                     ...messageData,
-                                    timestamp: messageData.timestamp ? 
-                                        (typeof messageData.timestamp === 'string' ? 
-                                            new Date(messageData.timestamp).getTime() : 
+                                    timestamp: messageData.timestamp ?
+                                        (typeof messageData.timestamp === 'string' ?
+                                            new Date(messageData.timestamp).getTime() :
                                             messageData.timestamp
                                         ) : Date.now(),
                                     failedAt: Date.now(),
@@ -341,7 +341,7 @@ const getDefaultSettings = () => ({
     llm: {
         provider: 'ollama',
         ollama: {
-            model: 'qwen3:8b',
+            model: 'qwen3:1.7b',
             baseUrl: 'http://127.0.0.1:11434',
             temperature: 0.7
         },
@@ -442,7 +442,7 @@ export const loadInitialSettings = async () => {
             llm: {
                 provider: settings.llm?.provider || 'ollama',
                 ollama: {
-                    model: settings.llm?.ollama?.model || 'qwen3:8b',
+                    model: settings.llm?.ollama?.model || 'qwen3:1.7b',
                     baseUrl: settings.llm?.ollama?.baseUrl || 'http://127.0.0.1:11434',
                     temperature: settings.llm?.ollama?.temperature || 0.7
                 },
@@ -461,7 +461,7 @@ export const loadInitialSettings = async () => {
             // Database settings mapping
             database: {
                 path: settings.database?.path || '',
-                embeddingModel: settings.database?.embeddingModel || 'qwen3:8b',
+                embeddingModel: settings.database?.embeddingModel || 'qwen3:1.7b',
                 chunkSize: settings.database?.chunkSize || 1000,
                 chunkOverlap: settings.database?.chunkOverlap || 200,
                 autoIndex: settings.database?.autoIndex || true,

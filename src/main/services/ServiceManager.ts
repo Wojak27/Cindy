@@ -146,7 +146,7 @@ export class ServiceManager extends EventEmitter {
         this.isLoadingCindyAgent = true;
         
         try {
-            console.log('[ServiceManager] Dynamically loading LangChainCindyAgent...');
+            console.log('[ServiceManager] Dynamically loading ThinkingCindyAgent...');
             
             if (!this.llmProvider) {
                 throw new Error('LLM provider required for Cindy agent initialization');
@@ -160,14 +160,14 @@ export class ServiceManager extends EventEmitter {
             const memoryService = await this.getMemoryService();
             const toolExecutorService = await this.getToolExecutorService(duckdbVectorStore);
             
-            // Dynamic import to avoid loading at startup
-            const { LangChainCindyAgent } = await import('../agents/LangChainCindyAgent');
+            // Dynamic import to avoid loading at startup - using new ThinkingCindyAgent
+            const { ThinkingCindyAgent } = await import('../agents/ThinkingCindyAgent');
             
             // Get agent config from settings
             const agentConfig = await this.settingsService.get('general') || {};
 
-            // Initialize LangChain agent with LangChain services
-            this.langChainCindyAgent = new LangChainCindyAgent({
+            // Initialize thinking agent with enhanced capabilities
+            this.langChainCindyAgent = new ThinkingCindyAgent({
                 store: {},
                 memoryService: memoryService,
                 toolExecutor: toolExecutorService,
@@ -178,7 +178,7 @@ export class ServiceManager extends EventEmitter {
                 llmRouter: this.llmProvider
             });
             
-            console.log('[ServiceManager] LangChainCindyAgent loaded successfully');
+            console.log('[ServiceManager] ThinkingCindyAgent loaded successfully');
             this.emit('cindyAgentLoaded', this.langChainCindyAgent);
             
             return this.langChainCindyAgent;

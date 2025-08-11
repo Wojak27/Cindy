@@ -36,14 +36,14 @@ const ModelPicker: React.FC<ModelPickerProps> = ({
                     // Fallback to default models if response is invalid
                     setModels(provider === 'openai'
                         ? ['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo']
-                        : ['qwen3:8b', 'mistral', 'codellama']);
+                        : ['qwen3:1.7b', 'mistral', 'codellama']);
                 }
             } catch (err) {
                 console.error('Failed to load models:', err);
                 // Fallback to default models on error
                 setModels(provider === 'openai'
                     ? ['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo']
-                    : ['qwen3:8b', 'mistral', 'codellama']);
+                    : ['qwen3:1.7b', 'mistral', 'codellama']);
             } finally {
                 setLoading(false);
             }

@@ -7,6 +7,8 @@ import ToolBlock from './components/ToolBlock';
 import ContentProcessor from './utils/contentProcessor';
 import { renderTextWithLinks, hasLinks } from './utils/linkParser';
 import { renderMarkdown, hasMarkdown } from './utils/markdownRenderer';
+import { renderTextWithColoredHashtags, hasHashtags } from './utils/hashtagRenderer';
+import HashtagManager from './components/HashtagManager';
 // SoundReactiveCircle was imported but not used in the component
 // The component now uses SoundReactiveBlob instead
 import SoundReactiveBlob from './components/SoundReactiveBlob';
@@ -35,6 +37,7 @@ import {
     Storage as DatabaseIcon,
     Refresh as RetryIcon,
     PlayArrow as PlayIcon,
+    Stop as StopIcon,
     ContentCopy as CopyIcon
 } from '@mui/icons-material';
 
@@ -54,6 +57,10 @@ const App: React.FC = () => {
     const [currentConversationId, setCurrentConversationId] = useState<string | undefined>(undefined);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [isAppLoading, setIsAppLoading] = useState(true);
+    const [isTTSPlaying, setIsTTSPlaying] = useState(false);
+    const [currentTTSMessage, setCurrentTTSMessage] = useState<string | null>(null);
+    const [isInputExpanded, setIsInputExpanded] = useState(false);
+    const [activeHashtags, setActiveHashtags] = useState<string[]>([]);
     const audioContext = useRef<AudioContext | null>(null);
     const sounds = useRef<Record<string, AudioBuffer>>({});
     const streamController = useRef<AbortController | null>(null);
@@ -295,11 +302,22 @@ const App: React.FC = () => {
                         const chatID = currentConversationId || getNewConversationId();
                         // Handle the transcribed text by sending it as a message
                         if (transcript.trim()) {
+                            // Combine transcript with active hashtags
+                            let messageContent = transcript;
+                            if (activeHashtags.length > 0) {
+                                const hashtagsToAdd = activeHashtags.filter(tag =>
+                                    !messageContent.toLowerCase().includes(tag.toLowerCase())
+                                );
+                                if (hashtagsToAdd.length > 0) {
+                                    messageContent = hashtagsToAdd.join(' ') + ' ' + messageContent;
+                                }
+                            }
+
                             // Add user message to store with unique ID
                             const userMessage = {
                                 id: `user-${Date.now()}`,
                                 role: 'user',
-                                content: transcript,
+                                content: messageContent,
                                 timestamp: Date.now(),
                                 conversationId: chatID
                             };
@@ -317,6 +335,7 @@ const App: React.FC = () => {
                             dispatch({ type: 'ADD_MESSAGE', payload: assistantMessage });
                             dispatch({ type: 'START_THINKING' });
                             setInputValue(''); // Clear input field after sending
+                            setActiveHashtags([]); // Clear hashtags after sending
 
                             try {
                                 // Process message through agent with conversation ID
@@ -422,15 +441,29 @@ const App: React.FC = () => {
         if (inputValue.trim()) {
             // Only play recording activation sound, no other sound effects
             const convID = currentConversationId || getNewConversationId();
+
+            // Combine input with active hashtags
+            let messageContent = inputValue;
+            if (activeHashtags.length > 0) {
+                // Add hashtags to message if they're not already in the text
+                const hashtagsToAdd = activeHashtags.filter(tag =>
+                    !messageContent.toLowerCase().includes(tag.toLowerCase())
+                );
+                if (hashtagsToAdd.length > 0) {
+                    messageContent = hashtagsToAdd.join(' ') + ' ' + messageContent;
+                }
+            }
+
             // Add user message to store with unique ID
             const userMessage = {
                 id: `user-${Date.now()}`,
                 role: 'user',
-                content: inputValue,
+                content: messageContent,
                 timestamp: Date.now(),
                 conversationId: convID
             };
             setInputValue('');
+            setActiveHashtags([]); // Clear hashtags after sending
             dispatch({ type: 'ADD_MESSAGE', payload: userMessage });
 
             // Create assistant message placeholder for streaming
@@ -671,22 +704,56 @@ const App: React.FC = () => {
         };
     }, [currentConversationId, dispatch]);
 
-    // Handle input change
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setInputValue(e.target.value);
+    // Handle input change with auto-resize
+    const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const value = e.target.value;
+        setInputValue(value);
+        setIsInputExpanded(value.length > 0 || e.target === document.activeElement);
+
+        // Auto-resize textarea
+        const textarea = e.target;
+        textarea.style.height = 'auto';
+        textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
     };
 
-    // Handle key press (Enter to send)
-    const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'Enter') {
+    // Handle key press (Enter to send, Shift+Enter for new line)
+    const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
             handleSendClick();
+        }
+    };
+
+    // Handle input focus/blur
+    const handleInputFocus = (e: React.FocusEvent<HTMLTextAreaElement>) => {
+        setIsInputExpanded(true);
+        // Auto-resize on focus
+        const textarea = e.target;
+        textarea.style.height = 'auto';
+        textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
+    };
+
+    const handleInputBlur = (e: React.FocusEvent<HTMLTextAreaElement>) => {
+        setIsInputExpanded(inputValue.length > 0);
+        // Reset height if empty
+        if (!inputValue.trim()) {
+            e.target.style.height = '48px';
         }
     };
 
     // TTS Functions
     const handlePlayMessage = async (messageContent: string) => {
         console.log('🔊 handlePlayMessage called with content:', messageContent.substring(0, 50) + '...');
+
+        // Prevent multiple simultaneous TTS playback
+        if (isTTSPlaying) {
+            console.log('TTS already playing, ignoring request');
+            return;
+        }
+
         try {
+            setIsTTSPlaying(true);
+            setCurrentTTSMessage(messageContent);
             console.log('Playing message with TTS:', messageContent.substring(0, 50) + '...');
             const result = await ipcRenderer.invoke('tts-synthesize-and-play', messageContent);
 
@@ -696,6 +763,23 @@ const App: React.FC = () => {
             }
         } catch (error) {
             console.error('Error playing message:', error);
+        } finally {
+            setIsTTSPlaying(false);
+            setCurrentTTSMessage(null);
+        }
+    };
+
+    const handleStopTTS = async () => {
+        console.log('🛑 handleStopTTS called');
+        try {
+            await ipcRenderer.invoke('tts-stop');
+            setIsTTSPlaying(false);
+            setCurrentTTSMessage(null);
+        } catch (error) {
+            console.error('Error stopping TTS:', error);
+            // Force reset state even if IPC fails
+            setIsTTSPlaying(false);
+            setCurrentTTSMessage(null);
         }
     };
 
@@ -706,12 +790,16 @@ const App: React.FC = () => {
             // Optionally show success notification
         } catch (error) {
             console.error('Failed to copy message:', error);
-            // Fallback for older browsers
+            // Fallback for older browsers  
             const textArea = document.createElement('textarea');
             textArea.value = messageContent;
             document.body.appendChild(textArea);
             textArea.select();
-            document.execCommand('copy');
+            try {
+                document.execCommand('copy');
+            } catch (e) {
+                console.warn('Copy fallback failed:', e);
+            }
             document.body.removeChild(textArea);
             console.log('Message copied to clipboard (fallback)');
         }
@@ -753,7 +841,7 @@ const App: React.FC = () => {
                     alignItems: 'center',
                     backgroundColor: 'var(--background)'
                 }}>
-                    <div style={{ position: "relative", width: "200px", height: "200px" }}>
+                    <div style={{ position: "relative", width: "280px", height: "280px" }}>
                         <SoundReactiveBlob isActive={true} />
                     </div>
                 </div>
@@ -866,9 +954,9 @@ const App: React.FC = () => {
                             >
                                 {/* Show sound reactive circle when no messages and no current input */}
                                 {messages.length === 0 && (
-                                    <div style={{ display: 'flex', justifyContent: 'center', flexDirection: "column", alignItems: 'center', height: '100%' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'center', flexDirection: "column", alignItems: 'center', height: '100%', gap: '32px' }}>
                                         <div>
-                                            <div style={{ position: "relative", width: "200px", height: "200px" }}>
+                                            <div style={{ position: "relative", width: "280px", height: "280px" }}>
                                                 <SoundReactiveBlob isActive={true} />
                                             </div>
                                         </div>
@@ -876,14 +964,87 @@ const App: React.FC = () => {
                                             {settings?.profile?.name && shouldShowWelcome(settings.profile.name, settings.profile.hasCompletedSetup) ? (
                                                 <div>
                                                     <h2 style={{ marginBottom: '10px' }}>Welcome!</h2>
-                                                    <p style={{ fontSize: '16px', lineHeight: '1.5', color: 'var(--text-secondary)' }}>
+                                                    <p style={{ fontSize: '16px', lineHeight: '1.5', color: 'var(--text-secondary)', marginBottom: '32px' }}>
                                                         {welcomeMessage}
                                                     </p>
                                                 </div>
                                             ) : (
-                                                <h2>{personalizedGreeting}</h2>
+                                                <h2 style={{ marginBottom: '32px' }}>{personalizedGreeting}</h2>
                                             )}
 
+                                            {/* Input area when no messages */}
+                                            <div className={`welcome-input-area ${isInputExpanded ? 'expanded' : ''}`}>
+                                                {/* Hashtag Manager */}
+                                                <HashtagManager
+                                                    inputValue={inputValue}
+                                                    onHashtagsChange={setActiveHashtags}
+                                                />
+
+                                                <div className="welcome-input-row">
+                                                    <textarea
+                                                        value={inputValue}
+                                                        onChange={handleInputChange}
+                                                        onKeyDown={handleKeyPress}
+                                                        onFocus={handleInputFocus}
+                                                        onBlur={handleInputBlur}
+                                                        placeholder="Type your message (try #search, #read, #write)... Press Shift+Enter for new line"
+                                                        disabled={isRecording}
+                                                        className={`message-input ${inputValue.length > 0 ? 'has-content' : ''}`}
+                                                        style={{
+                                                            flex: 1,
+                                                            marginRight: '12px',
+                                                            fontFamily: 'inherit',
+                                                            resize: 'none',
+                                                            minHeight: '60px',
+                                                            maxHeight: '200px',
+                                                            overflow: 'hidden',
+                                                            wordWrap: 'break-word',
+                                                            whiteSpace: 'pre-wrap',
+                                                            fontSize: '16px',
+                                                            padding: '12px 16px'
+                                                        }}
+                                                    />
+                                                    <IconButton
+                                                        className="send-button"
+                                                        onClick={handleSendClick}
+                                                        aria-label="Send message"
+                                                        size="large"
+                                                        disabled={!inputValue.trim() || isRecording}
+                                                        sx={{
+                                                            width: '52px',
+                                                            height: '52px',
+                                                            backgroundColor: '#007ACC',
+                                                            color: 'white',
+                                                            '&:hover': {
+                                                                backgroundColor: '#005A9E'
+                                                            }
+                                                        }}
+                                                    >
+                                                        <SendIcon fontSize="medium" />
+                                                    </IconButton>
+                                                </div>
+                                                <div className="mic-button-container" style={{ marginTop: '12px' }}>
+                                                    <div className={`mic-button-wrapper ${isRecording ? 'is-recording' : ''} ${!isRecording ? 'is-listening' : ''}`}>
+                                                        <IconButton
+                                                            className="mic-button"
+                                                            onClick={handleMicClick}
+                                                            aria-label={isRecording ? "Stop recording" : "Start recording"}
+                                                            size="large"
+                                                            sx={{
+                                                                width: '64px',
+                                                                height: '64px',
+                                                                backgroundColor: isRecording ? '#dc3545' : '#28a745',
+                                                                color: 'white',
+                                                                '&:hover': {
+                                                                    backgroundColor: isRecording ? '#c82333' : '#218838'
+                                                                }
+                                                            }}
+                                                        >
+                                                            <MicIcon fontSize="large" />
+                                                        </IconButton>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 )}
@@ -1024,8 +1185,11 @@ const App: React.FC = () => {
                                                     ) : msg.hasCodeBlocks ? (
                                                         <div dangerouslySetInnerHTML={{ __html: msg.content || '' }} />
                                                     ) : (
-                                                        // Enhanced rendering for AI messages with markdown and link support
-                                                        msg.role === 'assistant' && msg.content && hasMarkdown(msg.content) ? (
+                                                        // Enhanced rendering for user and AI messages with hashtag, markdown and link support
+                                                        msg.content && hasHashtags(msg.content) ? (
+                                                            // Render hashtags with colored oval styling
+                                                            renderTextWithColoredHashtags(msg.content)
+                                                        ) : msg.role === 'assistant' && msg.content && hasMarkdown(msg.content) ? (
                                                             // Full markdown rendering with link previews for AI responses
                                                             renderMarkdown(msg.content)
                                                         ) : msg.content && hasLinks(msg.content) ? (
@@ -1043,7 +1207,7 @@ const App: React.FC = () => {
                                                         </div>
                                                     )}
 
-                                                    {/* Play and Copy buttons for assistant messages */}
+                                                    {/* Play/Stop and Copy buttons for assistant messages */}
                                                     {msg.role === 'assistant' && msg.content && !msg.isStreaming && !msg.failed && (
                                                         <div className="message-actions" style={{
                                                             marginTop: '8px',
@@ -1053,18 +1217,37 @@ const App: React.FC = () => {
                                                             opacity: 0.7,
                                                             fontSize: '12px'
                                                         }}>
-                                                            <IconButton
-                                                                onClick={() => handlePlayMessage(msg.content)}
-                                                                size="small"
-                                                                title="Play message with text-to-speech"
-                                                                style={{
-                                                                    padding: '4px',
-                                                                    backgroundColor: 'rgba(0, 0, 0, 0.05)',
-                                                                    borderRadius: '4px'
-                                                                }}
-                                                            >
-                                                                <PlayIcon fontSize="small" />
-                                                            </IconButton>
+                                                            {/* Show Stop button if TTS is playing this message, otherwise show Play button */}
+                                                            {isTTSPlaying && currentTTSMessage === msg.content ? (
+                                                                <IconButton
+                                                                    onClick={handleStopTTS}
+                                                                    size="small"
+                                                                    title="Stop text-to-speech playback"
+                                                                    style={{
+                                                                        padding: '4px',
+                                                                        backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                                                                        borderRadius: '4px',
+                                                                        color: '#dc3545'
+                                                                    }}
+                                                                >
+                                                                    <StopIcon fontSize="small" />
+                                                                </IconButton>
+                                                            ) : (
+                                                                <IconButton
+                                                                    onClick={() => handlePlayMessage(msg.content)}
+                                                                    size="small"
+                                                                    title="Play message with text-to-speech"
+                                                                    disabled={isTTSPlaying}
+                                                                    style={{
+                                                                        padding: '4px',
+                                                                        backgroundColor: isTTSPlaying ? 'rgba(0, 0, 0, 0.02)' : 'rgba(0, 0, 0, 0.05)',
+                                                                        borderRadius: '4px',
+                                                                        opacity: isTTSPlaying ? 0.5 : 1
+                                                                    }}
+                                                                >
+                                                                    <PlayIcon fontSize="small" />
+                                                                </IconButton>
+                                                            )}
                                                             <IconButton
                                                                 onClick={() => handleCopyMessage(msg.content)}
                                                                 size="small"
@@ -1088,38 +1271,78 @@ const App: React.FC = () => {
                         </div>
 
 
-                        <div className="input-area">
-                            <input
-                                type="text"
-                                placeholder="Type your message..."
-                                className="message-input"
-                                value={inputValue}
-                                onChange={handleInputChange}
-                                onKeyDown={handleKeyPress}
-                                disabled={isRecording}
-                            />
-                            <div className="button-group">
-                                <div className={`mic-button-wrapper ${isRecording ? 'is-recording' : ''} ${!isRecording ? 'is-listening' : ''}`}>
+                        {/* Only show input area at bottom when there are messages */}
+                        {messages.length > 0 && (
+                            <div className="input-area" style={{ alignItems: "center" }}>
+                                {/* Hashtag Manager */}
+                                <HashtagManager
+                                    inputValue={inputValue}
+                                    onHashtagsChange={setActiveHashtags}
+                                />
+
+                                <textarea
+                                    placeholder="Type your message... Press Shift+Enter for new line"
+                                    className="message-input"
+                                    value={inputValue}
+                                    onChange={handleInputChange}
+                                    onKeyDown={handleKeyPress}
+                                    onFocus={handleInputFocus}
+                                    onBlur={handleInputBlur}
+                                    disabled={isRecording}
+                                    style={{
+                                        fontFamily: 'inherit',
+                                        resize: 'none',
+                                        minHeight: '60px',
+                                        maxHeight: '200px',
+                                        width: "400px",
+                                        overflow: 'hidden',
+                                        wordWrap: 'break-word',
+                                        whiteSpace: 'pre-wrap',
+                                        fontSize: '16px',
+                                        padding: '12px 16px'
+                                    }}
+                                />
+                                <div className="button-group">
+                                    <div className={`mic-button-wrapper ${isRecording ? 'is-recording' : ''} ${!isRecording ? 'is-listening' : ''}`}>
+                                        <IconButton
+                                            className="mic-button"
+                                            onClick={handleMicClick}
+                                            aria-label={isRecording ? "Stop recording" : "Start recording"}
+                                            size="large"
+                                            sx={{
+                                                width: '48px',
+                                                height: '48px',
+                                                backgroundColor: isRecording ? '#dc3545' : '#28a745',
+                                                color: 'white',
+                                                '&:hover': {
+                                                    backgroundColor: isRecording ? '#c82333' : '#218838'
+                                                }
+                                            }}
+                                        >
+                                            <MicIcon fontSize="medium" />
+                                        </IconButton>
+                                    </div>
                                     <IconButton
-                                        className="mic-button"
-                                        onClick={handleMicClick}
-                                        aria-label={isRecording ? "Stop recording" : "Start recording"}
-                                        size="small"
+                                        className="send-button"
+                                        onClick={handleSendClick}
+                                        aria-label="Send message"
+                                        size="large"
+                                        disabled={!inputValue.trim() || isRecording}
+                                        sx={{
+                                            width: '48px',
+                                            height: '48px',
+                                            backgroundColor: '#007ACC',
+                                            color: 'white',
+                                            '&:hover': {
+                                                backgroundColor: '#005A9E'
+                                            }
+                                        }}
                                     >
-                                        <MicIcon fontSize="small" />
+                                        <SendIcon fontSize="medium" />
                                     </IconButton>
                                 </div>
-                                <IconButton
-                                    className="send-button"
-                                    onClick={handleSendClick}
-                                    aria-label="Send message"
-                                    size="small"
-                                    disabled={!inputValue.trim() || isRecording}
-                                >
-                                    <SendIcon fontSize="small" />
-                                </IconButton>
                             </div>
-                        </div>
+                        )}
                     </div>
 
 

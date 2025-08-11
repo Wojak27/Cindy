@@ -461,6 +461,7 @@ const setupTTSIPC = () => {
     const handlersToRemove = [
         'tts-synthesize',
         'tts-synthesize-and-play',
+        'tts-stop',
         'tts-get-options',
         'tts-update-options',
         'tts-is-ready',
@@ -531,7 +532,7 @@ const setupTTSIPC = () => {
             }
 
             const result = await textToSpeechService.synthesizeAndPlay(text);
-            console.log('Main process - tts-synthesize-and-play result:', result.success ? 'success' : result.error);
+            console.log('Main process - tts-synthesize-and-play result:', result.success ? 'SUCCESS' : `FAILED: ${result.error}`);
             return result;
         } catch (error) {
             console.error('Main process - tts-synthesize-and-play error:', error);
@@ -584,6 +585,22 @@ const setupTTSIPC = () => {
             };
         } catch (error) {
             console.error('Main process - tts-is-ready error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // Stop current TTS playback
+    ipcMain.handle('tts-stop', async () => {
+        console.log('Main process - tts-stop IPC called');
+        try {
+            if (!textToSpeechService) {
+                return { success: false, error: 'TextToSpeechService not available' };
+            }
+            
+            await textToSpeechService.stopPlayback();
+            return { success: true };
+        } catch (error) {
+            console.error('Main process - tts-stop error:', error);
             return { success: false, error: error.message };
         }
     });

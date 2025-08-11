@@ -109,7 +109,7 @@ class SettingsService extends EventEmitter {
 
         try {
             console.log('Starting SettingsService initialization with electron-store');
-            
+
             // Use dynamic import for electron-store with eval to prevent ts-node interference
             let Store;
             try {
@@ -122,7 +122,7 @@ class SettingsService extends EventEmitter {
                 console.error('Failed to dynamically import electron-store:', importError);
                 throw new Error('Unable to load electron-store module');
             }
-            
+
             // Initialize electron-store with schema and migrations
             this.store = new Store({
                 name: 'cindy-settings',
@@ -131,7 +131,7 @@ class SettingsService extends EventEmitter {
                 fileExtension: 'json',
                 serialize: (value: any) => JSON.stringify(value, null, 2)
             });
-            
+
             console.log('Store path:', (this.store as any).path);
 
             // Load settings from electron-store
@@ -224,7 +224,7 @@ class SettingsService extends EventEmitter {
                 console.warn('Store not initialized, skipping save');
                 return;
             }
-            
+
             console.log('SettingsService.save() - Starting save process with electron-store');
             console.log('SettingsService.save() - Store path:', (this.store as any).path);
             console.log('SettingsService.save() - Settings object keys:', Object.keys(this.settings));
@@ -247,7 +247,7 @@ class SettingsService extends EventEmitter {
         if (!this.isInitialized) {
             await this.initialize();
         }
-        
+
         this.settings = this.getDefaultSettings();
         if (this.store) {
             (this.store as any).clear();
@@ -297,7 +297,7 @@ class SettingsService extends EventEmitter {
                     maxTokens: 1500
                 },
                 ollama: {
-                    model: 'qwen3:8b',
+                    model: 'qwen3:1.7b',
                     baseUrl: 'http://127.0.0.1:11434',
                     temperature: 0.7
                 }
@@ -334,7 +334,7 @@ class SettingsService extends EventEmitter {
 
             database: {
                 path: '',
-                embeddingModel: 'qwen3:8b',
+                embeddingModel: 'qwen3:1.7b',
                 chunkSize: 1000,
                 chunkOverlap: 200,
                 autoIndex: true,

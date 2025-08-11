@@ -14,6 +14,9 @@ export default function SoundReactiveBlob({ isActive }: Props) {
     /* ─────────────────────────── Refs & state ────────────────────────── */
     const svgRef = useRef<SVGSVGElement>(null);
     const pathRef = useRef<SVGPathElement>(null);
+    const gradientRef = useRef<SVGRadialGradientElement>(null);
+    const innerLightRef = useRef<SVGStopElement>(null);
+    const outerLightRef = useRef<SVGStopElement>(null);
     const animationRef = useRef<number | null>(null);
 
     const analyserRef = useRef<AnalyserNode | null>(null);
@@ -168,12 +171,33 @@ export default function SoundReactiveBlob({ isActive }: Props) {
             const finalSat = Math.min(100, saturation + rms * 15);
             const finalLight = Math.max(40, lightness - rms * 10);
 
-            // Add subtle color variations for depth
-            const fillColor = `hsl(${finalHue} ${finalSat}% ${finalLight}% / ${0.85 + rms * 0.15})`;
-            const strokeColor = `hsl(${(finalHue + 20) % 360} ${Math.min(100, finalSat + 10)}% ${Math.max(30, finalLight - 20)}% / 0.8)`;
-
-            pathRef.current.setAttribute('fill', fillColor);
-            pathRef.current.setAttribute('stroke', strokeColor);
+            // Create audio-reactive inner lighting colors
+            const innerLightIntensity = 0.6 + rms * 0.8; // Base + audio boost
+            const outerLightIntensity = 0.2 + rms * 0.4;
+            
+            // Inner light - brighter, more saturated center
+            const innerHue = (finalHue + 10) % 360;
+            const innerLight = Math.min(85, finalLight + 25 + rms * 20);
+            const innerSat = Math.min(100, finalSat + 15);
+            const innerColor = `hsl(${innerHue} ${innerSat}% ${innerLight}% / ${innerLightIntensity})`;
+            
+            // Outer edge - darker, less saturated
+            const outerHue = (finalHue - 10 + 360) % 360;
+            const outerLight = Math.max(20, finalLight - 15);
+            const outerSat = Math.max(40, finalSat - 20);
+            const outerColor = `hsl(${outerHue} ${outerSat}% ${outerLight}% / ${outerLightIntensity})`;
+            
+            // Update gradient stops for inner lighting effect
+            if (innerLightRef.current && outerLightRef.current) {
+                innerLightRef.current.setAttribute('stop-color', innerColor);
+                outerLightRef.current.setAttribute('stop-color', outerColor);
+            }
+            
+            // Subtle stroke for definition
+            const strokeColor = `hsl(${(finalHue + 30) % 360} ${Math.min(100, finalSat + 10)}% ${Math.max(25, finalLight - 25)}% / 0.6)`;
+            if (pathRef.current) {
+                pathRef.current.setAttribute('stroke', strokeColor);
+            }
 
             /* 4. loop */
             animationRef.current = requestAnimationFrame(animate);
@@ -212,14 +236,51 @@ export default function SoundReactiveBlob({ isActive }: Props) {
                 style={{
                     maxWidth: FALLBACK_SIDE,
                     maxHeight: FALLBACK_SIDE,
-                    filter: 'drop-shadow(0 0 10px rgba(0,0,0,.4))'
+                    filter: 'drop-shadow(0 0 15px rgba(0,0,0,.3))'
                 }}
             >
+                {/* Define gradient for inner lighting */}
+                <defs>
+                    <radialGradient
+                        ref={gradientRef}
+                        id={`blobGradient-${side}`}
+                        cx="50%" cy="50%" r="50%"
+                    >
+                        {/* Inner light - bright center */}
+                        <stop
+                            ref={innerLightRef}
+                            offset="0%"
+                            stopColor="hsl(240 90% 75% / 0.9)"
+                        />
+                        {/* Mid transition */}
+                        <stop
+                            offset="60%"
+                            stopColor="hsl(240 80% 55% / 0.7)"
+                        />
+                        {/* Outer edge - darker */}
+                        <stop
+                            ref={outerLightRef}
+                            offset="100%"
+                            stopColor="hsl(240 70% 35% / 0.4)"
+                        />
+                    </radialGradient>
+                    
+                    {/* Add glow effect filter */}
+                    <filter id={`blobGlow-${side}`} x="-50%" y="-50%" width="200%" height="200%">
+                        <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                        <feMerge> 
+                            <feMergeNode in="coloredBlur"/>
+                            <feMergeNode in="SourceGraphic"/>
+                        </feMerge>
+                    </filter>
+                </defs>
+                
                 <path
                     ref={pathRef}
-                    fill="hsl(240 90% 65% / 0.9)"
+                    fill={`url(#blobGradient-${side})`}
                     stroke="hsl(260 100% 45% / 0.8)"
-                    strokeWidth="2"
+                    strokeWidth="1.5"
+                    filter={`url(#blobGlow-${side})`}
                 />
             </svg>
         </div>

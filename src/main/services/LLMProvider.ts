@@ -642,7 +642,8 @@ export class LLMProvider extends EventEmitter {
                         'llama2:7b',
                         'mistral:7b',
                         'mixtral:8x7b',
-                        'qwen3:4b',
+                        'qwen3:1.7b',
+                        'dengcao/Qwen3-Embedding-0.6B:Q8_0',
                         'gemma:7b',
                         'phi:3.8b',
                     ];
@@ -736,7 +737,7 @@ export class LLMProvider extends EventEmitter {
         try {
             const modelWithTools = (this.model as any).bindTools(tools);
             console.log(`[LLMProvider] Successfully bound ${tools.length} tools to ${this.currentProvider} model`);
-            
+
             // Update our internal model reference to the bound model
             this.model = modelWithTools;
             return modelWithTools;

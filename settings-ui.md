@@ -239,7 +239,7 @@ class SettingsService extends EventEmitter {
           maxTokens: 1500
         },
         ollama: {
-          model: 'qwen3:8b',
+          model: 'qwen3:1.7b',
           baseUrl: 'http://localhost:11434',
           temperature: 0.7
         }
@@ -885,7 +885,7 @@ const ModelSettings: React.FC = () => {
             onChange={(e) => updateSettings.set('llm', { 
               ollama: { ...settings.llm.ollama, model: e.target.value } 
             })}
-            placeholder="Enter model name (e.g., qwen3:8b, mistral)"
+            placeholder="Enter model name (e.g., qwen3:1.7b, mistral)"
           />
         </div>
         

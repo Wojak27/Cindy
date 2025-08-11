@@ -76,7 +76,7 @@ const ModernDatabasePanel: React.FC = () => {
     // Database Settings State
     const [databasePath, setDatabasePath] = useState(settings?.database?.path || '');
     const [notesPath, setNotesPath] = useState(settings?.database?.notesPath || '');
-    const [embeddingModel, setEmbeddingModel] = useState(settings?.database?.embeddingModel || 'qwen3:8b');
+    const [embeddingModel, setEmbeddingModel] = useState(settings?.database?.embeddingModel || 'qwen3:1.7b');
     const [chunkSize, setChunkSize] = useState(settings?.database?.chunkSize || 1000);
     const [chunkOverlap, setChunkOverlap] = useState(settings?.database?.chunkOverlap || 200);
     const [autoIndex, setAutoIndex] = useState(settings?.database?.autoIndex || true);
@@ -192,7 +192,7 @@ const ModernDatabasePanel: React.FC = () => {
         if (settings?.database) {
             setDatabasePath(settings.database.path || '');
             setNotesPath(settings.database.notesPath || '');
-            setEmbeddingModel(settings.database.embeddingModel || 'qwen3:8b');
+            setEmbeddingModel(settings.database.embeddingModel || 'qwen3:1.7b');
             setChunkSize(settings.database.chunkSize || 1000);
             setChunkOverlap(settings.database.chunkOverlap || 200);
             setAutoIndex(settings.database.autoIndex ?? true);
@@ -372,8 +372,8 @@ const ModernDatabasePanel: React.FC = () => {
                                                 setHasUnsavedChanges(true);
                                             }}
                                         >
-                                            <MenuItem value="qwen3:4b">Qwen 3 4B</MenuItem>
-                                            <MenuItem value="llama3:8b">LLaMA 3 8B</MenuItem>
+                                            <MenuItem value="dengcao/Qwen3-Embedding-0.6B:Q8_0">Qwen 3 0.6B</MenuItem>
+                                            <MenuItem value="llama3:1.7b">Qwen 3 1.7b</MenuItem>
                                         </Select>
                                     </FormControl>
 

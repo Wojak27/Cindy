@@ -1,10 +1,8 @@
 import { EventEmitter } from 'events';
 // import { DynamicStructuredTool } from '@langchain/community/tools/dynamic'; // REMOVED - might be causing hanging
 // import { Tool } from '@langchain/core/tools'; // REMOVED - might be causing hanging
-import { z } from 'zod';
 import * as fs from 'fs';
-import * as path from 'path';
-import axios from 'axios';
+// Removed unused imports: z, path, axios
 
 interface ToolResult {
     success: boolean;

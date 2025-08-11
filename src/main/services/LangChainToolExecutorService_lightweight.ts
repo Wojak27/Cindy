@@ -90,6 +90,78 @@ export class LangChainToolExecutorService extends EventEmitter {
                 }
             });
 
+            // Simple directory listing tool
+            this.registerTool({
+                name: 'list_directory',
+                description: 'List contents of a directory',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        path: { type: 'string', description: 'Directory path to list' },
+                        show_hidden: { type: 'boolean', description: 'Show hidden files', default: false }
+                    },
+                    required: ['path']
+                },
+                func: async ({ path: dirPath, show_hidden = false }: any) => {
+                    try {
+                        if (!fs.existsSync(dirPath)) {
+                            return `Error: Directory not found: ${dirPath}`;
+                        }
+                        
+                        const stat = fs.statSync(dirPath);
+                        if (!stat.isDirectory()) {
+                            return `Error: Path is not a directory: ${dirPath}`;
+                        }
+                        
+                        const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+                        const items = entries
+                            .filter(entry => show_hidden || !entry.name.startsWith('.'))
+                            .map(entry => {
+                                const fullPath = path.join(dirPath, entry.name);
+                                const stat = fs.statSync(fullPath);
+                                return {
+                                    name: entry.name,
+                                    type: entry.isDirectory() ? 'directory' : 'file',
+                                    size: entry.isFile() ? stat.size : undefined,
+                                    modified: stat.mtime.toISOString()
+                                };
+                            });
+                        
+                        return `Directory: ${dirPath}\n` +
+                               `Items: ${items.length}\n\n` +
+                               items.map(item => 
+                                   `${item.type === 'directory' ? '📁' : '📄'} ${item.name}` +
+                                   (item.size ? ` (${item.size} bytes)` : '') +
+                                   ` - Modified: ${item.modified}`
+                               ).join('\n');
+                    } catch (error) {
+                        return `Error listing directory: ${(error as Error).message}`;
+                    }
+                }
+            });
+
+            // Simple web search tool (mock implementation for now)
+            this.registerTool({
+                name: 'web_search',
+                description: 'Search the web for information',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        query: { type: 'string', description: 'Search query' },
+                        num_results: { type: 'number', description: 'Number of results', default: 3 }
+                    },
+                    required: ['query']
+                },
+                func: async ({ query, num_results = 3 }: any) => {
+                    // Mock web search - in a real implementation, you'd call a search API
+                    return `Web search results for "${query}":\n\n` +
+                           `1. Search Result 1 - This is a mock search result\n` +
+                           `2. Search Result 2 - Another mock result\n` +
+                           `3. Search Result 3 - Third mock result\n\n` +
+                           `Note: This is a placeholder implementation. Real web search would require an API.`;
+                }
+            });
+
             // Simple vector search tool (if vector store available)
             if (this.vectorStore) {
                 this.registerTool({

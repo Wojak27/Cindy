@@ -1,0 +1,579 @@
+import { LLMProvider } from '../services/LLMProvider';
+import { LangChainMemoryService as MemoryService } from '../services/LangChainMemoryService';
+import { LangChainToolExecutorService as ToolExecutorService } from '../services/LangChainToolExecutorService';
+
+interface AgentContext {
+    conversationId: string;
+    userId?: string;
+    sessionId: string;
+    timestamp: Date;
+    preferences: any;
+}
+
+interface AgentOptions {
+    store: any;
+    memoryService: MemoryService;
+    toolExecutor: ToolExecutorService;
+    config: any;
+    llmRouter: LLMProvider;
+}
+
+interface ThinkingStep {
+    step: 'analyze' | 'think' | 'tool' | 'synthesize';
+    content: string;
+    timestamp: Date;
+}
+
+interface ToolIntent {
+    tool: string;
+    forced: boolean; // true if hashtag was used
+    parameters: any;
+    reasoning: string;
+}
+
+interface ThinkingPlan {
+    intent: string;
+    forcedTools: string[]; // tools forced by hashtags
+    suggestedTools: string[]; // tools suggested by analysis
+    reasoning: string;
+    steps: ToolIntent[];
+}
+
+export class ThinkingCindyAgent {
+    private memoryService: MemoryService;
+    private toolExecutor: ToolExecutorService;
+    private llmProvider: LLMProvider;
+    private thinkingSteps: ThinkingStep[] = [];
+
+    // Hashtag to tool mapping
+    private readonly hashtagToTool: Record<string, string> = {
+        '#search': 'search_documents',
+        '#read': 'read_file',
+        '#write': 'write_file',
+        '#list': 'list_directory',
+        '#web': 'web_search',
+        '#dir': 'list_directory',
+        '#find': 'search_documents',
+        '#file': 'read_file',
+        '#create': 'write_file'
+    };
+
+    constructor(options: AgentOptions) {
+        this.memoryService = options.memoryService;
+        this.toolExecutor = options.toolExecutor;
+        this.llmProvider = options.llmRouter;
+
+        console.log('[ThinkingCindyAgent] Initialized thinking agent with tool forcing capabilities');
+    }
+
+    /**
+     * Phase 1: Analyze input for hashtags and intent
+     */
+    private analyzeInput(input: string): { cleanInput: string; forcedTools: string[]; hashtags: string[] } {
+        const hashtags = (input.match(/#\w+/g) || []).map(tag => tag.toLowerCase());
+        const forcedTools = hashtags.map(tag => this.hashtagToTool[tag]).filter(Boolean);
+        const cleanInput = input.replace(/#\w+/g, '').trim();
+
+        this.addThinkingStep('analyze',
+            `Input analysis:\n` +
+            `- Original: "${input}"\n` +
+            `- Clean input: "${cleanInput}"\n` +
+            `- Hashtags found: ${hashtags.join(', ') || 'none'}\n` +
+            `- Forced tools: ${forcedTools.join(', ') || 'none'}`
+        );
+
+        return { cleanInput, forcedTools, hashtags };
+    }
+
+    /**
+     * Phase 2: Think and create execution plan
+     */
+    private async createThinkingPlan(cleanInput: string, forcedTools: string[], context?: AgentContext): Promise<ThinkingPlan> {
+        const availableTools = this.toolExecutor.getAvailableTools();
+
+        // Build thinking prompt
+        const thinkingPrompt = `You are Cindy, an intelligent voice assistant. Analyze this user request and create an execution plan.
+
+User request: "${cleanInput}"
+Forced tools (must use): ${forcedTools.join(', ') || 'none'}
+Available tools: ${availableTools.join(', ')}
+
+Think step by step:
+1. What is the user trying to accomplish?
+2. What tools are REQUIRED (forced by hashtags)?
+3. What additional tools might be helpful?
+4. What order should tools be executed in?
+
+Respond with your thinking process and a clear plan. Be concise but thorough.`;
+
+        const thinkingResponse = await this.llmProvider.invoke([
+            { role: 'system' as const, content: 'You are an AI assistant that thinks carefully about how to help users. Focus on creating clear execution plans.' },
+            { role: 'user' as const, content: thinkingPrompt }
+        ]);
+
+        const reasoning = thinkingResponse.content as string;
+
+        // Determine suggested tools based on content analysis
+        const suggestedTools = this.suggestToolsFromContent(cleanInput, availableTools);
+
+        // Combine forced and suggested tools, prioritizing forced tools
+        const allTools = [...new Set([...forcedTools, ...suggestedTools])];
+
+        // Create tool intents
+        const steps: ToolIntent[] = allTools.map(tool => ({
+            tool,
+            forced: forcedTools.includes(tool),
+            parameters: this.inferToolParameters(tool, cleanInput),
+            reasoning: forcedTools.includes(tool) ? 'Forced by hashtag' : 'Suggested by analysis'
+        }));
+
+        const plan: ThinkingPlan = {
+            intent: this.inferUserIntent(cleanInput),
+            forcedTools,
+            suggestedTools,
+            reasoning,
+            steps
+        };
+
+        this.addThinkingStep('think',
+            `Thinking process:\n${reasoning}\n\n` +
+            `Execution plan:\n` +
+            `- Intent: ${plan.intent}\n` +
+            `- Tools to use: ${allTools.join(', ') || 'none'}\n` +
+            `- Execution steps: ${steps.length}`
+        );
+
+        return plan;
+    }
+
+    /**
+     * Phase 3: Execute tools according to plan
+     */
+    private async executeTools(plan: ThinkingPlan, context?: AgentContext): Promise<Record<string, any>> {
+        const toolResults: Record<string, any> = {};
+
+        if (plan.steps.length === 0) {
+            console.log('📭 No tools to execute - proceeding with direct response');
+            return toolResults;
+        }
+
+        console.log(`🔧 Executing ${plan.steps.length} tool(s):`);
+
+        for (let i = 0; i < plan.steps.length; i++) {
+            const step = plan.steps[i];
+            const stepNum = i + 1;
+
+            console.log(`\n🛠️  TOOL ${stepNum}/${plan.steps.length}: ${step.tool.toUpperCase()}`);
+            console.log(`   ${step.forced ? '🔒 FORCED by hashtag' : '💡 SUGGESTED by analysis'}`);
+            console.log(`   📋 Reason: ${step.reasoning}`);
+            console.log(`   ⚙️  Parameters: ${JSON.stringify(step.parameters, null, 2)}`);
+
+            this.addThinkingStep('tool',
+                `Tool ${stepNum}: ${step.tool}\n` +
+                `Type: ${step.forced ? 'FORCED' : 'SUGGESTED'}\n` +
+                `Reason: ${step.reasoning}\n` +
+                `Parameters: ${JSON.stringify(step.parameters, null, 2)}`
+            );
+
+            const startTime = Date.now();
+            try {
+                console.log(`   🚀 Executing...`);
+                const result = await this.toolExecutor.executeTool(step.tool, step.parameters);
+                const duration = Date.now() - startTime;
+
+                toolResults[step.tool] = result;
+
+                if (result.success) {
+                    console.log(`   ✅ SUCCESS (${duration}ms)`);
+                    console.log(`   📄 Result: ${typeof result.result === 'string' ?
+                        result.result.substring(0, 150) + (result.result.length > 150 ? '...' : '') :
+                        JSON.stringify(result.result).substring(0, 150)}`);
+                } else {
+                    console.log(`   ❌ FAILED (${duration}ms)`);
+                    console.log(`   🚫 Error: ${result.error}`);
+                }
+
+            } catch (error) {
+                const duration = Date.now() - startTime;
+                console.log(`   💥 EXCEPTION (${duration}ms)`);
+                console.log(`   🚫 Error: ${(error as Error).message}`);
+
+                toolResults[step.tool] = {
+                    success: false,
+                    error: (error as Error).message
+                };
+            }
+        }
+
+        return toolResults;
+    }
+
+    /**
+     * Phase 4: Synthesize final response
+     */
+    private async synthesizeResponse(
+        cleanInput: string,
+        plan: ThinkingPlan,
+        toolResults: Record<string, any>,
+        context?: AgentContext
+    ): Promise<string> {
+        // Get conversation history for context
+        let history: any[] = [];
+        try {
+            if (this.memoryService) {
+                history = await this.memoryService.getConversationHistory(
+                    context?.conversationId || 'default',
+                    5 // last 5 messages for context
+                );
+            }
+        } catch (error) {
+            console.warn('[ThinkingCindyAgent] Failed to get conversation history:', error);
+        }
+
+        // Build synthesis prompt
+        const toolResultsSummary = Object.entries(toolResults)
+            .map(([tool, result]) =>
+                `${tool}: ${result.success ? 'SUCCESS' : 'FAILED'}\n` +
+                `${result.success ? result.result || 'No output' : result.error || 'Unknown error'}`
+            )
+            .join('\n\n');
+
+        const synthesisPrompt = `You are Cindy, a helpful voice assistant. Based on the user's request and the tools I executed, provide a natural, conversational response.
+
+User's original request: "${cleanInput}"
+My thinking process: ${plan.reasoning}
+Tools executed: ${plan.steps.map(s => s.tool).join(', ') || 'none'}
+
+Tool results:
+${toolResultsSummary || 'No tools were executed'}
+
+Conversation context: ${history.length > 0 ? `Previous ${history.length} messages for context` : 'No previous context'}
+
+Provide a helpful, natural response that:
+1. Addresses the user's request
+2. Incorporates relevant information from tool results
+3. Is conversational and friendly
+4. Mentions what you did (which tools you used) naturally if relevant
+
+Keep it concise but informative.`;
+
+        const response = await this.llmProvider.invoke([
+            { role: 'system' as const, content: this.getSystemPrompt() },
+            { role: 'user' as const, content: synthesisPrompt }
+        ]);
+
+        const finalResponse = response.content as string;
+
+        this.addThinkingStep('synthesize',
+            `Final response generated:\n"${finalResponse.substring(0, 200)}${finalResponse.length > 200 ? '...' : ''}"`
+        );
+
+        return finalResponse;
+    }
+
+    /**
+     * Main processing method with thinking workflow
+     */
+    async process(input: string, context?: AgentContext): Promise<string> {
+        try {
+            console.log('\n🧠 THINKING AGENT PROCESSING INPUT');
+            console.log('═'.repeat(80));
+            console.log(`📥 USER INPUT: "${input}"`);
+            console.log(`🕒 TIMESTAMP: ${new Date().toISOString()}`);
+            console.log(`👤 CONTEXT: ${context?.conversationId || 'default'}`);
+            console.log('═'.repeat(80));
+
+            this.thinkingSteps = []; // Reset thinking steps
+
+            // Phase 1: Analyze input
+            console.log('\n🔍 PHASE 1: ANALYZING INPUT');
+            console.log('─'.repeat(40));
+            const { cleanInput, forcedTools, hashtags } = this.analyzeInput(input);
+
+            console.log(`📝 Clean input: "${cleanInput}"`);
+            console.log(`🏷️  Hashtags found: [${hashtags.join(', ') || 'none'}]`);
+            console.log(`🔧 Forced tools: [${forcedTools.join(', ') || 'none'}]`);
+
+            // Phase 2: Create thinking plan
+            console.log('\n💭 PHASE 2: CREATING EXECUTION PLAN');
+            console.log('─'.repeat(40));
+            const plan = await this.createThinkingPlan(cleanInput, forcedTools, context);
+
+            console.log(`🎯 Intent: ${plan.intent}`);
+            console.log(`🛠️  Tools to execute: [${plan.steps.map(s => s.tool).join(', ') || 'none'}]`);
+            console.log(`📋 Execution steps: ${plan.steps.length}`);
+
+            // Phase 3: Execute tools
+            console.log('\n⚙️ PHASE 3: EXECUTING TOOLS');
+            console.log('─'.repeat(40));
+            const toolResults = await this.executeTools(plan, context);
+
+            const successCount = Object.values(toolResults).filter(r => r.success).length;
+            const totalTools = Object.keys(toolResults).length;
+            console.log(`✅ Tool execution complete: ${successCount}/${totalTools} successful`);
+
+            // Phase 4: Synthesize response
+            console.log('\n📝 PHASE 4: SYNTHESIZING RESPONSE');
+            console.log('─'.repeat(40));
+            const finalResponse = await this.synthesizeResponse(cleanInput, plan, toolResults, context);
+
+            console.log(`📄 Response length: ${finalResponse.length} characters`);
+            console.log(`🎯 Response preview: "${finalResponse.substring(0, 100)}${finalResponse.length > 100 ? '...' : ''}"`);
+
+            // Store conversation in memory
+            await this.storeConversation(input, finalResponse, context);
+
+            console.log('\n🎉 THINKING PROCESS COMPLETED SUCCESSFULLY');
+            console.log('═'.repeat(80));
+            return finalResponse;
+
+        } catch (error) {
+            console.log('\n❌ THINKING PROCESS ERROR');
+            console.log('═'.repeat(80));
+            console.error('[ThinkingCindyAgent] Error details:', error);
+            return this.handleError(input, error as Error, context);
+        }
+    }
+
+    /**
+     * Streaming version with thinking steps shown
+     */
+    async *processStreaming(input: string, context?: AgentContext): AsyncGenerator<string> {
+        try {
+            console.log('\n🎬 STARTING STREAMING THINKING PROCESS');
+            console.log('═'.repeat(80));
+            console.log(`📥 INPUT: "${input}"`);
+            console.log('═'.repeat(80));
+
+            this.thinkingSteps = [];
+
+            // Show thinking process header
+            yield "🧠 **Cindy is thinking...**\n\n";
+            yield `💭 **Analyzing:** "${input}"\n\n`;
+
+            // Phase 1: Analyze input
+            console.log('\n🔍 [STREAMING] Phase 1: Analyzing input...');
+            const { cleanInput, forcedTools, hashtags } = this.analyzeInput(input);
+
+            yield `🔍 **Analysis Complete:**\n`;
+            yield `📝 Clean input: "${cleanInput}"\n`;
+            yield `🏷️  Hashtags: ${hashtags.length > 0 ? hashtags.join(', ') : 'none'}\n`;
+            yield `🔧 Forced tools: ${forcedTools.length > 0 ? forcedTools.join(', ') : 'none'}\n\n`;
+
+            // Phase 2: Create thinking plan  
+            console.log('\n💭 [STREAMING] Phase 2: Creating execution plan...');
+            yield "💭 **Planning approach...**\n";
+
+            const plan = await this.createThinkingPlan(cleanInput, forcedTools, context);
+
+            yield `🎯 **Intent:** ${plan.intent}\n`;
+            yield `🛠️  **Tools planned:** ${plan.steps.length > 0 ? plan.steps.map(s => `${s.tool}${s.forced ? ' (forced)' : ''}`).join(', ') : 'none'}\n\n`;
+
+            // Phase 3: Execute tools
+            if (plan.steps.length > 0) {
+                console.log('\n⚙️ [STREAMING] Phase 3: Executing tools...');
+                yield `⚙️ **Executing ${plan.steps.length} tool(s):**\n\n`;
+
+                const toolResults: Record<string, any> = {};
+
+                for (let i = 0; i < plan.steps.length; i++) {
+                    const step = plan.steps[i];
+                    const stepNum = i + 1;
+
+                    yield `🛠️  **Tool ${stepNum}: ${step.tool}** ${step.forced ? '(🔒 forced by hashtag)' : '(💡 suggested)'}\n`;
+                    yield `   📋 ${step.reasoning}\n`;
+                    yield `   🚀 Executing...\n`;
+
+                    const startTime = Date.now();
+                    try {
+                        const result = await this.toolExecutor.executeTool(step.tool, step.parameters);
+                        const duration = Date.now() - startTime;
+                        toolResults[step.tool] = result;
+
+                        if (result.success) {
+                            yield `   ✅ Success (${duration}ms)\n`;
+                            // Show brief result preview
+                            const preview = typeof result.result === 'string' ?
+                                result.result.substring(0, 100) + (result.result.length > 100 ? '...' : '') :
+                                JSON.stringify(result.result).substring(0, 100);
+                            yield `   📄 ${preview}\n\n`;
+                        } else {
+                            yield `   ❌ Failed (${duration}ms): ${result.error}\n\n`;
+                        }
+                    } catch (error) {
+                        const duration = Date.now() - startTime;
+                        toolResults[step.tool] = { success: false, error: (error as Error).message };
+                        yield `   💥 Error (${duration}ms): ${(error as Error).message}\n\n`;
+                    }
+                }
+
+                // Phase 4: Synthesize response
+                console.log('\n📝 [STREAMING] Phase 4: Synthesizing response...');
+                yield "📝 **Generating response based on results...**\n\n";
+
+                const finalResponse = await this.synthesizeResponse(cleanInput, plan, toolResults, context);
+
+                // Store conversation
+                await this.storeConversation(input, finalResponse, context);
+
+                yield "💬 **Final Response:**\n\n";
+                yield finalResponse;
+            } else {
+                // No tools needed, direct response
+                console.log('\n💬 [STREAMING] Direct response (no tools needed)...');
+                yield "💬 **Responding directly (no tools needed)...**\n\n";
+
+                const directResponse = await this.llmProvider.invoke([
+                    { role: 'system' as const, content: this.getSystemPrompt() },
+                    { role: 'user' as const, content: cleanInput }
+                ]);
+
+                const response = directResponse.content as string;
+                await this.storeConversation(input, response, context);
+                yield response;
+            }
+
+            console.log('\n🎉 [STREAMING] Thinking process completed successfully');
+            console.log('═'.repeat(80));
+
+        } catch (error) {
+            console.log('\n❌ [STREAMING] Thinking process error');
+            console.log('═'.repeat(80));
+            console.error('[ThinkingCindyAgent] Streaming error:', error);
+            yield `\n❌ **Error:** I encountered an issue while processing your request: ${(error as Error).message}`;
+        }
+    }
+
+    // Helper methods
+    private addThinkingStep(step: ThinkingStep['step'], content: string): void {
+        this.thinkingSteps.push({
+            step,
+            content,
+            timestamp: new Date()
+        });
+
+        // Enhanced console output with thinking process visibility
+        const stepEmojis = {
+            'analyze': '🔍',
+            'think': '💭',
+            'tool': '⚙️',
+            'synthesize': '📝'
+        };
+
+        const emoji = stepEmojis[step] || '🤖';
+        const stepName = step.toUpperCase().padEnd(10);
+
+        console.log(`\n${emoji} [${stepName}] ${content}`);
+        console.log('─'.repeat(80));
+    }
+
+    private suggestToolsFromContent(input: string, availableTools: string[]): string[] {
+        const suggestions: string[] = [];
+        const lowerInput = input.toLowerCase();
+
+        // Content-based tool suggestions
+        if ((lowerInput.includes('search') || lowerInput.includes('find') || lowerInput.includes('look for'))
+            && availableTools.includes('search_documents')) {
+            suggestions.push('search_documents');
+        }
+
+        if ((lowerInput.includes('read') || lowerInput.includes('show') || lowerInput.includes('open'))
+            && availableTools.includes('read_file')) {
+            suggestions.push('read_file');
+        }
+
+        if ((lowerInput.includes('write') || lowerInput.includes('create') || lowerInput.includes('save'))
+            && availableTools.includes('write_file')) {
+            suggestions.push('write_file');
+        }
+
+        return suggestions;
+    }
+
+    private inferToolParameters(tool: string, input: string): any {
+        switch (tool) {
+            case 'search_documents':
+                return { query: input, limit: 5 };
+            case 'read_file':
+                // Try to extract file path from input
+                const fileMatch = input.match(/(?:read|open|show)\s+(?:file\s+)?(.+?)(?:\s|$)/i);
+                return { file_path: fileMatch?.[1] || 'unknown' };
+            case 'write_file':
+                const writeMatch = input.match(/(?:write|create|save)\s+(.+?)\s+(?:to|in)\s+(.+?)(?:\s|$)/i);
+                return {
+                    content: writeMatch?.[1] || input,
+                    file_path: writeMatch?.[2] || 'output.txt'
+                };
+            default:
+                return {};
+        }
+    }
+
+    private inferUserIntent(input: string): string {
+        const lowerInput = input.toLowerCase();
+
+        if (lowerInput.includes('search') || lowerInput.includes('find')) {
+            return 'search for information';
+        }
+        if (lowerInput.includes('read') || lowerInput.includes('show')) {
+            return 'read/view content';
+        }
+        if (lowerInput.includes('write') || lowerInput.includes('create')) {
+            return 'create/write content';
+        }
+        if (lowerInput.includes('help') || lowerInput.includes('how')) {
+            return 'get help or instructions';
+        }
+
+        return 'general conversation';
+    }
+
+    private async storeConversation(input: string, response: string, context?: AgentContext): Promise<void> {
+        try {
+            const conversationId = context?.conversationId || 'default';
+
+            await this.memoryService.addMessage({
+                conversationId,
+                role: 'user',
+                content: input,
+                timestamp: new Date()
+            });
+
+            await this.memoryService.addMessage({
+                conversationId,
+                role: 'assistant',
+                content: response,
+                timestamp: new Date()
+            });
+        } catch (error) {
+            console.warn('[ThinkingCindyAgent] Failed to store conversation:', error);
+        }
+    }
+
+    private async handleError(input: string, error: Error, context?: AgentContext): Promise<string> {
+        console.error('[ThinkingCindyAgent] Processing error:', error);
+
+        // Try fallback direct response
+        try {
+            const fallbackResponse = await this.llmProvider.invoke([
+                { role: 'system' as const, content: 'You are a helpful assistant. The user asked something but there was a technical issue.' },
+                { role: 'user' as const, content: `I asked: "${input}" but there was an error. Can you help me anyway?` }
+            ]);
+
+            return `I encountered a technical issue, but let me try to help: ${fallbackResponse.content}`;
+        } catch (fallbackError) {
+            return "I'm sorry, I'm experiencing technical difficulties right now. Please try again in a moment.";
+        }
+    }
+
+    private getSystemPrompt(): string {
+        return `You are Cindy, an intelligent voice assistant. You are helpful, knowledgeable, and conversational. 
+        You have access to various tools and can think through problems step by step. 
+        Always be honest about what you can and cannot do.`;
+    }
+
+    // Expose thinking steps for debugging/transparency
+    getThinkingSteps(): ThinkingStep[] {
+        return [...this.thinkingSteps];
+    }
+}

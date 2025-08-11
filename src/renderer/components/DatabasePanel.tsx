@@ -43,7 +43,7 @@ const DatabasePanel: React.FC = () => {
     // Database settings state
     const [databasePath, setDatabasePath] = useState(settings?.database?.path || '');
     const [notesPath, setNotesPath] = useState(settings?.database?.notesPath || '');
-    const [embeddingModel, setEmbeddingModel] = useState(settings?.database?.embeddingModel || 'qwen3:8b');
+    const [embeddingModel, setEmbeddingModel] = useState(settings?.database?.embeddingModel || 'qwen3:1.7b');
     const [chunkSize, setChunkSize] = useState(settings?.database?.chunkSize || 1000);
     const [chunkOverlap, setChunkOverlap] = useState(settings?.database?.chunkOverlap || 200);
     const [autoIndex, setAutoIndex] = useState(settings?.database?.autoIndex || true);
@@ -68,7 +68,7 @@ const DatabasePanel: React.FC = () => {
         if (settings?.database) {
             setDatabasePath(settings.database.path || '');
             setNotesPath(settings.database.notesPath || '');
-            setEmbeddingModel(settings.database.embeddingModel || 'qwen3:8b');
+            setEmbeddingModel(settings.database.embeddingModel || 'qwen3:1.7b');
             setChunkSize(settings.database.chunkSize || 1000);
             setChunkOverlap(settings.database.chunkOverlap || 200);
             setAutoIndex(settings.database.autoIndex ?? true);
@@ -421,7 +421,7 @@ const DatabasePanel: React.FC = () => {
                             label="Embedding Model"
                             size="small"
                         >
-                            <MenuItem value="qwen3:8b">Qwen3 8B</MenuItem>
+                            <MenuItem value="qwen3:1.7b">Qwen3 8B</MenuItem>
                             <MenuItem value="dengcao/Qwen3-Embedding-0.6B">Qwen3-Embedding-0.6B</MenuItem>
                             <MenuItem value="all-MiniLM-L6-v2">All MiniLM L6 v2</MenuItem>
                         </Select>

@@ -25,11 +25,14 @@ export class TextToSpeechService extends EventEmitter {
     private useSystemTTS = false;
     private options: TTSOptions;
     private tempDir: string;
+    private modelCacheDir: string;
+    private currentPlaybackProcess: any = null; // Track current audio playback process
+    private hasLoggedSystemTTS = false; // Flag to prevent repeated logging
 
     constructor(options: TTSOptions = {}) {
         super();
         this.options = {
-            modelName: 'microsoft/speecht5_tts',
+            modelName: 'Xenova/speecht5_tts', // Using Xenova's version which is more reliable
             speed: 1.0,
             volume: 1.0,
             pitch: 1.0,
@@ -40,7 +43,9 @@ export class TextToSpeechService extends EventEmitter {
 
         // Create temp directory for audio files
         this.tempDir = path.join(os.tmpdir(), 'cindy-tts');
+        this.modelCacheDir = path.join(os.homedir(), '.cache', 'cindy-tts', 'models');
         this.ensureTempDir();
+        this.ensureModelCacheDir();
     }
 
     private ensureTempDir(): void {
@@ -53,42 +58,121 @@ export class TextToSpeechService extends EventEmitter {
         }
     }
 
+    private ensureModelCacheDir(): void {
+        try {
+            if (!fs.existsSync(this.modelCacheDir)) {
+                fs.mkdirSync(this.modelCacheDir, { recursive: true });
+                console.log(`[TextToSpeechService] Created model cache directory: ${this.modelCacheDir}`);
+            }
+        } catch (error) {
+            console.error('[TextToSpeechService] Failed to create model cache directory:', error);
+        }
+    }
+
     async initialize(): Promise<void> {
         if (this.isInitialized) return;
 
         try {
-            console.log('[TextToSpeechService] Initializing Orpheus TTS model...');
-            console.log('[TextToSpeechService] This may take a while on first run as models are downloaded...');
-
-            // Dynamically import orpheus-speech to avoid webpack bundling issues
-            const { OrpheusModel } = await import('orpheus-speech');
-
-            // Initialize the Orpheus model using the async function
-            this.model = await OrpheusModel({
-                model_name: this.options.modelName || 'microsoft/speecht5_tts',
-                dtype: this.options.dtype as any || 'fp32',
-                device: this.options.device as any || 'cpu'
-            });
-
-            this.isInitialized = true;
-            console.log('[TextToSpeechService] TTS model initialized successfully');
-            this.emit('initialized');
-        } catch (error) {
-            console.error('[TextToSpeechService] Failed to initialize TTS model:', error);
-            console.error('[TextToSpeechService] This might be due to:');
-            console.error('  - Missing orpheus-speech package');
-            console.error('  - Missing internet connection for model download');
-            console.error('  - Insufficient disk space for model files');
-            console.error('  - System compatibility issues');
-            console.error('  - Model not available for the specified configuration');
+            // Check if we should attempt orpheus-speech initialization
+            const shouldTryOrpheus = await this.checkOrpheusAvailability();
             
+            if (shouldTryOrpheus) {
+                console.log('[TextToSpeechService] Initializing Orpheus TTS model...');
+                console.log('[TextToSpeechService] This may take a while on first run as models are downloaded...');
+
+                // Dynamically import orpheus-speech to avoid webpack bundling issues
+                const { OrpheusModel } = await import('orpheus-speech');
+
+                // Initialize the Orpheus model using the async function
+                console.log(`[TextToSpeechService] Loading model: ${this.options.modelName}`);
+                this.model = await OrpheusModel({
+                    model_name: this.options.modelName || 'Xenova/speecht5_tts',
+                    dtype: this.options.dtype as any || 'fp32',
+                    device: this.options.device as any || 'cpu'
+                });
+
+                this.isInitialized = true;
+                console.log('[TextToSpeechService] ✅ Orpheus TTS model initialized successfully');
+                this.emit('initialized', { provider: 'orpheus' });
+            } else {
+                throw new Error('Orpheus-speech not available or network connectivity issues');
+            }
+        } catch (error) {
+            // Reduced logging - only show significant errors, not expected fallbacks
             // Fall back to system TTS
-            console.log('[TextToSpeechService] Falling back to system TTS...');
+            await this.initializeSystemTTS();
+        }
+    }
+
+    private async checkOrpheusAvailability(): Promise<boolean> {
+        try {
+            // Check if orpheus-speech package is available
+            await import('orpheus-speech');
+            
+            // For now, skip Orpheus entirely due to model download issues
+            // This can be re-enabled once the Hugging Face model issues are resolved
+            // Reduced logging to avoid console spam
+            return false;
+            
+            // Uncomment below when Orpheus models are working reliably:
+            // const hasNetwork = await this.checkNetworkConnectivity();
+            // if (!hasNetwork) {
+            //     console.warn('[TextToSpeechService] ⚠️ No network connectivity detected');
+            //     return false;
+            // }
+            // return true;
+        } catch (error) {
+            console.warn('[TextToSpeechService] ⚠️ Orpheus-speech not available:', error.message);
+            return false;
+        }
+    }
+
+    // Network connectivity check removed - no longer needed since Orpheus is disabled
+    // This method was used to check Hugging Face connectivity for model downloads
+
+    private async initializeSystemTTS(): Promise<void> {
+        try {
+            // Test if system TTS is available
+            await this.testSystemTTS();
+            
             this.useSystemTTS = true;
             this.isInitialized = true;
-            this.emit('initialized', { fallback: true });
             
-            return; // Don't throw error, just use fallback
+            // Only log once per session to avoid spam
+            if (!this.hasLoggedSystemTTS) {
+                console.log(`[TextToSpeechService] ✅ System TTS ready (${process.platform})`);
+                this.hasLoggedSystemTTS = true;
+            }
+            
+            this.emit('initialized', { provider: 'system', fallback: true });
+        } catch (error) {
+            console.error('[TextToSpeechService] ❌ System TTS failed:', error);
+            this.isInitialized = false;
+            throw new Error('System TTS unavailable');
+        }
+    }
+
+    private async testSystemTTS(): Promise<void> {
+        // Simple test - just check if the command exists
+        try {
+            switch (process.platform) {
+                case 'darwin': // macOS
+                    // macOS always has 'say' command
+                    console.log('[TextToSpeechService] macOS detected, say command available');
+                    break;
+                case 'win32': // Windows
+                    // Windows should have PowerShell
+                    console.log('[TextToSpeechService] Windows detected, PowerShell TTS available');
+                    break;
+                case 'linux': // Linux
+                    // We'll assume espeak can be installed or skip if not available
+                    console.log('[TextToSpeechService] Linux detected, espeak TTS support');
+                    break;
+                default:
+                    throw new Error(`System TTS not supported on platform: ${process.platform}`);
+            }
+        } catch (error) {
+            throw error;
         }
     }
 
@@ -96,8 +180,13 @@ export class TextToSpeechService extends EventEmitter {
         const startTime = Date.now();
 
         try {
-            if (!this.isInitialized || !this.model) {
+            if (!this.isInitialized) {
                 throw new Error('TTS service not initialized');
+            }
+
+            // If model is null but we're initialized, we're using system TTS fallback
+            if (!this.model && !this.useSystemTTS) {
+                throw new Error('TTS service not properly configured');
             }
 
             if (!text || typeof text !== 'string' || text.trim().length === 0) {
@@ -112,11 +201,13 @@ export class TextToSpeechService extends EventEmitter {
                 `tts_${Date.now()}_${Math.random().toString(36).substring(2, 11)}.wav`
             );
 
-            if (this.useSystemTTS) {
+            if (this.useSystemTTS || !this.model) {
                 // Use system TTS as fallback
+                console.log('[TextToSpeechService] Using system TTS fallback');
                 await this.synthesizeWithSystemTTS(text, fileName);
             } else {
                 // Use orpheus-speech
+                console.log('[TextToSpeechService] Using orpheus-speech model');
                 const audioData = await this.model.generate(text);
                 await this.saveAudioToFile(audioData, fileName);
             }
@@ -209,47 +300,159 @@ export class TextToSpeechService extends EventEmitter {
     private async synthesizeWithSystemTTS(text: string, outputPath: string): Promise<void> {
         return new Promise((resolve, reject) => {
             try {
-                const { spawn } = require('child_process');
-                let command: string;
-                let args: string[];
+                // Sanitize text for shell safety
+                const sanitizedText = text.replace(/["`$\\]/g, '\\$&');
 
-                switch (process.platform) {
-                    case 'darwin': // macOS
-                        command = 'say';
-                        args = ['-o', outputPath, '--data-format=LEF32@22050', text];
-                        break;
-                    case 'win32': // Windows
-                        // Use PowerShell with SAPI
-                        command = 'powershell';
-                        args = [
-                            '-Command',
-                            `Add-Type -AssemblyName System.Speech; $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer; $synth.SetOutputToWaveFile('${outputPath}'); $synth.Speak('${text.replace(/'/g, "''")}'); $synth.Dispose()`
-                        ];
-                        break;
-                    case 'linux': // Linux
-                        // Use espeak if available
-                        command = 'espeak';
-                        args = ['-w', outputPath, text];
-                        break;
-                    default:
-                        throw new Error(`System TTS not supported on platform: ${process.platform}`);
+                if (process.platform === 'darwin') {
+                    // macOS - Use say command with AIFF output, then convert to WAV
+                    this.synthesizeMacOSTTS(sanitizedText, outputPath)
+                        .then(resolve)
+                        .catch(reject);
+                } else if (process.platform === 'win32') {
+                    // Windows - Use PowerShell with SAPI
+                    this.synthesizeWindowsTTS(sanitizedText, outputPath)
+                        .then(resolve)
+                        .catch(reject);
+                } else if (process.platform === 'linux') {
+                    // Linux - Use espeak
+                    this.synthesizeLinuxTTS(sanitizedText, outputPath)
+                        .then(resolve)
+                        .catch(reject);
+                } else {
+                    reject(new Error(`System TTS not supported on platform: ${process.platform}`));
                 }
 
-                console.log(`[TextToSpeechService] Using system TTS: ${command} ${args.join(' ')}`);
-                const tts = spawn(command, args, { stdio: 'pipe' });
+            } catch (error) {
+                reject(error);
+            }
+        });
+    }
 
-                tts.on('close', (code: number | null) => {
+    private async synthesizeMacOSTTS(text: string, outputPath: string): Promise<void> {
+        return new Promise((resolve, reject) => {
+            const { spawn } = require('child_process');
+            
+            // Create AIFF file first (say command default format)
+            const tempAiffPath = outputPath.replace(/\.[^.]+$/, '.aiff');
+            
+            console.log(`[TextToSpeechService] macOS TTS: say -o "${tempAiffPath}"`);
+            const say = spawn('say', ['-o', tempAiffPath, text], { stdio: 'pipe' });
+
+            say.on('close', async (code: number | null) => {
+                if (code === 0) {
+                    try {
+                        // If we need WAV format, convert AIFF to WAV
+                        if (outputPath.endsWith('.wav') && tempAiffPath !== outputPath) {
+                            await this.convertAiffToWav(tempAiffPath, outputPath);
+                            // Clean up temp AIFF file
+                            fs.unlinkSync(tempAiffPath);
+                        }
+                        console.log('[TextToSpeechService] macOS TTS synthesis completed');
+                        resolve();
+                    } catch (conversionError) {
+                        console.warn('[TextToSpeechService] AIFF to WAV conversion failed, using AIFF');
+                        // If conversion fails, rename AIFF to requested output
+                        if (fs.existsSync(tempAiffPath)) {
+                            fs.renameSync(tempAiffPath, outputPath);
+                        }
+                        resolve();
+                    }
+                } else {
+                    reject(new Error(`macOS say command exited with code ${code}`));
+                }
+            });
+
+            say.on('error', (error: Error) => {
+                console.error('[TextToSpeechService] macOS TTS error:', error);
+                reject(error);
+            });
+        });
+    }
+
+    private async synthesizeWindowsTTS(text: string, outputPath: string): Promise<void> {
+        return new Promise((resolve, reject) => {
+            const { spawn } = require('child_process');
+            
+            const psScript = `
+                Add-Type -AssemblyName System.Speech
+                $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer
+                $synth.SetOutputToWaveFile('${outputPath}')
+                $synth.Speak('${text.replace(/'/g, "''")}')
+                $synth.Dispose()
+            `;
+
+            console.log(`[TextToSpeechService] Windows TTS: PowerShell SAPI`);
+            const ps = spawn('powershell', ['-Command', psScript], { stdio: 'pipe' });
+
+            ps.on('close', (code: number | null) => {
+                if (code === 0) {
+                    console.log('[TextToSpeechService] Windows TTS synthesis completed');
+                    resolve();
+                } else {
+                    reject(new Error(`Windows PowerShell TTS exited with code ${code}`));
+                }
+            });
+
+            ps.on('error', (error: Error) => {
+                console.error('[TextToSpeechService] Windows TTS error:', error);
+                reject(error);
+            });
+        });
+    }
+
+    private async synthesizeLinuxTTS(text: string, outputPath: string): Promise<void> {
+        return new Promise((resolve, reject) => {
+            const { spawn } = require('child_process');
+            
+            console.log(`[TextToSpeechService] Linux TTS: espeak -w "${outputPath}"`);
+            const espeak = spawn('espeak', ['-w', outputPath, text], { stdio: 'pipe' });
+
+            espeak.on('close', (code: number | null) => {
+                if (code === 0) {
+                    console.log('[TextToSpeechService] Linux TTS synthesis completed');
+                    resolve();
+                } else {
+                    reject(new Error(`Linux espeak exited with code ${code}`));
+                }
+            });
+
+            espeak.on('error', (error: Error) => {
+                console.error('[TextToSpeechService] Linux TTS error:', error);
+                reject(error);
+            });
+        });
+    }
+
+    private async convertAiffToWav(aiffPath: string, wavPath: string): Promise<void> {
+        return new Promise((resolve, reject) => {
+            try {
+                // Try using ffmpeg if available
+                const { spawn } = require('child_process');
+                const ffmpeg = spawn('ffmpeg', ['-i', aiffPath, '-y', wavPath], { stdio: 'pipe' });
+
+                ffmpeg.on('close', (code: number | null) => {
                     if (code === 0) {
-                        console.log('[TextToSpeechService] System TTS synthesis completed');
                         resolve();
                     } else {
-                        reject(new Error(`System TTS exited with code ${code}`));
+                        reject(new Error(`ffmpeg conversion failed with code ${code}`));
                     }
                 });
 
-                tts.on('error', (error: Error) => {
-                    console.error('[TextToSpeechService] System TTS error:', error);
-                    reject(error);
+                ffmpeg.on('error', () => {
+                    // If ffmpeg is not available, try afconvert (macOS built-in)
+                    const afconvert = spawn('afconvert', ['-f', 'WAVE', '-d', 'LEI16', aiffPath, wavPath], { stdio: 'pipe' });
+                    
+                    afconvert.on('close', (afCode: number | null) => {
+                        if (afCode === 0) {
+                            resolve();
+                        } else {
+                            reject(new Error(`afconvert failed with code ${afCode}`));
+                        }
+                    });
+
+                    afconvert.on('error', (afError: Error) => {
+                        reject(afError);
+                    });
                 });
 
             } catch (error) {
@@ -260,19 +463,35 @@ export class TextToSpeechService extends EventEmitter {
 
     async synthesizeAndPlay(text: string): Promise<AudioResult> {
         try {
+            // First, ensure service is initialized
+            if (!this.isInitialized) {
+                console.log('[TextToSpeechService] Service not initialized, attempting to initialize...');
+                await this.initialize();
+            }
+
             const result = await this.synthesize(text);
 
             if (result.success && result.audioPath) {
+                console.log('[TextToSpeechService] Playing synthesized audio...');
                 await this.playAudioFile(result.audioPath);
+            } else {
+                console.warn('[TextToSpeechService] Synthesis failed, cannot play audio:', result.error);
             }
 
             return result;
         } catch (error) {
             console.error('[TextToSpeechService] Synthesize and play failed:', error);
-            return {
+            
+            // Don't emit unhandled error - return controlled result
+            const result = {
                 success: false,
-                error: error.message
+                error: error.message || 'Unknown TTS error',
+                duration: 0
             };
+
+            // Emit controlled error instead of throwing
+            this.emit('error', { text, error, duration: 0 });
+            return result;
         }
     }
 
@@ -303,8 +522,12 @@ export class TextToSpeechService extends EventEmitter {
                 }
 
                 const player = spawn(command, args, { stdio: 'pipe' });
+                
+                // Store reference to current playback process
+                this.currentPlaybackProcess = player;
 
                 player.on('close', (code: number | null) => {
+                    this.currentPlaybackProcess = null; // Clear reference
                     if (code === 0) {
                         console.log('[TextToSpeechService] Audio playback completed');
                         this.emit('played', filePath);
@@ -315,6 +538,7 @@ export class TextToSpeechService extends EventEmitter {
                 });
 
                 player.on('error', (error: Error) => {
+                    this.currentPlaybackProcess = null; // Clear reference
                     console.error('[TextToSpeechService] Audio playback error:', error);
                     reject(error);
                 });
@@ -343,11 +567,17 @@ export class TextToSpeechService extends EventEmitter {
     }
 
     isReady(): boolean {
-        return this.isInitialized && this.model !== null;
+        // Service is ready if initialized, regardless of whether using Orpheus model or system TTS
+        return this.isInitialized;
     }
 
     async cleanup(): Promise<void> {
         try {
+            // Stop any active playback first
+            if (this.currentPlaybackProcess) {
+                await this.stopPlayback();
+            }
+            
             if (this.model) {
                 // Cleanup model resources if available
                 if (typeof this.model.dispose === 'function') {
@@ -438,6 +668,53 @@ export class TextToSpeechService extends EventEmitter {
 
     onPlayed(callback: (filePath: string) => void): void {
         this.on('played', callback);
+    }
+
+    /**
+     * Stop current TTS playback
+     */
+    async stopPlayback(): Promise<void> {
+        try {
+            if (this.currentPlaybackProcess) {
+                console.log('[TextToSpeechService] Stopping current audio playback...');
+                
+                // Kill the audio playback process
+                this.currentPlaybackProcess.kill('SIGTERM');
+                
+                // Wait a moment, then force kill if still running
+                setTimeout(() => {
+                    if (this.currentPlaybackProcess && !this.currentPlaybackProcess.killed) {
+                        console.log('[TextToSpeechService] Force killing audio playback process');
+                        this.currentPlaybackProcess.kill('SIGKILL');
+                    }
+                }, 1000);
+                
+                this.currentPlaybackProcess = null;
+                this.emit('stopped');
+                console.log('[TextToSpeechService] Audio playback stopped');
+            } else {
+                console.log('[TextToSpeechService] No active playback to stop');
+            }
+        } catch (error) {
+            console.error('[TextToSpeechService] Error stopping playback:', error);
+            // Force clear the reference even if kill fails
+            this.currentPlaybackProcess = null;
+            throw error;
+        }
+    }
+
+    /**
+     * Check if TTS is currently playing
+     */
+    isPlaying(): boolean {
+        return this.currentPlaybackProcess !== null && !this.currentPlaybackProcess.killed;
+    }
+
+    /**
+     * Event callback for when playback is stopped
+     */
+    onStopped(callback: () => void): void {
+        this.on('stopped', callback);
     }
 }
 

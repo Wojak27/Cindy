@@ -10,7 +10,7 @@ const initialState = {
     llm: {
         provider: 'ollama',
         ollama: {
-            model: 'qwen3:8b',
+            model: 'qwen3:1.7b',
             baseUrl: 'http://127.0.0.1:11434',
             temperature: 0.7
         },
@@ -23,7 +23,7 @@ const initialState = {
     // Database settings
     database: {
         path: '',
-        embeddingModel: 'qwen3:8b',
+        embeddingModel: 'qwen3:1.7b',
         chunkSize: 1000,
         chunkOverlap: 200,
         autoIndex: true
@@ -44,7 +44,7 @@ const settingsReducer = (state = initialState, action: any) => {
         case 'UPDATE_SETTINGS':
             // Deep merge for nested objects
             const newState = { ...state };
-            
+
             // Handle each top-level key
             Object.keys(action.payload).forEach(key => {
                 if (typeof action.payload[key] === 'object' && action.payload[key] !== null && !Array.isArray(action.payload[key])) {
@@ -58,7 +58,7 @@ const settingsReducer = (state = initialState, action: any) => {
                     newState[key] = action.payload[key];
                 }
             });
-            
+
             return newState;
         default:
             return state;

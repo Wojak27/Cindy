@@ -5,7 +5,7 @@
     --background: #ffffff;
     --surface: #ffffff;
     --surface-secondary: #ffffff;
-    --border: #f3f4f6;
+    --border: #d1d5db;
     --text-primary: #1f2937;
     --text-secondary: #4b5563;
     --text-muted: #6b7280;
@@ -136,7 +136,7 @@ html:not([data-theme="dark"]) .message {
 [data-theme="light"] .message-input {
     background: #ffffff !important;
     color: #1f2937 !important;
-    border-color: #f3f4f6 !important;
+    border-color: #d1d5db !important;
 }
 
 [data-theme="light"] .message-input::placeholder {
@@ -146,13 +146,13 @@ html:not([data-theme="dark"]) .message {
 [data-theme="light"] .button-group .MuiIconButton-root {
     background: #ffffff !important;
     color: #000000 !important;
-    border-color: #f3f4f6 !important;
+    border-color: #d1d5db !important;
 }
 
 [data-theme="light"] .window-controls .MuiIconButton-root {
     background: #ffffff !important;
     color: #000000 !important;
-    border-color: #f3f4f6 !important;
+    border-color: #d1d5db !important;
 }
 
 [data-theme="light"] .MuiIconButton-root {
@@ -1120,4 +1120,119 @@ html:not([data-theme="dark"]) .message-text {
 
 [data-theme="dark"] .retry-indicator small {
     color: #60a5fa;
+}
+
+/* Welcome input area styling */
+.welcome-input-area {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    max-width: 90%;
+    margin: 0 auto;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.welcome-input-area.expanded {
+    max-width: 95%;
+    gap: 20px;
+}
+
+.welcome-input-row {
+    display: flex;
+    align-items: flex-end;
+    width: 100%;
+    max-width: 100%;
+    gap: 8px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mic-button-container {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+}
+
+.welcome-input-area .message-input {
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    padding: 12px 16px;
+    font-size: 16px;
+    outline: none;
+    background: var(--background);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    font-family: inherit;
+    resize: none;
+    min-height: 48px;
+    max-height: 200px;
+    text-align: center;
+    color: var(--text-primary);
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    line-height: 1.5;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.welcome-input-area .message-input:focus,
+.welcome-input-area .message-input.has-content {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgb(37 99 235 / 0.1);
+    text-align: left;
+    min-height: 80px;
+    border-radius: 16px;
+}
+
+.welcome-input-area .message-input::placeholder {
+    color: var(--text-muted);
+    text-align: center;
+}
+
+.welcome-input-area .message-input:focus::placeholder,
+.welcome-input-area .message-input.has-content::placeholder {
+    text-align: left;
+}
+
+.welcome-input-area .button-group {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+}
+
+.welcome-input-area .button-group .MuiIconButton-root {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    width: 48px;
+    height: 48px;
+    transition: var(--transition);
+}
+
+.welcome-input-area .button-group .MuiIconButton-root:hover {
+    background: var(--surface-secondary);
+    border-color: var(--primary);
+}
+
+/* Update border colors to light grey throughout */
+[data-theme="light"] .message-input {
+    border-color: #d1d5db !important;
+}
+
+[data-theme="light"] .button-group .MuiIconButton-root {
+    border-color: #d1d5db !important;
+}
+
+[data-theme="light"] .window-controls .MuiIconButton-root {
+    border-color: #d1d5db !important;
+}
+
+[data-theme="light"] .welcome-input-area .message-input {
+    border-color: #d1d5db !important;
+}
+
+[data-theme="light"] .welcome-input-area .button-group .MuiIconButton-root {
+    border-color: #d1d5db !important;
 }

@@ -41,6 +41,8 @@
         "@mui/icons-material": "^7.3.0",
         "@mui/material": "^7.3.0",
         "@picovoice/porcupine-node": "^3.0.0",
+        "@react-three/drei": "^10.6.1",
+        "@react-three/fiber": "^9.3.0",
         "@reduxjs/toolkit": "^2.8.2",
         "@types/marked": "^6.0.0",
         "auto-launch": "^5.0.5",
@@ -69,6 +71,7 @@
         "simplex-noise": "^4.0.3",
         "sqlite": "^5.1.1",
         "sqlite3": "^5.1.7",
+        "three": "^0.179.1",
         "whisper-node": "^1.1.1",
         "word-extractor": "^1.0.4"
     },
