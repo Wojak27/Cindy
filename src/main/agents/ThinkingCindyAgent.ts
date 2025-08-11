@@ -52,6 +52,7 @@ export class ThinkingCindyAgent {
         '#write': 'write_file',
         '#list': 'list_directory',
         '#web': 'web_search',
+        '#brave': 'brave_search',
         '#dir': 'list_directory',
         '#find': 'search_documents',
         '#file': 'read_file',
@@ -504,6 +505,20 @@ Keep it concise but informative.`;
                     content: writeMatch?.[1] || input,
                     file_path: writeMatch?.[2] || 'output.txt'
                 };
+            case 'web_search':
+                // Ensure search query is meaningful (at least 3 characters)
+                const searchQuery = input.trim();
+                if (searchQuery.length < 3) {
+                    return { input: `information about ${searchQuery}` };
+                }
+                return { input: searchQuery };
+            case 'brave_search':
+                // Same logic as web_search
+                const braveQuery = input.trim();
+                if (braveQuery.length < 3) {
+                    return { input: `information about ${braveQuery}` };
+                }
+                return { input: braveQuery };
             default:
                 return {};
         }
@@ -555,9 +570,10 @@ Keep it concise but informative.`;
 
         // Try fallback direct response
         try {
+            const contextInfo = context?.conversationId ? ` (Conversation: ${context.conversationId})` : '';
             const fallbackResponse = await this.llmProvider.invoke([
                 { role: 'system' as const, content: 'You are a helpful assistant. The user asked something but there was a technical issue.' },
-                { role: 'user' as const, content: `I asked: "${input}" but there was an error. Can you help me anyway?` }
+                { role: 'user' as const, content: `I asked: "${input}" but there was an error${contextInfo}. Can you help me anyway?` }
             ]);
 
             return `I encountered a technical issue, but let me try to help: ${fallbackResponse.content}`;
