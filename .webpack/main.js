@@ -9,7 +9,7 @@ module.exports = {
         filename: 'main.js',
     },
     // Enable source maps for debugging
-    devtool: process.env.NODE_ENV === 'production' ? false : 'inline-source-map',
+    devtool: process.env.NODE_ENV === 'production' ? 'source-map' : 'inline-source-map',
     resolve: {
         extensions: ['.ts', '.js'],
         alias: {

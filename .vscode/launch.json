@@ -8,29 +8,39 @@
             "cwd": "${workspaceFolder}",
             "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron",
             "runtimeArgs": [
-                "-r",
-                "ts-node/register",
-                "${workspaceFolder}/src/main/main.ts",
-                "--enable-logging"
+                "--inspect=9229",
+                "--remote-debugging-port=9223"
+            ],
+            "args": [
+                "-r", "ts-node/register",
+                "${workspaceFolder}/src/main/main.ts"
             ],
             "windows": {
                 "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron.cmd"
             },
             "console": "integratedTerminal",
-            "protocol": "inspector",
             "sourceMaps": true,
+            "smartStep": true,
+            "resolveSourceMapLocations": [
+                "${workspaceFolder}/**",
+                "!**/node_modules/**"
+            ],
             "outFiles": [
-                "${workspaceFolder}/dist/**/*.js",
-                "${workspaceFolder}/src/**/*.ts"
+                "${workspaceFolder}/**/*.js",
+                "!**/node_modules/**"
             ],
             "sourceMapPathOverrides": {
-                "webpack:///./src/*": "${workspaceFolder}/src/*",
-                "webpack:///*": "${workspaceFolder}/*"
+                "*": "${workspaceFolder}/*",
+                "file:///*": "${workspaceFolder}/*",
+                "/src/*": "${workspaceFolder}/src/*",
+                "/./*": "${workspaceFolder}/*",
+                "/Users/karwo09/code/voice-assistant/*": "${workspaceFolder}/*"
             },
             "outputCapture": "std",
             "env": {
                 "NODE_ENV": "development",
-                "NODE_OPTIONS": "--max-old-space-size=8192"
+                "NODE_OPTIONS": "--max-old-space-size=8192",
+                "TS_NODE_COMPILER_OPTIONS": "{\"sourceMap\":true,\"inlineSources\":true,\"mapRoot\":\"${workspaceFolder}\",\"sourceRoot\":\"${workspaceFolder}\"}"
             },
             "autoAttachChildProcesses": true,
             "skipFiles": [
@@ -53,7 +63,6 @@
             },
             "preLaunchTask": "build:main",
             "console": "integratedTerminal",
-            "protocol": "inspector",
             "sourceMaps": true,
             "outFiles": [
                 "${workspaceFolder}/dist/**/*.js"
@@ -69,7 +78,7 @@
         },
         {
             "name": "Debug Renderer Process",
-            "type": "pwa-chrome",
+            "type": "chrome",
             "request": "launch",
             "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron",
             "runtimeArgs": [
@@ -90,7 +99,7 @@
         },
         {
             "name": "Attach to Renderer Process",
-            "type": "pwa-chrome",
+            "type": "chrome",
             "request": "attach",
             "port": 9222,
             "webRoot": "${workspaceFolder}",
@@ -110,7 +119,6 @@
                 "dev:main"
             ],
             "console": "integratedTerminal",
-            "protocol": "inspector",
             "env": {
                 "NODE_ENV": "development",
                 "NODE_OPTIONS": "--inspect --max-old-space-size=8192"
@@ -128,9 +136,71 @@
                 "<node_internals>/**",
                 "node_modules/**"
             ]
+        },
+        {
+            "name": "Debug: Start Dev Server",
+            "type": "node",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "runtimeExecutable": "npm",
+            "runtimeArgs": [
+                "run",
+                "dev:renderer"
+            ],
+            "console": "integratedTerminal",
+            "env": {
+                "NODE_ENV": "development"
+            }
+        },
+        {
+            "name": "Debug: Simple TS-Node",
+            "type": "node",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/node_modules/ts-node/dist/bin.js",
+            "args": [
+                "--project", "tsconfig.debug.json",
+                "${workspaceFolder}/src/main/main.ts"
+            ],
+            "console": "integratedTerminal",
+            "env": {
+                "NODE_ENV": "development",
+                "ELECTRON_RUN_AS_NODE": "1"
+            }
+        },
+        {
+            "name": "Debug: Test Breakpoints",
+            "type": "node",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/debug-test.ts",
+            "runtimeArgs": ["-r", "ts-node/register"],
+            "console": "integratedTerminal",
+            "env": {
+                "NODE_ENV": "development",
+                "TS_NODE_PROJECT": "${workspaceFolder}/tsconfig.debug.json"
+            },
+            "sourceMaps": true,
+            "resolveSourceMapLocations": [
+                "${workspaceFolder}/**",
+                "!**/node_modules/**"
+            ]
         }
     ],
     "compounds": [
+        {
+            "name": "Full Application Debug",
+            "configurations": [
+                "Debug: Start Dev Server",
+                "Debug Main Process (ts-node)"
+            ],
+            "stopAll": true,
+            "presentation": {
+                "hidden": false,
+                "group": "Debug",
+                "order": 1
+            }
+        },
         {
             "name": "Main + Renderer (ts-node)",
             "configurations": [
@@ -148,7 +218,7 @@
             "presentation": {
                 "hidden": false,
                 "group": "Debug",
-                "order": 1
+                "order": 2
             }
         }
     ]

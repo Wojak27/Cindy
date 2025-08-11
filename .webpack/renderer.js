@@ -9,6 +9,8 @@ module.exports = {
         path: path.join(__dirname, '../dist/renderer'),
         filename: 'renderer.js',
     },
+    // Enable source maps for debugging
+    devtool: process.env.NODE_ENV === 'production' ? 'source-map' : 'eval-source-map',
     externals: {
         keytar: 'commonjs keytar',
         'keytar/build/Release/keytar.node': 'commonjs keytar/build/Release/keytar.node'
@@ -25,7 +27,17 @@ module.exports = {
             },
             {
                 test: /\.tsx?$/,
-                use: 'ts-loader',
+                use: {
+                    loader: 'ts-loader',
+                    options: {
+                        transpileOnly: false,
+                        compilerOptions: {
+                            sourceMap: true,
+                            inlineSourceMap: false,
+                            inlineSources: true
+                        }
+                    }
+                },
                 exclude: /node_modules/,
             },
             {
@@ -40,6 +52,11 @@ module.exports = {
     },
     resolve: {
         extensions: ['.ts', '.tsx', '.js', '.jsx'],
+        alias: {
+            '@main': path.resolve(__dirname, '../src/main'),
+            '@renderer': path.resolve(__dirname, '../src/renderer'),
+            '@shared': path.resolve(__dirname, '../src/shared'),
+        }
     },
     devServer: {
         static: {

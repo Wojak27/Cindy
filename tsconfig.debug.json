@@ -1,0 +1,23 @@
+{
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "sourceMap": true,
+        "inlineSourceMap": false,
+        "inlineSources": true,
+        "mapRoot": ".",
+        "sourceRoot": ".",
+        "declaration": false,
+        "declarationMap": false,
+        "removeComments": false,
+        "preserveConstEnums": true
+    },
+    "ts-node": {
+        "compilerOptions": {
+            "sourceMap": true,
+            "inlineSourceMap": false,
+            "inlineSources": true,
+            "mapRoot": ".",
+            "sourceRoot": "."
+        }
+    }
+}
