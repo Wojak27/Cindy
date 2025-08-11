@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { SettingsService } from './SettingsService';
 import { LLMProvider } from './LLMProvider';
+import { LangChainToolExecutorService } from './LangChainToolExecutorService';
 
 /**
  * ServiceManager - Handles dynamic loading of heavy LangChain services
@@ -57,7 +58,7 @@ export class ServiceManager extends EventEmitter {
             console.log('[ServiceManager] Dynamically loading LangChainToolExecutorService...');
 
             // Dynamic import to avoid loading at startup - using completely lightweight version with NO LangChain imports
-            const { LangChainToolExecutorService } = await import('./LangChainToolExecutorService');
+
 
             // Pass DuckDB vector store instead of LangChain vector store
             this.langChainToolExecutorService = new LangChainToolExecutorService(duckdbVectorStore);

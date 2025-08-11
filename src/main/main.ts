@@ -5,15 +5,9 @@ import { SettingsService, Settings } from './services/SettingsService';
 import { TrayService } from './services/TrayService';
 import axios from 'axios';
 import { ChatStorageService } from './services/ChatStorageService';
-// import { DuckDBChatStorageService } from './services/DuckDBChatStorageService';
 // Re-enable core LLM functionality
 import { LLMProvider } from './services/LLMProvider';
-// Keep heavy services for dynamic loading only - no static imports
-// import { LangChainToolExecutorService } from './services/LangChainToolExecutorService';
-// import { LangChainCindyAgent } from './agents/LangChainCindyAgent';
-// import { LangChainMemoryService } from './services/LangChainMemoryService';
-// Keep vector store service disabled for now - using DuckDBVectorStore instead
-// import { LangChainVectorStoreService } from './services/LangChainVectorStoreService';
+
 import { DuckDBVectorStore } from './services/DuckDBVectorStore';
 import { ServiceManager } from './services/ServiceManager';
 import { SpeechToTextService } from './services/SpeechToTextService';
@@ -596,7 +590,7 @@ const setupTTSIPC = () => {
             if (!textToSpeechService) {
                 return { success: false, error: 'TextToSpeechService not available' };
             }
-            
+
             await textToSpeechService.stopPlayback();
             return { success: true };
         } catch (error) {
@@ -945,62 +939,10 @@ app.on('ready', async () => {
         }
     }
 
-    // Skip vector store initialization for testing
-
-    // Initialize LangChain VectorStoreService - DISABLED FOR DEBUGGING
-    // if (!langChainVectorStoreService) {
-    //     const databaseSettings = (await settingsService?.get('database') || {}) as any;
-    //     const apiKey = await settingsService?.getApiKey();
-    //     langChainVectorStoreService = new LangChainVectorStoreService({
-    //         databasePath: databaseSettings.path || path.join(app.getPath('userData'), 'vector-store'),
-    //         embeddingModel: 'text-embedding-3-small',
-    //         chunkSize: databaseSettings.chunkSize || 1000,
-    //         chunkOverlap: databaseSettings.chunkOverlap || 200,
-    //         autoIndex: databaseSettings.autoIndex || true,
-    //         openaiApiKey: apiKey || ''
-    //     });
-    //     await langChainVectorStoreService.initialize();
-    //     console.log('🔧 DEBUG: LangChain VectorStoreService initialized');
-    // }
-
-    // Initialize LangChain MemoryService - DISABLED FOR DEBUGGING
-    // if (!langChainMemoryService && langChainVectorStoreService && llmProvider) {
-    //     const provider = await llmProvider.getCurrentProvider();
-    //     let llmModel = null;
-    //     if (llmProvider && typeof llmProvider === 'object' && 'chatModel' in llmProvider) {
-    //         llmModel = (llmProvider as any).chatModel;
-    //     }
-    //     langChainMemoryService = new LangChainMemoryService({}, langChainVectorStoreService, llmModel);
-    //     await langChainMemoryService.initialize();
-    //     console.log('🔧 DEBUG: LangChain MemoryService initialized');
-    // }
-
-    // Skip tool executor for now
-    console.log('🔧 DEBUG: Skipping ToolExecutorService for startup speed');
-
-    // Initialize LangChain CindyAgent after other services - DISABLED FOR DEBUGGING
-    // if (!langChainCindyAgent && llmProvider && settingsService && chatStorageService && langChainMemoryService && langChainToolExecutorService) {
-    //     // Get agent config from settings
-    //     const agentConfig = await settingsService.get('general') || {};
-
-    //     // Initialize LangChain agent with LangChain services
-    //     langChainCindyAgent = new LangChainCindyAgent({
-    //         store: {},
-    //         memoryService: langChainMemoryService as any, // Type cast for compatibility
-    //         toolExecutor: langChainToolExecutorService as any, // Type cast for compatibility
-    //         config: {
-    //             enableStreaming: true,
-    //             ...agentConfig
-    //         },
-    //         llmRouter: llmProvider
-    //     });
-    //     console.log('🔧 DEBUG: LangChain CindyAgent initialized with full LangChain services integration');
-    // }
-
     // Initialize ServiceManager for dynamic loading of heavy services
     serviceManager = new ServiceManager(settingsService, llmProvider);
     console.log('🔧 DEBUG: ServiceManager initialized for dynamic service loading');
-    
+
     // Skip speech and wake word services for testing
     console.log('🔧 DEBUG: Minimal services initialization completed');
 

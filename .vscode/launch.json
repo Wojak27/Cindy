@@ -2,13 +2,15 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Debug Main Process",
+            "name": "Debug Main Process (ts-node)",
             "type": "node",
             "request": "launch",
             "cwd": "${workspaceFolder}",
             "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron",
             "runtimeArgs": [
-                ".",
+                "-r",
+                "ts-node/register",
+                "${workspaceFolder}/src/main/main.ts",
                 "--enable-logging"
             ],
             "windows": {
@@ -17,11 +19,53 @@
             "console": "integratedTerminal",
             "protocol": "inspector",
             "sourceMaps": true,
+            "outFiles": [
+                "${workspaceFolder}/dist/**/*.js",
+                "${workspaceFolder}/src/**/*.ts"
+            ],
+            "sourceMapPathOverrides": {
+                "webpack:///./src/*": "${workspaceFolder}/src/*",
+                "webpack:///*": "${workspaceFolder}/*"
+            },
+            "outputCapture": "std",
+            "env": {
+                "NODE_ENV": "development",
+                "NODE_OPTIONS": "--max-old-space-size=8192"
+            },
+            "autoAttachChildProcesses": true,
+            "skipFiles": [
+                "<node_internals>/**",
+                "node_modules/**"
+            ]
+        },
+        {
+            "name": "Debug Main Process (Webpack)",
+            "type": "node",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron",
+            "runtimeArgs": [
+                "${workspaceFolder}/dist/main/main.js",
+                "--enable-logging"
+            ],
+            "windows": {
+                "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron.cmd"
+            },
+            "preLaunchTask": "build:main",
+            "console": "integratedTerminal",
+            "protocol": "inspector",
+            "sourceMaps": true,
+            "outFiles": [
+                "${workspaceFolder}/dist/**/*.js"
+            ],
+            "sourceMapPathOverrides": {
+                "webpack:///./src/*": "${workspaceFolder}/src/*",
+                "webpack:///*": "${workspaceFolder}/*"
+            },
             "outputCapture": "std",
             "env": {
                 "NODE_ENV": "development"
-            },
-            "runtimeVersion": "18.0.0"
+            }
         },
         {
             "name": "Debug Renderer Process",
@@ -29,14 +73,20 @@
             "request": "launch",
             "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron",
             "runtimeArgs": [
-                ".",
+                "-r",
+                "ts-node/register",
+                "${workspaceFolder}/src/main/main.ts",
                 "--remote-debugging-port=9222"
             ],
             "webRoot": "${workspaceFolder}",
             "sourceMapPathOverrides": {
-                "webpack:///./src/*": "${workspaceFolder}/src/*"
+                "webpack:///./src/*": "${workspaceFolder}/src/*",
+                "webpack:///*": "${workspaceFolder}/*"
             },
-            "timeout": 30000
+            "timeout": 30000,
+            "env": {
+                "NODE_ENV": "development"
+            }
         },
         {
             "name": "Attach to Renderer Process",
@@ -45,40 +95,61 @@
             "port": 9222,
             "webRoot": "${workspaceFolder}",
             "sourceMapPathOverrides": {
-                "webpack:///./src/*": "${workspaceFolder}/src/*"
+                "webpack:///./src/*": "${workspaceFolder}/src/*",
+                "webpack:///*": "${workspaceFolder}/*"
             },
             "timeout": 30000
         },
         {
-            "name": "Start Development Server",
+            "name": "Debug Dev Server",
             "type": "node",
             "request": "launch",
             "runtimeExecutable": "npm",
             "runtimeArgs": [
                 "run",
-                "dev"
+                "dev:main"
             ],
             "console": "integratedTerminal",
-            "port": 9229,
+            "protocol": "inspector",
+            "env": {
+                "NODE_ENV": "development",
+                "NODE_OPTIONS": "--inspect --max-old-space-size=8192"
+            },
+            "sourceMaps": true,
+            "outFiles": [
+                "${workspaceFolder}/dist/**/*.js",
+                "${workspaceFolder}/src/**/*.ts"
+            ],
+            "sourceMapPathOverrides": {
+                "webpack:///./src/*": "${workspaceFolder}/src/*"
+            },
             "autoAttachChildProcesses": true,
-            "restart": true
+            "skipFiles": [
+                "<node_internals>/**",
+                "node_modules/**"
+            ]
         }
     ],
     "compounds": [
         {
-            "name": "Main + Renderer",
+            "name": "Main + Renderer (ts-node)",
             "configurations": [
-                "Debug Main Process",
+                "Debug Main Process (ts-node)",
                 "Attach to Renderer Process"
             ],
             "stopAll": true
         },
         {
-            "name": "Debug All",
+            "name": "Full Debug (Dev Server)",
             "configurations": [
-                "Start Development Server"
+                "Debug Dev Server"
             ],
-            "stopAll": true
+            "stopAll": true,
+            "presentation": {
+                "hidden": false,
+                "group": "Debug",
+                "order": 1
+            }
         }
     ]
 }
