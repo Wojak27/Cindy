@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import DocumentViewer from './DocumentViewer';
 import { useSelector, useDispatch } from 'react-redux';
 import { getSettings, updateSettings } from '../../store/actions';
 import {
@@ -607,27 +608,15 @@ const ModernDatabasePanel: React.FC = () => {
 
                     {/* Contents Tab */}
                     <TabPanel value={tabValue} index={2}>
-                        <Box sx={{ px: 3 }}>
-                            <Typography variant="h6" gutterBottom fontWeight={600}>
+                        <Box sx={{ px: 0 }}>
+                            <Typography variant="h6" gutterBottom fontWeight={600} sx={{ px: 3, mb: 2 }}>
                                 Database Contents
                             </Typography>
-                            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                            <Typography variant="body2" color="text.secondary" sx={{ px: 3, mb: 3 }}>
                                 Browse and manage indexed documents in your vector database.
                             </Typography>
 
-                            <Card>
-                                <CardContent>
-                                    <Box sx={{ textAlign: 'center', py: 4 }}>
-                                        <StorageIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-                                        <Typography variant="h6" color="text.secondary">
-                                            Database Contents
-                                        </Typography>
-                                        <Typography variant="body2" color="text.secondary">
-                                            Document browser and management tools will be available here.
-                                        </Typography>
-                                    </Box>
-                                </CardContent>
-                            </Card>
+                            <DocumentViewer databasePath={databasePath} />
                         </Box>
                     </TabPanel>
                 </Box>

@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     indexDirectory: (path: string, options?: any) => 
         ipcRenderer.invoke('vector-store:index-directory', path, options),
     getIndexedItems: (path: string) => ipcRenderer.invoke('vector-store:get-indexed-items', path),
+    readFileBuffer: (filePath: string) => ipcRenderer.invoke('read-file-buffer', filePath),
     
     // Wake Word API (disabled but keeping interface)
     getWakeWordStatus: () => ipcRenderer.invoke('wake-word:status'),

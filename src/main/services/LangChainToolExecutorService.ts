@@ -285,16 +285,24 @@ export class LangChainToolExecutorService extends EventEmitter {
     private tools: Map<string, ToolDefinition> = new Map();
     private lastWebSearchTime: number = 0;
     private settingsService: any;
+    private vectorStore: any;
 
-    constructor(_vectorStore?: any, settingsService?: any) {
+    constructor(vectorStore?: any, settingsService?: any) {
         super();
+        this.vectorStore = vectorStore;
         this.settingsService = settingsService;
-        console.log('[LangChainToolExecutorService] Created with web search tools only');
+        console.log('[LangChainToolExecutorService] Created with web search tools and vector store');
+        console.log('[LangChainToolExecutorService] Vector store provided:', !!vectorStore);
+        console.log('[LangChainToolExecutorService] Settings service provided:', !!settingsService);
     }
 
     async initialize(): Promise<void> {
+        console.log('[LangChainToolExecutorService] Starting initialization...');
         await this.initializeWebSearchTools();
-        console.log(`[LangChainToolExecutorService] Initialized with ${this.tools.size} web search tools`);
+        console.log(`[LangChainToolExecutorService] After web search tools: ${this.tools.size} tools`);
+        await this.initializeVectorStoreTools();
+        console.log(`[LangChainToolExecutorService] Initialized with ${this.tools.size} tools (web search + vector store)`);
+        console.log('[LangChainToolExecutorService] Final tool list:', Array.from(this.tools.keys()));
     }
 
     private async initializeWebSearchTools(): Promise<void> {
@@ -492,6 +500,105 @@ export class LangChainToolExecutorService extends EventEmitter {
         }
 
         console.log('[LangChainToolExecutorService] Web search tools loaded');
+    }
+
+    private async initializeVectorStoreTools(): Promise<void> {
+        console.log('[LangChainToolExecutorService] Loading vector store tools...');
+        console.log('[LangChainToolExecutorService] Vector store check:', {
+            hasVectorStore: !!this.vectorStore,
+            vectorStoreType: this.vectorStore?.constructor?.name,
+            vectorStoreInitialized: this.vectorStore?.isInitialized
+        });
+
+        if (!this.vectorStore) {
+            console.log('[LangChainToolExecutorService] No vector store provided - skipping vector store tools');
+            return;
+        }
+
+        try {
+            // Create vector store search tool by extending Tool class
+            class VectorSearchTool extends Tool {
+                name = 'search_documents';
+                description = 'Search through indexed documents and notes using semantic similarity. Use this when users ask about stored documents, notes, or need to find specific information from their knowledge base. Triggered by #search or #find hashtags.';
+                
+                constructor(private vectorStore: any) {
+                    super();
+                }
+
+                async _call(input: any): Promise<string> {
+                    try {
+                        console.log('[VectorSearchTool] Searching documents for:', input);
+                        
+                        // Handle both string input and object input
+                        const query = typeof input === 'string' ? input : input.query;
+                        const limit = typeof input === 'object' && input.limit ? input.limit : 5;
+
+                        if (!query || query.trim().length === 0) {
+                            return 'Please provide a search query to find relevant documents.';
+                        }
+
+                        // Ensure vector store is initialized
+                        if (!this.vectorStore.isInitialized) {
+                            await this.vectorStore.initialize();
+                        }
+
+                        // Perform similarity search
+                        const results = await this.vectorStore.similaritySearch(query.trim(), limit);
+                        
+                        if (!results || results.length === 0) {
+                            return `No documents found matching your search query: "${query.trim()}". Try rephrasing your search or check if documents have been indexed.`;
+                        }
+
+                        // Format results for the LLM
+                        const formattedResults = results.map((doc: any, index: number) => {
+                            const metadata = doc.metadata || {};
+                            const source = metadata.source || metadata.fileName || 'Unknown source';
+                            const content = doc.pageContent || '';
+                            
+                            return `**Result ${index + 1}** (Source: ${source}):\n${content.substring(0, 500)}${content.length > 500 ? '...' : ''}`;
+                        }).join('\n\n---\n\n');
+
+                        return `Found ${results.length} relevant document${results.length === 1 ? '' : 's'} for "${query.trim()}":\n\n${formattedResults}`;
+
+                    } catch (error: any) {
+                        console.error('[VectorSearchTool] Error during search:', error);
+                        return `Search failed: ${error.message}. Please try again or check if the vector database is properly configured.`;
+                    }
+                }
+            }
+
+            const vectorSearchTool = new VectorSearchTool(this.vectorStore);
+
+            // Register the tool
+            this.registerTool({
+                name: 'search_documents',
+                description: 'Search through indexed documents and notes using semantic similarity. Triggered by #search or #find hashtags.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        query: { 
+                            type: 'string', 
+                            description: 'The search query to find relevant documents' 
+                        },
+                        limit: { 
+                            type: 'number', 
+                            description: 'Maximum number of results to return (default: 5)',
+                            default: 5
+                        }
+                    },
+                    required: ['query']
+                },
+                tool: vectorSearchTool
+            });
+
+            console.log('[LangChainToolExecutorService] Vector store search tool registered successfully');
+            console.log('[LangChainToolExecutorService] Available tools after registration:', Array.from(this.tools.keys()));
+        } catch (error: any) {
+            console.error('[LangChainToolExecutorService] Failed to initialize vector store tools:', error);
+            console.error('[LangChainToolExecutorService] Error stack:', error.stack);
+        }
+
+        console.log('[LangChainToolExecutorService] Vector store tools loaded');
     }
 
     /**

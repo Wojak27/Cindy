@@ -500,6 +500,7 @@ Keep it concise but informative.`;
                         yield `<tool>${JSON.stringify(completedToolCall)}</tool>\n`;
 
                     } catch (error) {
+                        console.error(`[ThinkingCindyAgent] Tool execution error for ${step.tool}:`, error);
                         const duration = Date.now() - startTime;
                         toolResults[step.tool] = { success: false, error: (error as Error).message };
 
@@ -522,7 +523,7 @@ Keep it concise but informative.`;
                 yield "📝 [STREAMING] Phase 4: Synthesizing response...\n";
 
                 const finalResponse = await this.synthesizeResponse(cleanInput, plan, toolResults, context);
-                
+
                 // Store conversation
                 await this.storeConversation(input, finalResponse, context);
 

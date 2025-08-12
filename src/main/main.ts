@@ -20,6 +20,35 @@ import installExtension, {
     REACT_DEVELOPER_TOOLS
 } from 'electron-devtools-installer';
 
+// Utility function to get MIME type from file extension
+const getMimeType = (filePath: string): string => {
+    const ext = path.extname(filePath).toLowerCase();
+    const mimeTypes: Record<string, string> = {
+        '.pdf': 'application/pdf',
+        '.doc': 'application/msword',
+        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        '.txt': 'text/plain',
+        '.md': 'text/markdown',
+        '.json': 'application/json',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.gif': 'image/gif',
+        '.svg': 'image/svg+xml',
+        '.html': 'text/html',
+        '.htm': 'text/html',
+        '.css': 'text/css',
+        '.js': 'application/javascript',
+        '.ts': 'application/typescript',
+        '.xml': 'application/xml',
+        '.zip': 'application/zip',
+        '.mp3': 'audio/mpeg',
+        '.mp4': 'video/mp4',
+        '.wav': 'audio/wav'
+    };
+    return mimeTypes[ext] || 'application/octet-stream';
+};
+
 // Function to set up all settings-related IPC handlers
 const setupSettingsIPC = () => {
     console.log('🔧 DEBUG: Setting up settings IPC handlers');
@@ -460,6 +489,9 @@ const setupDatabaseIPC = () => {
             }
 
             const vectorStore = new DuckDBVectorStore(vectorStoreConfig);
+            
+            // Assign to global variable so IPC handlers can access it
+            duckDBVectorStore = vectorStore;
 
             await vectorStore.initialize();
 
@@ -573,10 +605,53 @@ const setupDatabaseIPC = () => {
     // Get indexed items handler
     ipcMain.handle('vector-store:get-indexed-items', async (event, databasePath) => {
         console.log('[IPC] Getting indexed items for path:', databasePath);
+        console.log('[IPC] DuckDB vector store available:', !!duckDBVectorStore);
         try {
+            // Initialize DuckDB vector store if not available but database exists
+            if (!duckDBVectorStore && databasePath) {
+                console.log('[IPC] Vector store not initialized, checking for existing database...');
+                const dbPath = path.join(databasePath, '.vector_store', 'duckdb_vectors.db');
+                if (fs.existsSync(dbPath)) {
+                    console.log('[IPC] Found existing vector database, initializing...');
+                    
+                    // Get settings for provider configuration
+                    const llmSettings: any = await settingsService?.get('llm') || {};
+                    const provider = llmSettings.provider || 'ollama';
+                    
+                    // Configure vector store based on provider
+                    const vectorStoreConfig: any = {
+                        databasePath: dbPath,
+                        chunkSize: 1000,
+                        chunkOverlap: 200,
+                    };
+
+                    if (provider === 'openai' || provider === 'auto') {
+                        const apiKey = llmSettings.openaiApiKey;
+                        if (apiKey) {
+                            vectorStoreConfig.embeddingProvider = 'openai';
+                            vectorStoreConfig.openaiApiKey = apiKey;
+                        } else {
+                            vectorStoreConfig.embeddingProvider = 'ollama';
+                        }
+                    } else {
+                        vectorStoreConfig.embeddingProvider = 'ollama';
+                    }
+
+                    try {
+                        duckDBVectorStore = new DuckDBVectorStore(vectorStoreConfig);
+                        await duckDBVectorStore.initialize();
+                        console.log('[IPC] Vector store initialized successfully for reading');
+                    } catch (error) {
+                        console.warn('[IPC] Could not initialize vector store:', error);
+                    }
+                }
+            }
+            
             // Use DuckDB vector store if available
             if (duckDBVectorStore) {
+                console.log('[IPC] Fetching indexed files from DuckDB...');
                 const items = await duckDBVectorStore.getIndexedFiles();
+                console.log('[IPC] Found', items.length, 'indexed files');
                 return { success: true, items };
             }
 
@@ -595,6 +670,63 @@ const setupDatabaseIPC = () => {
             return { success: true, items: [] };
         } catch (error) {
             console.error('[IPC] Error getting indexed items:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        }
+    });
+
+    // File reading for document viewer
+    ipcMain.handle('read-file-buffer', async (event, filePath) => {
+        console.log('[IPC] Reading file buffer for:', filePath);
+        console.log('[IPC] DuckDB vector store available for file access:', !!duckDBVectorStore);
+        try {
+            if (!fs.existsSync(filePath)) {
+                return { success: false, error: 'File not found' };
+            }
+
+            // Security check - only allow reading files that are indexed
+            let isAllowed = false;
+            
+            // Check if file is in indexed files (DuckDB)
+            if (duckDBVectorStore) {
+                try {
+                    console.log('[IPC] Checking if file is indexed in DuckDB...');
+                    const indexedFiles = await duckDBVectorStore.getIndexedFiles();
+                    console.log('[IPC] DuckDB has', indexedFiles.length, 'indexed files');
+                    console.log('[IPC] Looking for file:', filePath);
+                    console.log('[IPC] Indexed file paths:', indexedFiles.map(f => f.path));
+                    isAllowed = indexedFiles.some(file => file.path === filePath);
+                    console.log('[IPC] File access allowed from DuckDB check:', isAllowed);
+                } catch (error) {
+                    console.warn('[IPC] Could not check DuckDB indexed files:', error);
+                }
+            }
+
+            // Check if file is in indexed files (LangChain)
+            if (!isAllowed && langChainVectorStoreService) {
+                try {
+                    const indexedFiles = langChainVectorStoreService.getIndexedFiles();
+                    isAllowed = indexedFiles.some((file: any) => file.path === filePath);
+                } catch (error) {
+                    console.warn('[IPC] Could not check LangChain indexed files:', error);
+                }
+            }
+
+            if (!isAllowed) {
+                return { success: false, error: 'File access not allowed - file must be indexed first' };
+            }
+
+            const buffer = fs.readFileSync(filePath);
+            const base64 = buffer.toString('base64');
+            const stats = fs.statSync(filePath);
+            
+            return {
+                success: true,
+                data: base64,
+                size: stats.size,
+                mimeType: getMimeType(filePath)
+            };
+        } catch (error) {
+            console.error('[IPC] Error reading file buffer:', error);
             return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
         }
     });
@@ -1231,6 +1363,10 @@ app.on('ready', async () => {
                 }
 
                 vectorStore = new DuckDBVectorStore(vectorStoreConfig);
+                
+                // Assign to global variable so IPC handlers can access it
+                duckDBVectorStore = vectorStore;
+                
                 await vectorStore.initialize();
 
                 // Set up progress event forwarding
