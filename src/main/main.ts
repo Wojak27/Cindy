@@ -171,10 +171,10 @@ const setupSettingsIPC = () => {
     // IPC handler for fetching models from provider APIs
     ipcMain.handle('fetch-provider-models', async (event, { provider, config }) => {
         console.log(`Main process - fetch-provider-models called for provider: ${provider}`);
-        
+
         try {
             let models: string[] = [];
-            
+
             switch (provider) {
                 case 'openai':
                     if (config?.apiKey) {
@@ -188,23 +188,23 @@ const setupSettingsIPC = () => {
                             .sort();
                     }
                     break;
-                
+
                 case 'anthropic':
                     // Anthropic doesn't have a public models API, return known models
                     models = [
                         'claude-3-opus-20240229',
-                        'claude-3-sonnet-20240229', 
+                        'claude-3-sonnet-20240229',
                         'claude-3-haiku-20240307',
                         'claude-2.1',
                         'claude-2.0',
                         'claude-instant-1.2'
                     ];
                     break;
-                
+
                 case 'openrouter':
                     if (config?.apiKey) {
                         const response = await axios.get('https://openrouter.ai/api/v1/models', {
-                            headers: { 
+                            headers: {
                                 'Authorization': `Bearer ${config.apiKey}`,
                                 'HTTP-Referer': config?.siteUrl || 'https://localhost:3000',
                                 'X-Title': config?.appName || 'Cindy Voice Assistant'
@@ -214,7 +214,7 @@ const setupSettingsIPC = () => {
                         models = response.data.data.map((model: any) => model.id).sort();
                     }
                     break;
-                
+
                 case 'groq':
                     if (config?.apiKey) {
                         const response = await axios.get('https://api.groq.com/openai/v1/models', {
@@ -224,7 +224,7 @@ const setupSettingsIPC = () => {
                         models = response.data.data.map((model: any) => model.id).sort();
                     }
                     break;
-                
+
                 case 'google':
                     // Google Gemini models - static list since no public API for model list
                     models = [
@@ -234,7 +234,7 @@ const setupSettingsIPC = () => {
                         'chat-bison-001'
                     ];
                     break;
-                
+
                 case 'cohere':
                     if (config?.apiKey) {
                         const response = await axios.get('https://api.cohere.ai/v1/models', {
@@ -247,7 +247,7 @@ const setupSettingsIPC = () => {
                             .sort();
                     }
                     break;
-                
+
                 case 'ollama':
                     try {
                         const baseUrl = config?.baseUrl || 'http://127.0.0.1:11434';
@@ -258,7 +258,7 @@ const setupSettingsIPC = () => {
                         models = ['qwen:4b', 'llama3.1:8b', 'codellama:7b', 'mistral:7b'];
                     }
                     break;
-                
+
                 case 'huggingface':
                     // HuggingFace has many models, provide common ones
                     models = [
@@ -271,26 +271,26 @@ const setupSettingsIPC = () => {
                         'google/flan-t5-large'
                     ];
                     break;
-                
+
                 case 'azure':
                     // Azure OpenAI models depend on deployment, return common ones
                     models = [
                         'gpt-4',
-                        'gpt-4-32k', 
+                        'gpt-4-32k',
                         'gpt-35-turbo',
                         'gpt-35-turbo-16k',
                         'text-davinci-003'
                     ];
                     break;
-                
+
                 default:
                     console.warn(`Unknown provider: ${provider}`);
                     models = [];
             }
-            
+
             console.log(`Fetched ${models.length} models for ${provider}:`, models);
             return models;
-            
+
         } catch (error) {
             console.error(`Error fetching models for ${provider}:`, error);
             return []; // Return empty array on error, component will use defaults
@@ -434,7 +434,8 @@ const setupDatabaseIPC = () => {
             // Use Ollama embeddings if LLM provider is 'ollama'
             if (llmProvider === 'ollama') {
                 vectorStoreConfig.embeddingProvider = 'ollama';
-                console.log('[IPC] Using Ollama embeddings (no API key required)');
+                vectorStoreConfig.embeddingModel = 'dengcao/Qwen3-Embedding-0.6B:Q8_0'; // Smallest Qwen model
+                console.log('[IPC] Using Ollama embeddings with smallest Qwen model (0.5b)');
             } else {
                 // For 'openai' and 'auto' providers, try to use OpenAI embeddings
                 // But first check if we actually have an API key
@@ -442,8 +443,9 @@ const setupDatabaseIPC = () => {
 
                 if (!apiKey && llmProvider === 'auto') {
                     // If no API key and auto mode, fallback to Ollama
-                    console.log('[IPC] No OpenAI API key found in auto mode, falling back to Ollama embeddings');
+                    console.log('[IPC] No OpenAI API key found in auto mode, falling back to Ollama embeddings with smallest Qwen model');
                     vectorStoreConfig.embeddingProvider = 'ollama';
+                    vectorStoreConfig.embeddingModel = 'dengcao/Qwen3-Embedding-0.6B:Q8_0'; // Smallest Qwen model
                 } else if (!apiKey) {
                     return {
                         success: false,
@@ -1162,24 +1164,77 @@ app.on('ready', async () => {
             return { success: false, message: 'Database directory does not exist' };
         }
 
-        if (!duckDBVectorStore) {
-            return { success: false, message: 'Vector store not available' };
-        }
-
         try {
+            // Create a new vector store instance for indexing if global one doesn't exist
+            let vectorStore = duckDBVectorStore;
+
+            if (!vectorStore) {
+                console.log('[IPC] Creating new DuckDB vector store for indexing...');
+
+                // Get current LLM settings to determine embedding provider
+                const llmSettings = await settingsService?.get('llm') || { provider: 'ollama' };
+                const provider = llmSettings.provider || 'ollama';
+
+                // Create vector store config based on provider
+                let vectorStoreConfig: any = {
+                    databasePath: path.join(databasePath, '.vector_store', 'duckdb_vectors.db')
+                };
+
+                if (provider === 'ollama') {
+                    vectorStoreConfig.embeddingProvider = 'ollama';
+                    vectorStoreConfig.embeddingModel = 'dengcao/Qwen3-Embedding-0.6B:Q8_0'; // Smallest Qwen model
+                    vectorStoreConfig.ollamaBaseUrl = 'http://localhost:11434';
+                    console.log('[IPC] Using Ollama embeddings with smallest Qwen model (0.5b)');
+                } else if (provider === 'openai') {
+                    const openaiApiKey = await settingsService?.getApiKey();
+                    if (openaiApiKey) {
+                        vectorStoreConfig.embeddingProvider = 'openai';
+                        vectorStoreConfig.openaiApiKey = openaiApiKey;
+                        vectorStoreConfig.embeddingModel = 'text-embedding-3-small';
+                        console.log('[IPC] Using OpenAI embeddings');
+                    } else {
+                        // Fall back to Ollama if no OpenAI key
+                        vectorStoreConfig.embeddingProvider = 'ollama';
+                        vectorStoreConfig.embeddingModel = 'dengcao/Qwen3-Embedding-0.6B:Q8_0';
+                        vectorStoreConfig.ollamaBaseUrl = 'http://localhost:11434';
+                        console.log('[IPC] No OpenAI API key, falling back to Ollama with smallest Qwen model');
+                    }
+                } else {
+                    // Default to Ollama with smallest Qwen model
+                    vectorStoreConfig.embeddingProvider = 'ollama';
+                    vectorStoreConfig.embeddingModel = 'dengcao/Qwen3-Embedding-0.6B:Q8_0';
+                    vectorStoreConfig.ollamaBaseUrl = 'http://localhost:11434';
+                    console.log('[IPC] Using default Ollama embeddings with smallest Qwen model');
+                }
+
+                vectorStore = new DuckDBVectorStore(vectorStoreConfig);
+                await vectorStore.initialize();
+
+                // Set up progress event forwarding
+                vectorStore.on('progress', (data) => {
+                    if (mainWindow) {
+                        mainWindow.webContents.send('vector-store:indexing-progress', data);
+                    }
+                });
+
+                // Update global reference
+                duckDBVectorStore = vectorStore;
+                console.log('[IPC] DuckDB vector store initialized for indexing');
+            }
+
             let totalIndexed = 0;
             let totalErrors = 0;
 
             // Index database directory first
             console.log('[IPC] Indexing database directory:', databasePath);
-            const dbResult = await duckDBVectorStore.indexFolder(databasePath);
+            const dbResult = await vectorStore.indexFolder(databasePath);
             totalIndexed += dbResult.success;
             totalErrors += dbResult.errors;
 
             // Index notes directory if provided
             if (notesPath && notesPath.trim() && fs.existsSync(notesPath)) {
                 console.log('[IPC] Indexing notes directory:', notesPath);
-                const notesResult = await duckDBVectorStore.indexFolder(notesPath);
+                const notesResult = await vectorStore.indexFolder(notesPath);
                 totalIndexed += notesResult.success;
                 totalErrors += notesResult.errors;
             }
@@ -1409,7 +1464,7 @@ app.on('ready', async () => {
         try {
             // Track whether this is a reinitialization
             let wasReinitialization = false;
-            
+
             // If LLM provider already exists, we need to reinitialize it with new settings
             if (llmProvider) {
                 console.log('Main process - LLM provider exists, reinitializing with updated settings');
@@ -1424,13 +1479,13 @@ app.on('ready', async () => {
             const settings = await settingsService.get('llm');
             const selectedProvider = settings.provider || 'ollama';
             let apiKey = await settingsService.getApiKey();
-            
+
             // Fallback: if no API key in keychain but there's one in settings, use it
             if (!apiKey && settings.openai?.apiKey && settings.openai.apiKey !== '***') {
                 console.log('🔧 DEBUG: No API key in keychain, but found in settings - using settings API key');
                 apiKey = settings.openai.apiKey;
             }
-            
+
             // For non-OpenAI providers, check their settings for API keys
             if (!apiKey && selectedProvider !== 'openai' && selectedProvider !== 'ollama') {
                 const providerSettings = (settings as any)[selectedProvider];
@@ -1509,7 +1564,7 @@ app.on('ready', async () => {
                 console.log('🔧 DEBUG: Initializing LLM Provider');
                 await llmProvider.initialize();
                 console.log('✅ DEBUG: LLM Provider initialized successfully');
-                
+
                 // Update ServiceManager with the new LLM provider
                 console.log('🔧 DEBUG: Updating ServiceManager with initialized LLM Provider');
                 serviceManager.updateCoreServices(settingsService, llmProvider);
@@ -1574,31 +1629,56 @@ app.on('ready', async () => {
     // IPC handler for immediate LLM provider switching (bypasses async persistence)
     ipcMain.handle('update-llm-provider', async (event, providerConfig) => {
         console.log('Main process - update-llm-provider IPC called with:', providerConfig);
-        
+
         try {
             if (!settingsService) {
                 return { success: false, message: 'Settings service not available' };
             }
+
+            // Get existing LLM settings to preserve them
+            console.log('🔧 DEBUG: Getting existing LLM settings to preserve configurations');
+            const existingLlmSettings = await settingsService.get('llm');
+            console.log('🔧 DEBUG: Existing LLM settings:', Object.keys(existingLlmSettings || {}));
             
-            // Update LLM settings directly and synchronously
-            console.log('🔧 DEBUG: Updating LLM settings directly for immediate provider switch');
-            await settingsService.set('llm', providerConfig);
+            // Merge configurations more safely using dynamic approach
+            const updatedConfig: any = {
+                ...existingLlmSettings,
+                ...providerConfig,
+            };
             
+            // Preserve individual provider configurations by merging them
+            const providerKeys = ['openai', 'anthropic', 'openrouter', 'groq', 'google', 'cohere', 'azure', 'huggingface', 'ollama'];
+            providerKeys.forEach(key => {
+                if (existingLlmSettings && (existingLlmSettings as any)[key]) {
+                    updatedConfig[key] = { 
+                        ...(existingLlmSettings as any)[key], 
+                        ...(providerConfig && (providerConfig as any)[key]) 
+                    };
+                } else if (providerConfig && (providerConfig as any)[key]) {
+                    updatedConfig[key] = (providerConfig as any)[key];
+                }
+            });
+            
+            console.log('🔧 DEBUG: Updating LLM settings with preserved configurations');
+            console.log('🔧 DEBUG: Provider switching from', existingLlmSettings?.provider, 'to', providerConfig.provider);
+            
+            await settingsService.set('llm', updatedConfig);
+
             // Force immediate LLM reinitialization with new settings
             console.log('🔧 DEBUG: Forcing immediate LLM reinitialization');
             const initResult = await initializeLLMServices();
-            
+
             if (initResult.success) {
                 console.log('✅ DEBUG: Provider switched successfully to:', providerConfig.provider);
-                return { 
-                    success: true, 
+                return {
+                    success: true,
                     message: `Provider switched to ${providerConfig.provider}`,
                     activeProvider: llmProvider?.getCurrentProvider()
                 };
             } else {
                 return initResult;
             }
-            
+
         } catch (error) {
             console.error('❌ DEBUG: Failed to switch provider:', error);
             return { success: false, message: `Provider switch failed: ${error.message}` };
@@ -1613,25 +1693,25 @@ app.on('ready', async () => {
             console.log('🔍 DEBUG: Checking provider switching conditions...');
             console.log('🔍 DEBUG: settingsService available:', !!settingsService);
             console.log('🔍 DEBUG: llmProvider available:', !!llmProvider);
-            
+
             if (settingsService) {
                 const currentSettings = await settingsService.get('llm');
                 const currentProvider = (currentSettings?.provider || 'ollama') as string;
                 console.log('🔍 DEBUG: Current provider from settings:', currentProvider);
-                
+
                 // Check if we need to reinitialize the LLM provider with new settings
                 // This ensures each message uses the currently selected provider
                 if (llmProvider) {
                     const activeProvider = llmProvider.getCurrentProvider() || 'unknown';
                     console.log(`🔍 DEBUG: Provider check - Active: ${activeProvider}, Settings: ${currentProvider}`);
-                    
+
                     if (activeProvider !== currentProvider) {
                         console.log(`🔄 Provider mismatch detected! Active: ${activeProvider}, Settings: ${currentProvider}`);
                         console.log('🔄 Reinitializing LLM provider with current settings...');
-                        
+
                         // Reset and reinitialize the LLM provider
                         llmProvider = null;
-                        
+
                         // Reinitialize with current settings by calling the initialization logic directly
                         try {
                             // Get API key based on provider
@@ -1642,10 +1722,10 @@ app.on('ready', async () => {
                                 // For other providers, get the API key from their settings
                                 apiKeyForProvider = (currentSettings as any)[currentProvider]?.apiKey || '';
                             }
-                            
+
                             // Check if API key is required for the selected provider
                             const providersRequiringApiKey = ['openai', 'anthropic', 'openrouter', 'groq', 'google', 'cohere', 'azure', 'huggingface'];
-                            
+
                             if (providersRequiringApiKey.includes(currentProvider) && !apiKeyForProvider) {
                                 console.error(`API key is required for ${currentProvider} provider but not found`);
                             } else {
@@ -1671,19 +1751,19 @@ app.on('ready', async () => {
                                     streaming: true,
                                     timeout: 15000
                                 };
-                                
+
                                 // Create new LLM provider instance
                                 const { LLMProvider } = require('./services/LLMProvider');
                                 llmProvider = new LLMProvider(llmConfig);
-                                
+
                                 // Initialize the new LLM provider
                                 await llmProvider.initialize();
-                                
+
                                 // Update ServiceManager with the new LLM provider
                                 if (serviceManager) {
                                     console.log('🔄 Updating ServiceManager with new provider');
                                     serviceManager.updateCoreServices(settingsService, llmProvider);
-                                    
+
                                     // Reinitialize Cindy Agent with the new provider
                                     if (langChainMemoryService && langChainToolExecutorService) {
                                         console.log('🔄 Reinitializing Cindy Agent with new provider');
@@ -1699,9 +1779,9 @@ app.on('ready', async () => {
                                         console.log('⚠️  Cannot reinitialize Cindy Agent - missing memory or tool services');
                                     }
                                 }
-                                
+
                                 console.log('✅ LLM provider reinitialized with:', currentProvider);
-                                
+
                                 // Log the model being used for this provider
                                 let modelForProvider = 'default';
                                 if (currentProvider === 'openai' && llmConfig.openai) {
@@ -1735,19 +1815,19 @@ app.on('ready', async () => {
             } else {
                 console.log('🔍 DEBUG: settingsService is null, skipping provider switching');
             }
-            
+
             console.log('🔍 DEBUG: After provider switching - langChainCindyAgent:', !!langChainCindyAgent, 'llmProvider:', !!llmProvider);
-            
+
             // Try to dynamically load Cindy Agent if not available, fallback to direct LLM
             if (!langChainCindyAgent && !llmProvider) {
                 console.error('Main process - process-message: Neither Cindy Agent nor LLM provider initialized');
-                
+
                 // Try to initialize LLM provider now if we have settings
                 if (settingsService) {
                     console.log('🔄 Attempting automatic LLM initialization...');
                     const llmSettings = await settingsService.get('llm');
                     const provider = llmSettings?.provider || 'ollama';
-                    
+
                     try {
                         // Get API key based on provider
                         let apiKeyForProvider = '';
@@ -1756,9 +1836,9 @@ app.on('ready', async () => {
                         } else if (provider !== 'ollama' && llmSettings && (llmSettings as any)[provider]) {
                             apiKeyForProvider = (llmSettings as any)[provider]?.apiKey || '';
                         }
-                        
+
                         const providersRequiringApiKey = ['openai', 'anthropic', 'openrouter', 'groq', 'google', 'cohere', 'azure', 'huggingface'];
-                        
+
                         if (!providersRequiringApiKey.includes(provider) || apiKeyForProvider) {
                             // Create LLM configuration
                             const llmConfig = {
@@ -1782,12 +1862,12 @@ app.on('ready', async () => {
                                 streaming: true,
                                 timeout: 15000
                             };
-                            
+
                             // Create new LLM provider instance
                             const { LLMProvider } = require('./services/LLMProvider');
                             llmProvider = new LLMProvider(llmConfig);
                             console.log('✅ LLM provider auto-initialized successfully');
-                            
+
                             // Continue processing with the newly initialized provider
                         }
                     } catch (initError) {
@@ -1795,7 +1875,7 @@ app.on('ready', async () => {
                     }
                 }
             }
-            
+
             // Check again if we now have a provider after auto-initialization
             if (!langChainCindyAgent && !llmProvider) {
                 console.error('Main process - process-message: Still no LLM provider after auto-init attempt');
@@ -1822,7 +1902,7 @@ app.on('ready', async () => {
                 let errorMessage;
                 if (provider === 'ollama') {
                     errorMessage = "I'm starting up with Ollama... please wait about 10-15 seconds and try again! ⏳ This only happens on first use.";
-                    
+
                     // Trigger background initialization for Ollama
                     setImmediate(async () => {
                         try {
@@ -1840,14 +1920,14 @@ app.on('ready', async () => {
                         // Also check if there's an API key in the settings
                         const apiKeyInSettings = llmSettings?.openai?.apiKey;
                         console.log(`🔍 DEBUG: API key in settings: ${apiKeyInSettings ? 'Yes' : 'No'}`);
-                        
+
                         if (!apiKey && !apiKeyInSettings) {
                             errorMessage = "Hi! I need an OpenAI API key to chat with you. Please go to Settings → AI PROVIDERS and add your OpenAI API key, then I'll be ready to help! 🤖";
                         } else {
                             // Try to initialize the LLM provider now
                             console.log('🔄 Attempting to initialize LLM provider with available settings...');
                             errorMessage = "I'm initializing my AI services... please wait about 10-15 seconds and try again! ⏳ This only happens on first use.";
-                            
+
                             // Trigger background initialization
                             setImmediate(async () => {
                                 try {
@@ -1861,7 +1941,7 @@ app.on('ready', async () => {
                         }
                     } else {
                         errorMessage = "I'm still initializing my AI services... please wait about 10-15 seconds and try again! ⏳ This only happens on first use.";
-                        
+
                         // Trigger background initialization
                         setImmediate(async () => {
                             try {
@@ -1875,7 +1955,7 @@ app.on('ready', async () => {
                     }
                 } else {
                     errorMessage = "I'm still initializing my AI services... please wait about 10-15 seconds and try again! ⏳ This only happens on first use.";
-                    
+
                     // Trigger background initialization for other providers
                     setImmediate(async () => {
                         try {
@@ -2208,13 +2288,13 @@ app.on('ready', async () => {
                 if (settings) {
                     const provider = settings.provider;
                     let apiKey = await settingsService.getApiKey();
-                    
+
                     // Fallback: if no API key in keychain but there's one in settings, use it
                     if (!apiKey && settings.openai?.apiKey && settings.openai.apiKey !== '***') {
                         console.log('🔧 DEBUG: No API key in keychain, but found in settings - using settings API key');
                         apiKey = settings.openai.apiKey;
                     }
-                    
+
                     // For non-OpenAI providers, check their settings for API keys
                     if (!apiKey && provider !== 'openai' && provider !== 'ollama') {
                         const providerSettings = (settings as any)[provider];
@@ -2223,7 +2303,7 @@ app.on('ready', async () => {
                             apiKey = providerSettings.apiKey;
                         }
                     }
-                    
+
                     console.log('🔧 DEBUG: Provider:', provider, 'API key available:', apiKey ? 'yes (length: ' + apiKey.length + ')' : 'no');
 
                     // Check if we can initialize based on provider

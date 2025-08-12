@@ -592,6 +592,22 @@ const App: React.FC = () => {
 
         const handleStreamComplete = (_: any, data: { conversationId: string }) => {
             if (data.conversationId === currentConversationId) {
+                // FINALIZE STREAMING MESSAGE: Set isStreaming to false for the last assistant message
+                const streamingMessage = messages.find((msg: any) => 
+                    msg.role === 'assistant' && msg.conversationId === currentConversationId && msg.isStreaming
+                );
+                
+                if (streamingMessage) {
+                    dispatch({ 
+                        type: 'FINALIZE_STREAMING_MESSAGE', 
+                        payload: { 
+                            messageId: streamingMessage.id,
+                            conversationId: currentConversationId
+                        } 
+                    });
+                    console.log('📝 FINALIZED MESSAGE: Set isStreaming to false for message:', streamingMessage.id);
+                }
+
                 // FINALIZE INCOMPLETE THINKING BLOCKS: Convert any remaining incomplete blocks to completed ones
                 const remainingIncompleteBlocks = thinkingTokenHandler.getIncompleteThinkingBlocks(currentConversationId);
                 remainingIncompleteBlocks.forEach(incompleteBlock => {

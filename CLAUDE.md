@@ -6,6 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Cindy is an always-on, cross-platform voice research assistant built with Electron, React, and TypeScript. It uses wake word detection for hands-free activation and integrates with multiple LLM providers (OpenAI, Ollama) for conversational AI capabilities.
 
+## USER GUIDANCE
+ALWAYS implement test functions for new and exising code whenever they don't exist and are possible to implement.
+
 ## Essential Commands
 
 ### Development

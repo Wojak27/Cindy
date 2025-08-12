@@ -1,7 +1,6 @@
 import { LLMProvider } from '../services/LLMProvider';
 import { LangChainMemoryService as MemoryService } from '../services/LangChainMemoryService';
 import { LangChainToolExecutorService as ToolExecutorService } from '../services/LangChainToolExecutorService';
-import { CitationManager } from '../../renderer/utils/citationManager';
 
 interface AgentContext {
     conversationId: string;
@@ -268,24 +267,91 @@ Keep it concise but informative.`;
 
         let finalResponse = response.content as string;
 
-        // Use CitationManager to insert citations into the response text
-        const citationManager = CitationManager.getInstance();
-        citationManager.reset(); // Reset for new conversation
-
-        const citationResult = citationManager.insertCitationsIntoText(finalResponse, toolResults);
-        finalResponse = citationResult.text;
-
-        // Add formatted citations at the end if any were found
-        if (citationResult.citations.length > 0) {
-            finalResponse += citationManager.formatCitationsForDisplay(citationResult.citations);
+        // Extract and add citations inline (simplified version)
+        const citations = this.extractCitationsFromResults(toolResults);
+        if (citations.length > 0) {
+            finalResponse += '\n\n**Sources:**\n\n';
+            citations.forEach((citation, index) => {
+                finalResponse += `**[${index + 1}]** [${citation.title}](${citation.url})`;
+                if (citation.source) {
+                    finalResponse += ` - *${citation.source}*`;
+                }
+                finalResponse += '\n\n';
+            });
         }
 
         this.addThinkingStep('synthesize',
             `Final response generated with citations:\n"${finalResponse.substring(0, 200)}${finalResponse.length > 200 ? '...' : ''}"\n` +
-            `Citations found: ${citationResult.citations.length}`
+            `Citations found: ${citations.length}`
         );
 
         return finalResponse;
+    }
+
+    /**
+     * Extract citations from tool results (simplified version)
+     */
+    private extractCitationsFromResults(toolResults: Record<string, any>): Array<{ title: string; url: string; source?: string }> {
+        const citations: Array<{ title: string; url: string; source?: string }> = [];
+
+        for (const [toolName, result] of Object.entries(toolResults)) {
+            if (!result?.success) continue;
+
+            try {
+                if ((toolName === 'web_search' || toolName === 'brave_search') && typeof result.result === 'string') {
+                    // Parse web search results
+                    const lines = result.result.split('\n');
+                    let currentCitation: { title?: string; url?: string } = {};
+
+                    for (const line of lines) {
+                        // Look for numbered results: "1. **Title**"
+                        const titleMatch = line.match(/^\d+\.\s*\*\*(.+?)\*\*/);
+                        if (titleMatch) {
+                            // Save previous citation if complete
+                            if (currentCitation.title && currentCitation.url) {
+                                citations.push({
+                                    title: currentCitation.title,
+                                    url: currentCitation.url,
+                                    source: this.getSourceFromUrl(currentCitation.url)
+                                });
+                            }
+                            currentCitation = { title: titleMatch[1].trim() };
+                        }
+
+                        // Look for URLs: "   URL: https://..."
+                        const urlMatch = line.match(/^\s*URL:\s*(.+)$/);
+                        if (urlMatch && currentCitation.title) {
+                            currentCitation.url = urlMatch[1].trim();
+                        }
+                    }
+
+                    // Don't forget the last citation
+                    if (currentCitation.title && currentCitation.url) {
+                        citations.push({
+                            title: currentCitation.title,
+                            url: currentCitation.url,
+                            source: this.getSourceFromUrl(currentCitation.url)
+                        });
+                    }
+                }
+            } catch (error) {
+                console.error(`[ThinkingCindyAgent] Error extracting citations from ${toolName}:`, error);
+            }
+        }
+
+        return citations;
+    }
+
+    /**
+     * Get a readable source name from URL
+     */
+    private getSourceFromUrl(url: string): string {
+        try {
+            const urlObj = new URL(url);
+            return urlObj.hostname.replace('www.', '');
+        } catch {
+            return url.length > 50 ? url.substring(0, 50) + '...' : url;
+        }
     }
 
     /**

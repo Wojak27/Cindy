@@ -109,6 +109,16 @@ const messagesReducer = (state = initialState, action: any) => {
         };
       }
       return state;
+
+    case 'FINALIZE_STREAMING_MESSAGE':
+      return {
+        ...state,
+        messages: state.messages.map(message => 
+          message.id === action.payload.messageId && message.conversationId === action.payload.conversationId
+            ? { ...message, isStreaming: false }
+            : message
+        )
+      };
     case 'COMPLETE_ASSISTANT_MESSAGE':
       const completeIdx = state.messages.length - 1;
       if (completeIdx >= 0 && state.messages[completeIdx].role === 'assistant') {

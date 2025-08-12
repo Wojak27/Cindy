@@ -1,21 +1,29 @@
-console.log('Debug test starting...');
+import { DuckDBVectorStore } from './src/main/services/DuckDBVectorStore';
 
-// Set a breakpoint on this line
-const testBreakpoint = () => {
-    console.log('This should stop at breakpoint'); // <- SET BREAKPOINT HERE
-    return 'Breakpoint test complete';
-};
+async function runTest() {
+    const dbPath = '/Users/karwo09/Documents/DeepResearchDocs/.vector_store/duckdb_vectors_ollama.db';
+    const folderPath = '/Users/karwo09/Documents/DeepResearchDocs';
 
-console.log('About to call test function...');
-const result = testBreakpoint();
-console.log('Result:', result);
+    const store = new DuckDBVectorStore({
+        databasePath: dbPath,
+        embeddingProvider: 'ollama',
+        embeddingModel: 'dengcao/Qwen3-Embedding-0.6B:Q8_0',
+        ollamaBaseUrl: 'http://127.0.0.1:11434'
+    });
 
-// Test ServiceManager import
-console.log('Testing ServiceManager import...');
-import { ServiceManager } from './src/main/services/ServiceManager';
+    try {
+        console.log('[TEST] Initializing DuckDBVectorStore...');
+        await store.initialize();
+        console.log('[TEST] Initialization complete.');
 
-const manager = new ServiceManager();
-console.log('ServiceManager created successfully');
-console.log('Loaded services:', manager.getLoadedServices());
+        console.log('[TEST] Starting folder indexing...');
+        const result = await store.indexFolder(folderPath);
+        console.log('[TEST] Indexing complete:', result);
+    } catch (err) {
+        console.error('[TEST] Error during test:', err);
+    } finally {
+        await store.close();
+    }
+}
 
-console.log('Debug test complete');
+runTest();

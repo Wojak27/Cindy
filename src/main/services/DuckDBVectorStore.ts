@@ -86,10 +86,10 @@ export class DuckDBVectorStore extends EventEmitter {
             case 'ollama':
             default:
                 return {
-                    embeddingModel: 'nomic-embed-text',
+                    embeddingModel: 'dengcao/Qwen3-Embedding-0.6B:Q8_0', // Smallest Qwen model for efficiency
                     chunkSize: 1000,
                     chunkOverlap: 200,
-                    vectorDimension: 768, // Default for nomic-embed-text
+                    vectorDimension: 768, // Same dimension as nomic-embed-text
                     ollamaBaseUrl: 'http://localhost:11434'
                 };
         }
@@ -130,6 +130,8 @@ export class DuckDBVectorStore extends EventEmitter {
     async initialize(): Promise<void> {
         if (this.isInitialized) return;
 
+        console.log('[DuckDBVectorStore] Initializing vector store at path:', this.config.databasePath);
+
         try {
             // Create database directory if it doesn't exist
             const dbDir = path.dirname(this.config.databasePath);
@@ -138,16 +140,47 @@ export class DuckDBVectorStore extends EventEmitter {
             }
 
             // Initialize DuckDB
-            this.db = await Database.create(this.config.databasePath);
+            // To prevent WAL replay errors accessing HNSW index before extension load,
+            // create an in-memory connection first to load VSS, then attach file DB
+            console.log('[DuckDBVectorStore] Creating in-memory DB to load extensions before attaching file DB');
+            this.db = await Database.create(':memory:');
 
-            // Install and load VSS extension
+            console.log('[DuckDBVectorStore] Installing and loading VSS extension...');
             await this.db.all(`INSTALL vss;`);
             await this.db.all(`LOAD vss;`);
+            console.log('[DuckDBVectorStore] VSS extension loaded successfully');
+
+            console.log('[DuckDBVectorStore] Attaching on-disk database:', this.config.databasePath);
+            await this.db.all(`ATTACH '${this.config.databasePath}' AS diskdb (READ_WRITE);`);
+            await this.db.all(`USE diskdb;`);
+
+            // After attaching, ensure VSS extension is also loaded for the attached database
+            console.log('[DuckDBVectorStore] Loading VSS extension on attached database...');
+            try {
+                await this.db.all(`LOAD vss;`);
+                console.log('[DuckDBVectorStore] Verified VSS extension loaded on attached DB');
+                const extList = await this.db.all(`SELECT * FROM duckdb_extensions();`);
+                console.log('[DuckDBVectorStore] Active extensions:', extList);
+            } catch (extErr) {
+                console.error('[DuckDBVectorStore] Failed to load VSS on attached DB:', extErr);
+            }
 
             // Enable experimental HNSW persistence for file-based databases
             await this.db.all(`SET hnsw_enable_experimental_persistence = true;`);
 
             // Create tables for vector storage
+
+            // Additional safeguard: explicitly try to create a small HNSW temp index to ensure it's usable
+            try {
+                await this.db.all(`CREATE TABLE IF NOT EXISTS _vss_test (id INTEGER, embedding FLOAT[${this.config.vectorDimension}]);`);
+                await this.db.all(`CREATE INDEX IF NOT EXISTS idx_vss_test_embedding
+                    ON _vss_test USING HNSW (embedding)
+                    WITH (metric = 'cosine')`);
+                console.log('[DuckDBVectorStore] Verified HNSW index creation is possible on attached DB');
+            } catch (verifyErr) {
+                console.error('[DuckDBVectorStore] HNSW index creation test failed:', verifyErr);
+            }
+
             await this.createTables();
 
             this.isInitialized = true;
@@ -161,13 +194,27 @@ export class DuckDBVectorStore extends EventEmitter {
     private async createTables(): Promise<void> {
         if (!this.db) throw new Error('Database not initialized');
 
-        // Create documents table
+        // Dynamically detect embedding output dimension if possible
+        let embedDim = this.config.vectorDimension;
+        try {
+            const testVec = await this.embeddings.embedQuery('dimension test');
+            if (Array.isArray(testVec) && testVec.length > 0) {
+                embedDim = testVec.length;
+                console.log(`[DuckDBVectorStore] Detected embedding dimension: ${embedDim}`);
+            }
+        } catch (e) {
+            console.warn('[DuckDBVectorStore] Failed to auto-detect embedding dimension, using config default:', embedDim);
+        }
+
+        // Drop and recreate documents table to ensure correct dimension if it already exists
+        await this.db.all(`DROP TABLE IF EXISTS documents;`);
+
         await this.db.all(`
-            CREATE TABLE IF NOT EXISTS documents (
+            CREATE TABLE documents (
                 id VARCHAR PRIMARY KEY,
                 content TEXT NOT NULL,
                 metadata JSON,
-                embedding FLOAT[${this.config.vectorDimension}],
+                embedding FLOAT[${embedDim}],
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
@@ -208,22 +255,35 @@ export class DuckDBVectorStore extends EventEmitter {
                 documents.map(doc => doc.pageContent)
             );
 
+            if (!embeddings || embeddings.length === 0) {
+                console.error('[DuckDBVectorStore] No embeddings returned for provided documents');
+                return;
+            }
+            const embedDim = embeddings[0]?.length || this.config.vectorDimension || 0;
             const stmt = await this.db.prepare(`
                 INSERT INTO documents (id, content, metadata, embedding)
-                VALUES (?, ?, ?, ?)
-                `);
+                VALUES (?, ?, ?, ?::FLOAT[${embedDim}])
+            `);
 
             for (let i = 0; i < documents.length; i++) {
                 const doc = documents[i];
                 const embedding = embeddings[i];
                 const id = `doc_${Date.now()}_${i}`;
 
-                await stmt.run(
-                    id,
-                    doc.pageContent,
-                    JSON.stringify(doc.metadata || {}),
-                    `[${embedding.join(',')}]`
-                );
+                if (!embedding || embedding.length === 0) {
+                    console.warn(`[DuckDBVectorStore] Skipping document ${id} due to empty embedding`);
+                    continue;
+                }
+
+                const content = doc.pageContent ?? '';
+                const metadataStr = JSON.stringify(doc.metadata || {});
+                const embeddingStr = `[${(embedding || []).join(',')}]`;
+
+                try {
+                    await stmt.run(id, content, metadataStr, embeddingStr);
+                } catch (err) {
+                    console.error(`[DuckDBVectorStore] Failed to insert document ${id}:`, err);
+                }
             }
 
             await stmt.finalize();

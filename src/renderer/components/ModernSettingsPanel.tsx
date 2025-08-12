@@ -336,19 +336,15 @@ const ModernSettingsPanel: React.FC = () => {
         // Immediately switch provider for instant feedback
         try {
             console.log(`⚡ Immediate provider switch: ${providerId}`);
-            const currentLlmConfig = {
+            // Only send the provider change - backend will preserve existing configurations
+            const providerChangeConfig = {
                 provider: providerId,
-                openai: providerConfigs.openai,
-                anthropic: providerConfigs.anthropic,
-                openrouter: providerConfigs.openrouter,
-                groq: providerConfigs.groq,
-                google: providerConfigs.google,
-                cohere: providerConfigs.cohere,
-                azure: providerConfigs.azure,
-                huggingface: providerConfigs.huggingface,
-                ollama: providerConfigs.ollama,
+                // Only include the current provider's config to avoid overwriting others
+                ...(providerConfigs[providerId as keyof typeof providerConfigs] && {
+                    [providerId]: providerConfigs[providerId as keyof typeof providerConfigs]
+                })
             };
-            await ipcRenderer.invoke('update-llm-provider', currentLlmConfig);
+            await ipcRenderer.invoke('update-llm-provider', providerChangeConfig);
             console.log('✅ Immediate provider switch completed');
         } catch (error) {
             console.error('❌ Immediate provider switch failed:', error);
