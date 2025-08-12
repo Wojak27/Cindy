@@ -502,6 +502,7 @@ const setupDatabaseIPC = () => {
             if (duckDBVectorStore) {
                 // Set up progress event forwarding
                 const progressListener = (data: any) => {
+                    console.log('[IPC] Forwarding progress event to renderer:', data);
                     if (mainWindow) {
                         mainWindow.webContents.send('vector-store:indexing-progress', data);
                     }
@@ -1212,8 +1213,16 @@ app.on('ready', async () => {
 
                 // Set up progress event forwarding
                 vectorStore.on('progress', (data) => {
+                    console.log('[IPC] Full indexing progress event:', data);
                     if (mainWindow) {
                         mainWindow.webContents.send('vector-store:indexing-progress', data);
+                    }
+                });
+                
+                vectorStore.on('indexingCompleted', (data) => {
+                    console.log('[IPC] Full indexing completed event:', data);
+                    if (mainWindow) {
+                        mainWindow.webContents.send('vector-store:indexing-completed', data);
                     }
                 });
 

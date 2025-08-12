@@ -170,24 +170,6 @@ const ModernDatabasePanel: React.FC = () => {
         }
     };
 
-    const startDirectoryOnlyIndexing = async () => {
-        if (!databasePath) {
-            setPathValidation({ valid: false, message: 'Please set a valid database path first' });
-            return;
-        }
-
-        setIsIndexing(true);
-        setIndexingProgress(0);
-        setIndexedItems([]);
-
-        try {
-            await ipcRenderer.invoke('vector-store:index-directory', databasePath);
-        } catch (error) {
-            console.error('Error starting directory indexing:', error);
-            setIsIndexing(false);
-        }
-    };
-
     // Update state when settings change
     useEffect(() => {
         if (settings?.database) {
@@ -205,9 +187,14 @@ const ModernDatabasePanel: React.FC = () => {
 
         // Listen for indexing progress events
         const handleIndexingProgress = (_: any, data: any) => {
-            setIndexingProgress(data.progress);
+            console.log('[DatabasePanel] Progress event received:', data);
+            const progressValue = data.percentage || data.progress || 0;
+            setIndexingProgress(progressValue);
             if (data.item) {
                 setIndexedItems(prev => [...prev, data.item]);
+            }
+            if (data.file) {
+                console.log(`[DatabasePanel] Processing file: ${data.file} (${data.current}/${data.total})`);
             }
         };
 
@@ -215,14 +202,14 @@ const ModernDatabasePanel: React.FC = () => {
             setIsIndexing(false);
             setIndexingProgress(100);
             console.log(`[DatabasePanel] Indexing complete. Success: ${data?.success || 0}, Errors: ${data?.errors || 0}`);
-            
+
             // Show indexing result
             setIndexingResult({
                 success: data?.success || 0,
                 errors: data?.errors || 0,
                 show: true
             });
-            
+
             // Auto-hide after 5 seconds
             setTimeout(() => {
                 setIndexingResult(prev => prev ? { ...prev, show: false } : null);
@@ -245,7 +232,7 @@ const ModernDatabasePanel: React.FC = () => {
         return () => {
             ipcRenderer.off('vector-store:indexing-progress', handleIndexingProgress);
             ipcRenderer.off('vector-store:indexing-completed', handleIndexingComplete);
-            ipcRenderer.off('vector-store:file-indexed', () => {});
+            ipcRenderer.off('vector-store:file-indexed', () => { });
             ipcRenderer.off('indexing-error', handleIndexingError);
         };
     }, [dispatch]);
@@ -461,7 +448,7 @@ const ModernDatabasePanel: React.FC = () => {
 
                             {/* Indexing Result Alert */}
                             {indexingResult?.show && (
-                                <Alert 
+                                <Alert
                                     severity={indexingResult.errors > 0 ? "warning" : "success"}
                                     sx={{ mb: 3 }}
                                     onClose={() => setIndexingResult(prev => prev ? { ...prev, show: false } : null)}

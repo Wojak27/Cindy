@@ -418,12 +418,14 @@ export class DuckDBVectorStore extends EventEmitter {
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
 
-            this.emit('progress', {
+            const progressData = {
                 current: i + 1,
                 total: totalFiles,
                 file: file,
                 percentage: Math.round(((i + 1) / totalFiles) * 100)
-            });
+            };
+            console.log(`[DuckDBVectorStore] Progress: ${progressData.current}/${progressData.total} (${progressData.percentage}%) - ${file}`);
+            this.emit('progress', progressData);
 
             try {
                 await this.indexFile(file);
