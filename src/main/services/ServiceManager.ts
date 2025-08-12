@@ -68,7 +68,35 @@ export class ServiceManager extends EventEmitter {
                     
                     // Get settings for configuration
                     const settingsData = await this.settingsService?.getAll();
-                    const databasePath = settingsData?.database?.path || path.join(app.getPath('userData'), 'default-database');
+                    let databasePath = settingsData?.database?.path;
+                    
+                    // If no database path in settings, try to find an existing vector database
+                    if (!databasePath) {
+                        console.log('[ServiceManager] No database path in settings, checking for existing vector databases...');
+                        
+                        // Check common locations for existing vector databases
+                        const possiblePaths = [
+                            '/Users/karwo09/Documents/DeepResearchDocs',  // Your current path
+                            path.join(app.getPath('userData'), 'default-database'),
+                            path.join(app.getPath('documents'), 'DeepResearchDocs')
+                        ];
+                        
+                        for (const testPath of possiblePaths) {
+                            const testDbPath = path.join(testPath, '.vector_store', 'duckdb_vectors.db');
+                            if (require('fs').existsSync(testDbPath)) {
+                                databasePath = testPath;
+                                console.log('[ServiceManager] Found existing vector database at:', testDbPath);
+                                break;
+                            }
+                        }
+                        
+                        // Final fallback
+                        if (!databasePath) {
+                            databasePath = path.join(app.getPath('userData'), 'default-database');
+                            console.log('[ServiceManager] Using fallback database path:', databasePath);
+                        }
+                    }
+                    
                     const llmSettings = settingsData?.llm || { provider: 'ollama' };
                     const provider = llmSettings.provider || 'ollama';
 
@@ -90,9 +118,18 @@ export class ServiceManager extends EventEmitter {
                     }
 
                     console.log('[ServiceManager] Creating vector store with config:', {
-                        databasePath: vectorStoreConfig.databasePath,
+                        basePath: databasePath,
+                        fullDatabasePath: vectorStoreConfig.databasePath,
                         embeddingProvider: vectorStoreConfig.embeddingProvider
                     });
+                    
+                    // Verify the database file exists
+                    if (require('fs').existsSync(vectorStoreConfig.databasePath)) {
+                        console.log('[ServiceManager] ✅ Vector database file exists at:', vectorStoreConfig.databasePath);
+                    } else {
+                        console.log('[ServiceManager] ⚠️ Vector database file does not exist at:', vectorStoreConfig.databasePath);
+                        console.log('[ServiceManager] ⚠️ Search will work but may return 0 results until documents are indexed');
+                    }
 
                     duckdbVectorStore = new DuckDBVectorStore(vectorStoreConfig);
                     await duckdbVectorStore.initialize();
