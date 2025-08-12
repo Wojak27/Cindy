@@ -6,6 +6,7 @@ import { DuckDuckGoSearch } from '@langchain/community/tools/duckduckgo_search';
 
 let WikipediaQueryRun: any = null;
 let SerpAPI: any = null;
+let TavilySearchResults: any = null;
 
 
 try {
@@ -20,6 +21,13 @@ try {
     SerpAPI = SerpAPISearch;
 } catch (e) {
     console.log('[LangChainToolExecutorService] SerpAPI not available');
+}
+
+try {
+    const { TavilySearchResults: TavilySearch } = require('@langchain/community/tools/tavily_search');
+    TavilySearchResults = TavilySearch;
+} catch (e) {
+    console.log('[LangChainToolExecutorService] Tavily search not available');
 }
 
 // Custom Brave Search Tool
@@ -192,6 +200,39 @@ export class LangChainToolExecutorService extends EventEmitter {
             console.warn('[LangChainToolExecutorService] Brave Search configuration error:', error?.message);
         }
 
+        // Tavily Search (requires API key but provides high quality results)
+        if (TavilySearchResults) {
+            try {
+                // Check if API key is available in environment
+                const tavilyApiKey = process.env.TAVILY_API_KEY;
+                if (tavilyApiKey) {
+                    const tavilySearch = new TavilySearchResults({
+                        maxResults: 5,
+                        apiKey: tavilyApiKey
+                    });
+                    this.registerTool({
+                        name: 'tavily_search',
+                        description: 'High-quality web search using Tavily AI Search API (best for research)',
+                        parameters: {
+                            type: 'object',
+                            properties: {
+                                input: { type: 'string', description: 'Search query for Tavily' }
+                            },
+                            required: ['input']
+                        },
+                        tool: tavilySearch
+                    });
+                    console.log('[LangChainToolExecutorService] Tavily search tool registered');
+                } else {
+                    console.log('[LangChainToolExecutorService] Tavily search available but API key not set (TAVILY_API_KEY)');
+                }
+            } catch (error: any) {
+                console.warn('[LangChainToolExecutorService] Tavily search configuration error:', error?.message);
+            }
+        } else {
+            console.log('[LangChainToolExecutorService] Tavily search not available (install @langchain/community)');
+        }
+
         console.log('[LangChainToolExecutorService] Web search tools loaded');
     }
 
@@ -241,18 +282,34 @@ export class LangChainToolExecutorService extends EventEmitter {
                         await new Promise(resolve => setTimeout(resolve, delay));
                         continue;
                     } else {
-                        // After all DuckDuckGo retries failed, try Brave Search as fallback
-                        console.log(`[LangChainToolExecutorService] DuckDuckGo exhausted, trying Brave Search fallback...`);
+                        // After all DuckDuckGo retries failed, try fallbacks
+                        console.log(`[LangChainToolExecutorService] DuckDuckGo exhausted, trying fallback search tools...`);
+                        
+                        // Try Tavily first if available (premium option)
+                        const tavilySearchTool = this.tools.get('tavily_search');
+                        if (tavilySearchTool) {
+                            try {
+                                console.log(`[LangChainToolExecutorService] Trying Tavily Search fallback...`);
+                                const tavilyResult = await tavilySearchTool.tool.invoke(parameters);
+                                console.log(`[LangChainToolExecutorService] Tavily Search fallback succeeded`);
+                                return tavilyResult;
+                            } catch (tavilyError: any) {
+                                console.log(`[LangChainToolExecutorService] Tavily Search fallback failed:`, tavilyError.message);
+                            }
+                        }
+                        
+                        // Try Brave Search as second fallback
                         const braveSearchTool = this.tools.get('brave_search');
                         if (braveSearchTool) {
                             try {
+                                console.log(`[LangChainToolExecutorService] Trying Brave Search fallback...`);
                                 // Brave Search expects string input, not object
                                 const braveResult = await braveSearchTool.tool.invoke(parameters.input || parameters);
                                 console.log(`[LangChainToolExecutorService] Brave Search fallback succeeded`);
                                 return braveResult;
                             } catch (braveError: any) {
                                 console.log(`[LangChainToolExecutorService] Brave Search fallback also failed:`, braveError.message);
-                                return `I'm unable to search the web right now. Both DuckDuckGo and Brave Search are temporarily unavailable. The search query was: "${parameters.input}". Please try again later.`;
+                                return `I'm unable to search the web right now. All search providers (DuckDuckGo, Tavily, and Brave) are temporarily unavailable. The search query was: "${parameters.input}". Please try again later.`;
                             }
                         } else {
                             return `I'm unable to search the web right now due to rate limiting. The search query was: "${parameters.input}". You might want to try again in a few minutes or search for this information manually.`;
@@ -301,6 +358,20 @@ export class LangChainToolExecutorService extends EventEmitter {
             } else if (toolName === 'brave_search') {
                 // Brave Search expects string input
                 result = await toolDef.tool.invoke(parameters.input || parameters);
+            } else if (toolName === 'tavily_search') {
+                // Tavily Search with rate limiting protection
+                const now = Date.now();
+                const timeSinceLastSearch = now - this.lastWebSearchTime;
+                const minDelay = 1000; // 1 second minimum for Tavily
+                
+                if (timeSinceLastSearch < minDelay) {
+                    const waitTime = minDelay - timeSinceLastSearch;
+                    console.log(`[LangChainToolExecutorService] Waiting ${waitTime}ms before Tavily search...`);
+                    await new Promise(resolve => setTimeout(resolve, waitTime));
+                }
+                
+                this.lastWebSearchTime = Date.now();
+                result = await toolDef.tool.invoke(parameters);
             } else {
                 result = await toolDef.tool.invoke(parameters);
             }

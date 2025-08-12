@@ -53,6 +53,7 @@ export class ThinkingCindyAgent {
         '#list': 'list_directory',
         '#web': 'web_search',
         '#brave': 'brave_search',
+        '#tavily': 'tavily_search',
         '#dir': 'list_directory',
         '#find': 'search_documents',
         '#file': 'read_file',
@@ -519,6 +520,13 @@ Keep it concise but informative.`;
                     return { input: `information about ${braveQuery}` };
                 }
                 return { input: braveQuery };
+            case 'tavily_search':
+                // Tavily also uses input parameter
+                const tavilyQuery = input.trim();
+                if (tavilyQuery.length < 3) {
+                    return { input: `information about ${tavilyQuery}` };
+                }
+                return { input: tavilyQuery };
             default:
                 return {};
         }
