@@ -1069,6 +1069,19 @@ app.on('ready', async () => {
         }
     }
 
+    // Initialize LinkPreviewService
+    if (!linkPreviewService) {
+        try {
+            console.log('🔧 DEBUG: Initializing LinkPreviewService...');
+            linkPreviewService = new LinkPreviewService();
+            console.log('🔧 DEBUG: LinkPreviewService initialized successfully');
+        } catch (error) {
+            console.error('🚨 DEBUG: Failed to initialize LinkPreviewService:', error);
+            // Continue without link preview service
+            linkPreviewService = null;
+        }
+    }
+
     // Initialize ServiceManager for dynamic loading of heavy services
     serviceManager = new ServiceManager(settingsService, llmProvider);
     console.log('🔧 DEBUG: ServiceManager initialized for dynamic service loading');
