@@ -60,8 +60,8 @@ export class ServiceManager extends EventEmitter {
             // Dynamic import to avoid loading at startup - using completely lightweight version with NO LangChain imports
 
 
-            // Pass DuckDB vector store instead of LangChain vector store
-            this.langChainToolExecutorService = new LangChainToolExecutorService(duckdbVectorStore);
+            // Pass DuckDB vector store and settings service
+            this.langChainToolExecutorService = new LangChainToolExecutorService(duckdbVectorStore, this.settingsService);
             await this.langChainToolExecutorService.initialize();
 
             console.log('[ServiceManager] LangChainToolExecutorService loaded successfully');

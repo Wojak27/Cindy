@@ -61,7 +61,7 @@ const setupSettingsIPC = () => {
             throw new Error('SettingsService not initialized');
         }
 
-        const validSections = ['general', 'voice', 'llm', 'vault', 'research', 'privacy', 'system', 'database', 'profile'];
+        const validSections = ['general', 'voice', 'llm', 'vault', 'research', 'privacy', 'system', 'database', 'profile', 'search'];
         if (!validSections.includes(section)) {
             throw new Error(`Invalid settings section: ${section}`);
         }
@@ -74,7 +74,7 @@ const setupSettingsIPC = () => {
             throw new Error('SettingsService not initialized');
         }
 
-        const validSections = ['general', 'voice', 'llm', 'vault', 'research', 'privacy', 'system', 'database', 'profile'];
+        const validSections = ['general', 'voice', 'llm', 'vault', 'research', 'privacy', 'system', 'database', 'profile', 'search'];
         if (!validSections.includes(section)) {
             throw new Error(`Invalid settings section: ${section}`);
         }

@@ -34,17 +34,30 @@ try {
 class BraveSearchTool extends Tool {
     name = 'brave_search';
     description = 'Search the web using Brave Search API';
+    private apiKey: string;
+
+    constructor(apiKey?: string) {
+        super();
+        this.apiKey = apiKey || '';
+    }
 
     async _call(input: string): Promise<string> {
         try {
             console.log(`[BraveSearch] Searching for: ${input}`);
 
+            const headers: any = {
+                'Accept': 'application/json',
+                'User-Agent': 'Mozilla/5.0 (compatible; CindyAssistant/1.0)'
+            };
+
+            // Add API key header if available
+            if (this.apiKey) {
+                headers['X-Subscription-Token'] = this.apiKey;
+            }
+
             const response = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(input)}&count=5`, {
                 method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                    'User-Agent': 'Mozilla/5.0 (compatible; CindyAssistant/1.0)'
-                }
+                headers
             });
 
             if (!response.ok) {
@@ -93,9 +106,11 @@ interface ToolDefinition {
 export class LangChainToolExecutorService extends EventEmitter {
     private tools: Map<string, ToolDefinition> = new Map();
     private lastWebSearchTime: number = 0;
+    private settingsService: any;
 
-    constructor(_vectorStore?: any) {
+    constructor(_vectorStore?: any, settingsService?: any) {
         super();
+        this.settingsService = settingsService;
         console.log('[LangChainToolExecutorService] Created with web search tools only');
     }
 
@@ -106,6 +121,31 @@ export class LangChainToolExecutorService extends EventEmitter {
 
     private async initializeWebSearchTools(): Promise<void> {
         console.log('[LangChainToolExecutorService] Loading web search tools...');
+        
+        // Get search settings
+        let searchSettings: any = null;
+        if (this.settingsService) {
+            try {
+                searchSettings = await this.settingsService.get('search');
+                const braveApiKey = await this.settingsService.getBraveApiKey();
+                const tavilyApiKey = await this.settingsService.getTavilyApiKey();
+                const serpApiKey = await this.settingsService.getSerpApiKey();
+                
+                // Add API keys to search settings
+                searchSettings.braveApiKey = braveApiKey;
+                searchSettings.tavilyApiKey = tavilyApiKey;
+                searchSettings.serpApiKey = serpApiKey;
+                
+                console.log('[LangChainToolExecutorService] Loaded search settings:', {
+                    preferredProvider: searchSettings.preferredProvider,
+                    hasBraveKey: !!braveApiKey,
+                    hasTavilyKey: !!tavilyApiKey,
+                    hasSerpKey: !!serpApiKey
+                });
+            } catch (error) {
+                console.warn('[LangChainToolExecutorService] Failed to load search settings:', error);
+            }
+        }
 
         // DuckDuckGo Search (free, no API key required) - if available
         try {
@@ -159,33 +199,41 @@ export class LangChainToolExecutorService extends EventEmitter {
         // SerpAPI Search (requires API key - optional)
         if (SerpAPI) {
             try {
-                const serpApiTool = new SerpAPI();
-                this.registerTool({
-                    name: 'serp_search',
-                    description: 'Advanced web search using SerpAPI (requires API key)',
-                    parameters: {
-                        type: 'object',
-                        properties: {
-                            input: { type: 'string', description: 'Search query for SerpAPI' }
+                const serpApiKey = searchSettings?.serpApiKey || process.env.SERP_API_KEY;
+                if (serpApiKey) {
+                    // SerpAPI expects the API key in environment variable
+                    process.env.SERPAPI_API_KEY = serpApiKey;
+                    const serpApiTool = new SerpAPI();
+                    this.registerTool({
+                        name: 'serp_search',
+                        description: 'Advanced web search using SerpAPI (Google results)',
+                        parameters: {
+                            type: 'object',
+                            properties: {
+                                input: { type: 'string', description: 'Search query for SerpAPI' }
+                            },
+                            required: ['input']
                         },
-                        required: ['input']
-                    },
-                    tool: serpApiTool
-                });
-                console.log('[LangChainToolExecutorService] SerpAPI search tool registered');
+                        tool: serpApiTool
+                    });
+                    console.log('[LangChainToolExecutorService] SerpAPI search tool registered (with API key)');
+                } else {
+                    console.log('[LangChainToolExecutorService] SerpAPI available but API key not set');
+                }
             } catch (error: any) {
                 console.warn('[LangChainToolExecutorService] SerpAPI search configuration error:', error?.message);
             }
         } else {
-            console.log('[LangChainToolExecutorService] SerpAPI not available (requires API key)');
+            console.log('[LangChainToolExecutorService] SerpAPI not available (install @langchain/community)');
         }
 
-        // Brave Search (free, no API key required)
+        // Brave Search (optionally with API key for premium features)
         try {
-            const braveSearchTool = new BraveSearchTool();
+            const braveApiKey = searchSettings?.braveApiKey;
+            const braveSearchTool = new BraveSearchTool(braveApiKey);
             this.registerTool({
                 name: 'brave_search',
-                description: 'Search the web using Brave Search (fallback when other searches fail)',
+                description: braveApiKey ? 'Search the web using Brave Search (premium)' : 'Search the web using Brave Search (free tier)',
                 parameters: {
                     type: 'object',
                     properties: {
@@ -195,7 +243,7 @@ export class LangChainToolExecutorService extends EventEmitter {
                 },
                 tool: braveSearchTool
             });
-            console.log('[LangChainToolExecutorService] Brave Search tool registered');
+            console.log('[LangChainToolExecutorService] Brave Search tool registered', braveApiKey ? '(with API key)' : '(free tier)');
         } catch (error: any) {
             console.warn('[LangChainToolExecutorService] Brave Search configuration error:', error?.message);
         }
@@ -203,8 +251,8 @@ export class LangChainToolExecutorService extends EventEmitter {
         // Tavily Search (requires API key but provides high quality results)
         if (TavilySearchResults) {
             try {
-                // Check if API key is available in environment
-                const tavilyApiKey = process.env.TAVILY_API_KEY;
+                // Check if API key is available from settings or environment
+                const tavilyApiKey = searchSettings?.tavilyApiKey || process.env.TAVILY_API_KEY;
                 if (tavilyApiKey) {
                     const tavilySearch = new TavilySearchResults({
                         maxResults: 5,
@@ -222,9 +270,9 @@ export class LangChainToolExecutorService extends EventEmitter {
                         },
                         tool: tavilySearch
                     });
-                    console.log('[LangChainToolExecutorService] Tavily search tool registered');
+                    console.log('[LangChainToolExecutorService] Tavily search tool registered (with API key)');
                 } else {
-                    console.log('[LangChainToolExecutorService] Tavily search available but API key not set (TAVILY_API_KEY)');
+                    console.log('[LangChainToolExecutorService] Tavily search available but API key not set');
                 }
             } catch (error: any) {
                 console.warn('[LangChainToolExecutorService] Tavily search configuration error:', error?.message);
@@ -326,12 +374,78 @@ export class LangChainToolExecutorService extends EventEmitter {
     }
 
     /**
+     * Get the preferred search provider based on settings
+     */
+    private async getPreferredSearchProvider(): Promise<string> {
+        if (!this.settingsService) {
+            return 'web_search'; // Default to DuckDuckGo
+        }
+
+        try {
+            const searchSettings = await this.settingsService.get('search');
+            const preferredProvider = searchSettings.preferredProvider;
+            
+            // If auto mode, select based on available API keys
+            if (preferredProvider === 'auto') {
+                // Check for API keys in order of preference (quality)
+                const tavilyKey = await this.settingsService.getTavilyApiKey();
+                if (tavilyKey && this.tools.has('tavily_search')) {
+                    return 'tavily_search';
+                }
+                
+                const serpKey = await this.settingsService.getSerpApiKey();
+                if (serpKey && this.tools.has('serp_search')) {
+                    return 'serp_search';
+                }
+                
+                const braveKey = await this.settingsService.getBraveApiKey();
+                if (braveKey && this.tools.has('brave_search')) {
+                    return 'brave_search';
+                }
+                
+                // Default to DuckDuckGo if no API keys
+                return 'web_search';
+            }
+            
+            // Map provider names to tool names
+            const providerMap: Record<string, string> = {
+                'duckduckgo': 'web_search',
+                'brave': 'brave_search',
+                'tavily': 'tavily_search',
+                'serp': 'serp_search'
+            };
+            
+            const toolName = providerMap[preferredProvider];
+            
+            // Check if the preferred tool is available
+            if (toolName && this.tools.has(toolName)) {
+                return toolName;
+            }
+            
+            // Fallback to DuckDuckGo
+            return 'web_search';
+        } catch (error) {
+            console.warn('[LangChainToolExecutorService] Failed to get preferred search provider:', error);
+            return 'web_search';
+        }
+    }
+
+    /**
      * Execute a tool by name
      */
     async executeTool(toolName: string, parameters: any): Promise<ToolResult> {
         const startTime = Date.now();
 
         try {
+            // If web_search is requested, route to preferred provider
+            if (toolName === 'web_search') {
+                const preferredProvider = await this.getPreferredSearchProvider();
+                if (preferredProvider !== 'web_search') {
+                    console.log(`[LangChainToolExecutorService] Routing web_search to preferred provider: ${preferredProvider}`);
+                    toolName = preferredProvider;
+                }
+            }
+
             const toolDef = this.tools.get(toolName);
             if (!toolDef) {
                 throw new Error(`Tool not found: ${toolName}`);
@@ -341,7 +455,7 @@ export class LangChainToolExecutorService extends EventEmitter {
 
             // Execute the tool with retry logic for web search
             let result: any;
-            if (toolName === 'web_search') {
+            if (toolName === 'web_search' || toolName === 'tavily_search' || toolName === 'serp_search') {
                 // Enforce minimum delay between web searches to prevent rate limiting
                 const now = Date.now();
                 const timeSinceLastSearch = now - this.lastWebSearchTime;

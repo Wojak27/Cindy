@@ -1,5 +1,7 @@
+import { Database } from 'duckdb-async';
+import path from 'path';
+import { app } from 'electron';
 import { EventEmitter } from 'events';
-import { PathValidator } from '../utils/PathValidator';
 import keytar from 'keytar';
 
 interface Settings {
@@ -102,11 +104,11 @@ interface Settings {
         surname: string;
         hasCompletedSetup: boolean;
     };
-
 }
 
-class SettingsService extends EventEmitter {
-    private store: any;
+export class DuckDBSettingsService extends EventEmitter {
+    private db: Database | null = null;
+    private DB_PATH: string;
     private settings: Settings;
     private isInitialized: boolean = false;
     private readonly SERVICE_NAME = 'Cindy';
@@ -118,57 +120,92 @@ class SettingsService extends EventEmitter {
     constructor() {
         super();
         this.settings = this.getDefaultSettings();
-        // store will be initialized dynamically in initialize()
     }
 
     async initialize(): Promise<void> {
         if (this.isInitialized) return;
 
+        // Initialize database path
+        this.DB_PATH = path.join(app.getPath('userData'), 'cindy-settings.db');
+
         try {
-            console.log('Starting SettingsService initialization with electron-store');
+            console.log('[DuckDBSettingsService] Initializing database at:', this.DB_PATH);
+            this.db = await Database.create(this.DB_PATH);
 
-            // Use dynamic import for electron-store with eval to prevent ts-node interference
-            let Store;
-            try {
-                // Use eval to prevent TypeScript compilation issues
-                const dynamicImport = eval('(moduleName) => import(moduleName)');
-                const electronStoreModule = await dynamicImport('electron-store');
-                Store = electronStoreModule.default || electronStoreModule;
-                console.log('Successfully imported electron-store using eval approach');
-            } catch (importError) {
-                console.error('Failed to dynamically import electron-store:', importError);
-                throw new Error('Unable to load electron-store module');
-            }
+            // Create settings table
+            await this.db.exec(`
+                CREATE TABLE IF NOT EXISTS settings (
+                    key VARCHAR PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            `);
 
-            // Initialize electron-store with schema and migrations
-            this.store = new Store({
-                name: 'cindy-settings',
-                defaults: this.getDefaultSettings(),
-                clearInvalidConfig: true,
-                fileExtension: 'json',
-                serialize: (value: any) => JSON.stringify(value, null, 2)
-            });
+            // Create index
+            await this.db.exec(`
+                CREATE INDEX IF NOT EXISTS idx_settings_key ON settings(key);
+            `);
 
-            console.log('Store path:', (this.store as any).path);
-
-            // Load settings from electron-store
-            console.log('Loading settings from electron-store');
-            this.settings = { ...this.getDefaultSettings(), ...(this.store as any).store as Partial<Settings> };
-            console.log('Settings loaded successfully from electron-store');
-
-            // Validate critical settings
-            console.log('Validating settings');
-            await this.validateSettings();
-            console.log('Settings validation completed');
+            // Load settings from database
+            await this.loadSettings();
 
             this.isInitialized = true;
-            console.log('SettingsService initialization completed successfully');
+            console.log('[DuckDBSettingsService] Initialization completed successfully');
             this.emit('initialized', this.settings);
         } catch (error) {
-            console.error('Failed to initialize settings service:', error);
-            console.error('SettingsService initialization failed at:', new Error().stack);
+            console.error('[DuckDBSettingsService] Failed to initialize:', error);
             throw error;
         }
+    }
+
+    private async loadSettings(): Promise<void> {
+        if (!this.db) return;
+
+        try {
+            const rows = await this.db.all('SELECT key, value FROM settings');
+            const dbSettings: any = {};
+
+            for (const row of rows) {
+                const keys = row.key.split('.');
+                let current = dbSettings;
+                
+                for (let i = 0; i < keys.length - 1; i++) {
+                    if (!current[keys[i]]) {
+                        current[keys[i]] = {};
+                    }
+                    current = current[keys[i]];
+                }
+                
+                try {
+                    current[keys[keys.length - 1]] = JSON.parse(row.value);
+                } catch {
+                    current[keys[keys.length - 1]] = row.value;
+                }
+            }
+
+            // Merge with defaults
+            this.settings = this.mergeSettings(this.getDefaultSettings(), dbSettings);
+            console.log('[DuckDBSettingsService] Settings loaded from database');
+        } catch (error) {
+            console.warn('[DuckDBSettingsService] Failed to load settings:', error);
+            this.settings = this.getDefaultSettings();
+        }
+    }
+
+    private mergeSettings(defaults: any, loaded: any): any {
+        const merged = { ...defaults };
+        
+        for (const key in loaded) {
+            if (loaded.hasOwnProperty(key)) {
+                if (typeof loaded[key] === 'object' && !Array.isArray(loaded[key]) && loaded[key] !== null) {
+                    merged[key] = this.mergeSettings(defaults[key] || {}, loaded[key]);
+                } else {
+                    merged[key] = loaded[key];
+                }
+            }
+        }
+        
+        return merged;
     }
 
     async get<T extends keyof Settings>(section: T): Promise<Settings[T]> {
@@ -184,15 +221,15 @@ class SettingsService extends EventEmitter {
             await this.initialize();
         }
 
-        // Update settings
+        // Update settings in memory
         this.settings[section] = { ...this.settings[section], ...value } as Settings[T];
 
-        // Handle sensitive data
+        // Handle sensitive data (API keys)
         if (section === 'llm' && 'openai' in value && value.openai) {
             const openaiSettings = value.openai as Partial<Settings['llm']['openai'] & { apiKey?: string }>;
             if (openaiSettings.apiKey) {
                 await this.setApiKey(openaiSettings.apiKey);
-                // Don't store the actual key in settings
+                // Don't store the actual key in database
                 (this.settings.llm.openai as any).apiKey = '';
             }
         }
@@ -202,41 +239,63 @@ class SettingsService extends EventEmitter {
             const searchSettings = value as Partial<Settings['search']>;
             if (searchSettings.braveApiKey) {
                 await this.setBraveApiKey(searchSettings.braveApiKey);
-                // Don't store the actual key in settings
                 (this.settings.search as any).braveApiKey = '';
             }
             if (searchSettings.tavilyApiKey) {
                 await this.setTavilyApiKey(searchSettings.tavilyApiKey);
-                // Don't store the actual key in settings
                 (this.settings.search as any).tavilyApiKey = '';
             }
             if (searchSettings.serpApiKey) {
                 await this.setSerpApiKey(searchSettings.serpApiKey);
-                // Don't store the actual key in settings
                 (this.settings.search as any).serpApiKey = '';
             }
         }
 
-        // Validate updated settings
-        await this.validateSection(section);
-
-        // Save to electron-store
-        try {
-            if (!this.store) {
-                console.warn('Store not initialized, skipping save');
-                return;
-            }
-            console.log('SettingsService.set() - About to save settings to electron-store');
-            (this.store as any).store = this.settings;
-            console.log('SettingsService.set() - Settings saved successfully to electron-store');
-        } catch (error) {
-            console.error('Failed to save settings after update:', error);
-            console.error('SettingsService.set() - Error details:', error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : error);
-            throw error;
-        }
+        // Save to database
+        await this.saveSection(section);
 
         // Emit change event
         this.emit('settingsChanged', { section, value });
+    }
+
+    private async saveSection<T extends keyof Settings>(section: T): Promise<void> {
+        if (!this.db) return;
+
+        try {
+            const sectionData = this.settings[section];
+            const flattenedData = this.flattenObject(sectionData, section as string);
+
+            for (const [key, value] of Object.entries(flattenedData)) {
+                await this.db.run(
+                    `INSERT OR REPLACE INTO settings (key, value, updated_at) 
+                     VALUES (?, ?, CURRENT_TIMESTAMP)`,
+                    [key, JSON.stringify(value)]
+                );
+            }
+
+            console.log(`[DuckDBSettingsService] Saved section: ${section}`);
+        } catch (error) {
+            console.error(`[DuckDBSettingsService] Failed to save section ${section}:`, error);
+            throw error;
+        }
+    }
+
+    private flattenObject(obj: any, prefix: string = ''): Record<string, any> {
+        const flattened: Record<string, any> = {};
+
+        for (const key in obj) {
+            if (obj.hasOwnProperty(key)) {
+                const fullKey = prefix ? `${prefix}.${key}` : key;
+                
+                if (typeof obj[key] === 'object' && !Array.isArray(obj[key]) && obj[key] !== null) {
+                    Object.assign(flattened, this.flattenObject(obj[key], fullKey));
+                } else {
+                    flattened[fullKey] = obj[key];
+                }
+            }
+        }
+
+        return flattened;
     }
 
     async getAll(): Promise<Settings> {
@@ -248,36 +307,16 @@ class SettingsService extends EventEmitter {
     }
 
     async save(): Promise<void> {
-        console.log('SettingsService.save() - Method called');
-        console.log('SettingsService.save() - Is initialized:', this.isInitialized);
         if (!this.isInitialized) {
-            console.log('SettingsService.save() - Service not initialized, initializing...');
             await this.initialize();
-            console.log('SettingsService.save() - Initialization completed');
         }
 
-        try {
-            if (!this.store) {
-                console.warn('Store not initialized, skipping save');
-                return;
-            }
-
-            console.log('SettingsService.save() - Starting save process with electron-store');
-            console.log('SettingsService.save() - Store path:', (this.store as any).path);
-            console.log('SettingsService.save() - Settings object keys:', Object.keys(this.settings));
-
-            (this.store as any).store = this.settings;
-
-            console.log('SettingsService.save() - Settings saved successfully to electron-store');
-            this.emit('settingsSaved');
-        } catch (error) {
-            console.error('SettingsService.save() - Failed to save settings:', error);
-            if (error instanceof Error) {
-                console.error('SettingsService.save() - Error name:', error.name);
-                console.error('SettingsService.save() - Error message:', error.message);
-            }
-            throw error;
+        // Save all sections
+        for (const section of Object.keys(this.settings) as (keyof Settings)[]) {
+            await this.saveSection(section);
         }
+
+        this.emit('settingsSaved');
     }
 
     async resetToDefaults(): Promise<void> {
@@ -286,17 +325,16 @@ class SettingsService extends EventEmitter {
         }
 
         this.settings = this.getDefaultSettings();
-        if (this.store) {
-            (this.store as any).clear();
-            (this.store as any).store = this.settings;
+        
+        if (this.db) {
+            await this.db.exec('DELETE FROM settings');
+            await this.save();
         }
+        
         this.emit('settingsReset');
     }
 
-    async validatePath(path: string): Promise<{ valid: boolean; message?: string }> {
-        return await PathValidator.validate(path);
-    }
-
+    // API Key management methods using keytar
     async getApiKey(): Promise<string> {
         const apiKey = await keytar.getPassword(this.SERVICE_NAME, this.ACCOUNT_NAME);
         return apiKey || '';
@@ -426,53 +464,10 @@ class SettingsService extends EventEmitter {
         };
     }
 
-
-    private async validateSettings(): Promise<void> {
-        // Validate each section
-        for (const section of Object.keys(this.settings) as (keyof Settings)[]) {
-            await this.validateSection(section);
+    async cleanup(): Promise<void> {
+        if (this.db) {
+            await this.db.close();
+            this.db = null;
         }
     }
-
-    private async validateSection(section: keyof Settings): Promise<void> {
-        switch (section) {
-            case 'vault':
-                if (this.settings.vault.path) {
-                    const validation = await this.validatePath(this.settings.vault.path);
-                    if (!validation.valid) {
-                        console.warn(`Invalid vault path: ${validation.message}`);
-                        // Reset to empty if invalid
-                        this.settings.vault.path = '';
-                    }
-                }
-                break;
-
-            case 'llm':
-                // Validate LLM settings
-                if (this.settings.llm.provider === 'openai') {
-                    const apiKey = await this.getApiKey();
-                    if (!apiKey) {
-                        console.warn('OpenAI API key is required when using OpenAI provider');
-                    }
-                }
-                break;
-
-            case 'research':
-                // Validate cron expressions
-                if (this.settings.research.dailySummaryTime) {
-                    if (!this.isValidCron(this.settings.research.dailySummaryTime)) {
-                        console.warn('Invalid daily summary time cron expression');
-                    }
-                }
-                break;
-        }
-    }
-
-    private isValidCron(expression: string): boolean {
-        // Simple validation - in a real implementation, use a proper cron validator
-        return expression.split(' ').length === 5;
-    }
-
 }
-
-export { SettingsService, Settings };

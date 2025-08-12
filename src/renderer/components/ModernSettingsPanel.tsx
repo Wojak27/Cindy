@@ -33,6 +33,10 @@ import {
     CloudDownload as DownloadIcon,
     Delete as DeleteIcon,
     Computer as LocalIcon,
+    Search as SearchIcon,
+    ExpandMore as ExpandMoreIcon,
+    ExpandLess as ExpandLessIcon,
+    Cancel as CancelIcon,
 } from '@mui/icons-material';
 import { ipcRenderer } from 'electron';
 
@@ -97,6 +101,26 @@ const ModernSettingsPanel: React.FC = () => {
         name: settings?.profile?.name || '',
         surname: settings?.profile?.surname || '',
     });
+
+    // Search Settings State
+    const [searchSettings, setSearchSettings] = useState({
+        preferredProvider: settings?.search?.preferredProvider || 'auto',
+        braveApiKey: settings?.search?.braveApiKey || '',
+        tavilyApiKey: settings?.search?.tavilyApiKey || '',
+        serpApiKey: settings?.search?.serpApiKey || '',
+        fallbackProviders: settings?.search?.fallbackProviders || ['duckduckgo', 'brave', 'tavily', 'serp'],
+        rateLimit: settings?.search?.rateLimit || {
+            enabled: true,
+            requestsPerMinute: 10,
+            cooldownSeconds: 5
+        }
+    });
+
+    // UI State for expand/collapse
+    const [expandedProviders, setExpandedProviders] = useState<Set<string>>(new Set());
+
+    // Original settings for cancel functionality
+    const [originalSettings, setOriginalSettings] = useState<any>(null);
 
     // Model Management State
     const [availableModels, setAvailableModels] = useState<string[]>([]);
@@ -192,6 +216,13 @@ const ModernSettingsPanel: React.FC = () => {
     // Save all settings
     const saveSettings = useCallback(() => {
         const updatedSettings = {
+            // Preserve existing general settings that aren't managed by this panel
+            theme: settings?.theme || 'light',
+            autoStart: settings?.autoStart || false,
+            notifications: settings?.notifications || true,
+            blobSensitivity: settings?.blobSensitivity || 0.5,
+            blobStyle: settings?.blobStyle || 'moderate',
+            // Settings managed by this panel
             llm: {
                 provider: selectedProvider,
                 ...providerConfigs,
@@ -201,27 +232,85 @@ const ModernSettingsPanel: React.FC = () => {
                 ...profileSettings,
                 hasCompletedSetup: true,
             },
+            search: searchSettings,
+            // Preserve other existing settings
+            database: settings?.database || {
+                path: '',
+                embeddingModel: 'qwen3:4b',
+                chunkSize: 1000,
+                chunkOverlap: 200,
+                autoIndex: true
+            },
         };
 
         dispatch(updateSettings(updatedSettings));
         setHasUnsavedChanges(false);
+        setOriginalSettings(null);
 
         // Initialize LLM service with new settings
         ipcRenderer.invoke('initialize-llm');
-    }, [dispatch, selectedProvider, providerConfigs, voiceSettings, profileSettings]);
+    }, [dispatch, selectedProvider, providerConfigs, voiceSettings, profileSettings, searchSettings, settings]);
+
+    // Cancel changes
+    const cancelChanges = useCallback(() => {
+        if (originalSettings) {
+            setSelectedProvider(originalSettings.selectedProvider);
+            setProviderConfigs(originalSettings.providerConfigs);
+            setVoiceSettings(originalSettings.voiceSettings);
+            setProfileSettings(originalSettings.profileSettings);
+            setSearchSettings(originalSettings.searchSettings);
+            setHasUnsavedChanges(false);
+            setOriginalSettings(null);
+        }
+    }, [originalSettings]);
+
+    // Track original settings when changes start
+    const trackOriginalSettings = useCallback(() => {
+        if (!originalSettings) {
+            setOriginalSettings({
+                selectedProvider,
+                providerConfigs: JSON.parse(JSON.stringify(providerConfigs)), // Deep copy for nested objects
+                voiceSettings: { ...voiceSettings },
+                profileSettings: { ...profileSettings },
+                searchSettings: JSON.parse(JSON.stringify(searchSettings)) // Deep copy for nested rateLimit object
+            });
+        }
+    }, [originalSettings, selectedProvider, providerConfigs, voiceSettings, profileSettings, searchSettings]);
+
+    // Toggle provider expansion
+    const toggleProviderExpansion = (providerId: string) => {
+        setExpandedProviders(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(providerId)) {
+                newSet.delete(providerId);
+            } else {
+                newSet.add(providerId);
+            }
+            return newSet;
+        });
+    };
 
     // Handle provider selection
     const handleProviderSelect = (providerId: string) => {
+        trackOriginalSettings();
         setSelectedProvider(providerId);
         setHasUnsavedChanges(true);
     };
 
     // Handle provider config changes
     const handleProviderConfigChange = (providerId: string, config: any) => {
+        trackOriginalSettings();
         setProviderConfigs(prev => ({
             ...prev,
             [providerId]: { ...prev[providerId as keyof typeof prev], ...config }
         }));
+        setHasUnsavedChanges(true);
+    };
+
+    // Handle search settings changes
+    const handleSearchSettingChange = (key: string, value: any) => {
+        trackOriginalSettings();
+        setSearchSettings(prev => ({ ...prev, [key]: value }));
         setHasUnsavedChanges(true);
     };
 
@@ -312,13 +401,40 @@ const ModernSettingsPanel: React.FC = () => {
         }
     };
 
-    // Handle close
+    // Handle explicit close (close button only)
     const handleClose = () => {
-        if (hasUnsavedChanges) {
-            saveSettings();
-        }
         dispatch(toggleSettings());
     };
+
+    // Handle outside click
+    const handleOutsideClick = useCallback((event: MouseEvent) => {
+        const target = event.target as Element;
+        const settingsPanel = document.querySelector('[data-settings-panel="true"]');
+
+        if (settingsPanel && !settingsPanel.contains(target)) {
+            dispatch(toggleSettings());
+        }
+    }, [dispatch]);
+
+    // Handle escape key
+    const handleKeyDown = useCallback((event: KeyboardEvent) => {
+        if (event.key === 'Escape') {
+            dispatch(toggleSettings());
+        }
+    }, [dispatch]);
+
+    // Add/remove outside click and keyboard listeners
+    useEffect(() => {
+        if (showSettings) {
+            document.addEventListener('mousedown', handleOutsideClick);
+            document.addEventListener('keydown', handleKeyDown);
+            return () => {
+                document.removeEventListener('mousedown', handleOutsideClick);
+                document.removeEventListener('keydown', handleKeyDown);
+            };
+        }
+        return undefined;
+    }, [showSettings, handleOutsideClick, handleKeyDown]);
 
     // Update state when settings change
     useEffect(() => {
@@ -345,6 +461,18 @@ const ModernSettingsPanel: React.FC = () => {
                 name: settings?.profile?.name || '',
                 surname: settings?.profile?.surname || '',
             });
+            setSearchSettings({
+                preferredProvider: settings?.search?.preferredProvider || 'auto',
+                braveApiKey: settings?.search?.braveApiKey || '',
+                tavilyApiKey: settings?.search?.tavilyApiKey || '',
+                serpApiKey: settings?.search?.serpApiKey || '',
+                fallbackProviders: settings?.search?.fallbackProviders || ['duckduckgo', 'brave', 'tavily', 'serp'],
+                rateLimit: settings?.search?.rateLimit || {
+                    enabled: true,
+                    requestsPerMinute: 10,
+                    cooldownSeconds: 5
+                }
+            });
         }
     }, [settings]);
 
@@ -361,6 +489,7 @@ const ModernSettingsPanel: React.FC = () => {
     return (
         <Slide direction="left" in={showSettings} timeout={300} mountOnEnter unmountOnExit>
             <Box
+                data-settings-panel="true"
                 sx={{
                     position: 'fixed',
                     top: 0,
@@ -394,15 +523,26 @@ const ModernSettingsPanel: React.FC = () => {
                     </Typography>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         {hasUnsavedChanges && (
-                            <Button
-                                variant="contained"
-                                size="small"
-                                startIcon={<SaveIcon />}
-                                onClick={saveSettings}
-                                sx={{ mr: 1 }}
-                            >
-                                Save
-                            </Button>
+                            <>
+                                <Button
+                                    variant="outlined"
+                                    size="small"
+                                    startIcon={<CancelIcon />}
+                                    onClick={cancelChanges}
+                                    sx={{ mr: 1 }}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    variant="contained"
+                                    size="small"
+                                    startIcon={<SaveIcon />}
+                                    onClick={saveSettings}
+                                    sx={{ mr: 1 }}
+                                >
+                                    Save
+                                </Button>
+                            </>
                         )}
                         <IconButton onClick={handleClose}>
                             <CloseIcon />
@@ -413,9 +553,10 @@ const ModernSettingsPanel: React.FC = () => {
                 {/* Tabs */}
                 <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
                     <Tabs value={tabValue} onChange={(_, newValue) => setTabValue(newValue)}>
-                        <Tab icon={<PsychologyIcon />} label="AI Models" />
+                        <Tab icon={<PsychologyIcon />} label="AI PROVIDERS" />
                         <Tab icon={<DownloadIcon />} label="Models" />
                         <Tab icon={<MicIcon />} label="Voice" />
+                        <Tab icon={<SearchIcon />} label="Search" />
                         <Tab icon={<PersonIcon />} label="Profile" />
                         <Tab icon={<PaletteIcon />} label="Theme" />
                     </Tabs>
@@ -434,17 +575,66 @@ const ModernSettingsPanel: React.FC = () => {
                             </Typography>
 
                             {llmProviders.map((provider) => (
-                                <LLMProviderCard
-                                    key={provider.id}
-                                    provider={provider}
-                                    isSelected={selectedProvider === provider.id}
-                                    isConnected={connectionStatus[provider.id] || false}
-                                    isTesting={testingProvider === provider.id}
-                                    config={providerConfigs[provider.id]}
-                                    onSelect={() => handleProviderSelect(provider.id)}
-                                    onConfigChange={(config) => handleProviderConfigChange(provider.id, config)}
-                                    onTestConnection={() => testProviderConnection(provider.id)}
-                                />
+                                <Box key={provider.id} sx={{ mb: 2 }}>
+                                    <Box
+                                        sx={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            p: 2,
+                                            border: `2px solid ${selectedProvider === provider.id ? provider.color : theme.palette.divider}`,
+                                            borderRadius: 2,
+                                            cursor: 'pointer',
+                                            '&:hover': {
+                                                borderColor: provider.color
+                                            }
+                                        }}
+                                    >
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                            <Box
+                                                sx={{
+                                                    width: 12,
+                                                    height: 12,
+                                                    borderRadius: '50%',
+                                                    backgroundColor: provider.color
+                                                }}
+                                            />
+                                            <Box>
+                                                <Typography variant="h6" fontWeight={600}>
+                                                    {provider.name}
+                                                </Typography>
+                                                <Typography variant="body2" color="text.secondary">
+                                                    {provider.description}
+                                                </Typography>
+                                            </Box>
+                                        </Box>
+                                        <Button
+                                            variant={selectedProvider === provider.id ? "contained" : "outlined"}
+                                            size="small"
+                                            endIcon={expandedProviders.has(provider.id) ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                toggleProviderExpansion(provider.id);
+                                            }}
+                                        >
+                                            Select
+                                        </Button>
+                                    </Box>
+                                    {expandedProviders.has(provider.id) && (
+                                        <Box sx={{ mt: 1 }}>
+                                            <LLMProviderCard
+                                                provider={provider}
+                                                isSelected={selectedProvider === provider.id}
+                                                isConnected={connectionStatus[provider.id] || false}
+                                                isTesting={testingProvider === provider.id}
+                                                config={providerConfigs[provider.id]}
+                                                onSelect={() => handleProviderSelect(provider.id)}
+                                                onConfigChange={(config) => handleProviderConfigChange(provider.id, config)}
+                                                onTestConnection={() => testProviderConnection(provider.id)}
+                                            />
+                                        </Box>
+                                    )}
+                                </Box>
                             ))}
                         </Box>
                     </TabPanel>
@@ -588,8 +778,100 @@ const ModernSettingsPanel: React.FC = () => {
                         </Box>
                     </TabPanel>
 
-                    {/* Voice Tab */}
+                    {/* Search Tab */}
                     <TabPanel value={tabValue} index={2}>
+                        <Box sx={{ px: 3 }}>
+                            <Typography variant="h6" gutterBottom fontWeight={600}>
+                                Web Search & Browsers
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                                Configure search providers and API keys for enhanced web search capabilities.
+                            </Typography>
+
+                            <Card sx={{ mb: 3 }}>
+                                <CardContent>
+                                    <Typography variant="subtitle1" gutterBottom fontWeight={600}>
+                                        Search Provider
+                                    </Typography>
+
+                                    <FormControl fullWidth sx={{ mb: 2 }}>
+                                        <InputLabel>Preferred Provider</InputLabel>
+                                        <Select
+                                            value={searchSettings.preferredProvider}
+                                            onChange={(e) => handleSearchSettingChange('preferredProvider', e.target.value)}
+                                        >
+                                            <MenuItem value="auto">Auto (Try all available)</MenuItem>
+                                            <MenuItem value="duckduckgo">DuckDuckGo (Free)</MenuItem>
+                                            <MenuItem value="brave">Brave Search</MenuItem>
+                                            <MenuItem value="tavily">Tavily AI</MenuItem>
+                                            <MenuItem value="serp">SerpAPI</MenuItem>
+                                        </Select>
+                                    </FormControl>
+
+                                    <Typography variant="subtitle2" gutterBottom fontWeight={600} sx={{ mt: 3 }}>
+                                        API Keys
+                                    </Typography>
+
+                                    <TextField
+                                        fullWidth
+                                        label="Brave Search API Key"
+                                        type="password"
+                                        value={searchSettings.braveApiKey}
+                                        onChange={(e) => handleSearchSettingChange('braveApiKey', e.target.value)}
+                                        sx={{ mb: 2 }}
+                                        helperText="Get your free API key at search.brave.com"
+                                    />
+
+                                    <TextField
+                                        fullWidth
+                                        label="Tavily AI API Key"
+                                        type="password"
+                                        value={searchSettings.tavilyApiKey}
+                                        onChange={(e) => handleSearchSettingChange('tavilyApiKey', e.target.value)}
+                                        sx={{ mb: 2 }}
+                                        helperText="Get your API key at tavily.com"
+                                    />
+
+                                    <TextField
+                                        fullWidth
+                                        label="SerpAPI Key"
+                                        type="password"
+                                        value={searchSettings.serpApiKey}
+                                        onChange={(e) => handleSearchSettingChange('serpApiKey', e.target.value)}
+                                        sx={{ mb: 2 }}
+                                        helperText="Get your API key at serpapi.com"
+                                    />
+
+                                    <Typography variant="subtitle2" gutterBottom fontWeight={600} sx={{ mt: 3 }}>
+                                        Rate Limiting
+                                    </Typography>
+
+                                    <Box sx={{ mb: 2 }}>
+                                        <Typography gutterBottom>
+                                            Requests per minute: {searchSettings.rateLimit.requestsPerMinute}
+                                        </Typography>
+                                        <Slider
+                                            value={searchSettings.rateLimit.requestsPerMinute}
+                                            onChange={(_, value) => {
+                                                handleSearchSettingChange('rateLimit', {
+                                                    ...searchSettings.rateLimit,
+                                                    requestsPerMinute: value as number
+                                                });
+                                            }}
+                                            min={1}
+                                            max={60}
+                                            step={1}
+                                            marks
+                                            valueLabelDisplay="auto"
+                                        />
+                                    </Box>
+                                </CardContent>
+                            </Card>
+                        </Box>
+                    </TabPanel>
+
+                    {/* Voice Tab */}
+                    <TabPanel value={tabValue} index={3}>
                         <Box sx={{ px: 3 }}>
                             <Typography variant="h6" gutterBottom fontWeight={600}>
                                 Voice Settings
@@ -602,6 +884,7 @@ const ModernSettingsPanel: React.FC = () => {
                                         label="Activation Phrase"
                                         value={voiceSettings.activationPhrase}
                                         onChange={(e) => {
+                                            trackOriginalSettings();
                                             setVoiceSettings(prev => ({ ...prev, activationPhrase: e.target.value }));
                                             setHasUnsavedChanges(true);
                                         }}
@@ -613,6 +896,7 @@ const ModernSettingsPanel: React.FC = () => {
                                         <Select
                                             value={voiceSettings.sttProvider}
                                             onChange={(e) => {
+                                                trackOriginalSettings();
                                                 setVoiceSettings(prev => ({ ...prev, sttProvider: e.target.value }));
                                                 setHasUnsavedChanges(true);
                                             }}
@@ -630,6 +914,7 @@ const ModernSettingsPanel: React.FC = () => {
                                         <Slider
                                             value={voiceSettings.wakeWordSensitivity}
                                             onChange={(_, value) => {
+                                                trackOriginalSettings();
                                                 setVoiceSettings(prev => ({ ...prev, wakeWordSensitivity: value as number }));
                                                 setHasUnsavedChanges(true);
                                             }}
@@ -648,6 +933,7 @@ const ModernSettingsPanel: React.FC = () => {
                                         <Slider
                                             value={voiceSettings.audioThreshold}
                                             onChange={(_, value) => {
+                                                trackOriginalSettings();
                                                 setVoiceSettings(prev => ({ ...prev, audioThreshold: value as number }));
                                                 setHasUnsavedChanges(true);
                                             }}
@@ -664,7 +950,7 @@ const ModernSettingsPanel: React.FC = () => {
                     </TabPanel>
 
                     {/* Profile Tab */}
-                    <TabPanel value={tabValue} index={3}>
+                    <TabPanel value={tabValue} index={4}>
                         <Box sx={{ px: 3 }}>
                             <Typography variant="h6" gutterBottom fontWeight={600}>
                                 Profile Settings
@@ -678,6 +964,7 @@ const ModernSettingsPanel: React.FC = () => {
                                             label="First Name"
                                             value={profileSettings.name}
                                             onChange={(e) => {
+                                                trackOriginalSettings();
                                                 setProfileSettings(prev => ({ ...prev, name: e.target.value }));
                                                 setHasUnsavedChanges(true);
                                             }}
@@ -687,6 +974,7 @@ const ModernSettingsPanel: React.FC = () => {
                                             label="Last Name"
                                             value={profileSettings.surname}
                                             onChange={(e) => {
+                                                trackOriginalSettings();
                                                 setProfileSettings(prev => ({ ...prev, surname: e.target.value }));
                                                 setHasUnsavedChanges(true);
                                             }}
@@ -698,7 +986,7 @@ const ModernSettingsPanel: React.FC = () => {
                     </TabPanel>
 
                     {/* Theme Tab */}
-                    <TabPanel value={tabValue} index={4}>
+                    <TabPanel value={tabValue} index={5}>
                         <Box sx={{ px: 3 }}>
                             <Typography variant="h6" gutterBottom fontWeight={600}>
                                 Appearance
@@ -728,14 +1016,24 @@ const ModernSettingsPanel: React.FC = () => {
                         <Alert severity="info" sx={{ mb: 2 }}>
                             You have unsaved changes. Click Save to apply them.
                         </Alert>
-                        <Button
-                            fullWidth
-                            variant="contained"
-                            startIcon={<SaveIcon />}
-                            onClick={saveSettings}
-                        >
-                            Save All Changes
-                        </Button>
+                        <Box sx={{ display: 'flex', gap: 2 }}>
+                            <Button
+                                fullWidth
+                                variant="outlined"
+                                startIcon={<CancelIcon />}
+                                onClick={cancelChanges}
+                            >
+                                Cancel Changes
+                            </Button>
+                            <Button
+                                fullWidth
+                                variant="contained"
+                                startIcon={<SaveIcon />}
+                                onClick={saveSettings}
+                            >
+                                Save All Changes
+                            </Button>
+                        </Box>
                     </Box>
                 )}
             </Box>

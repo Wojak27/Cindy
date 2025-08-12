@@ -35,6 +35,18 @@ const getDefaultState = () => ({
             surname: '',
             hasCompletedSetup: false
         },
+        search: {
+            preferredProvider: 'auto',
+            braveApiKey: '',
+            tavilyApiKey: '',
+            serpApiKey: '',
+            fallbackProviders: ['duckduckgo', 'brave', 'tavily', 'serp'],
+            rateLimit: {
+                enabled: true,
+                requestsPerMinute: 10,
+                cooldownSeconds: 5
+            }
+        },
         blobSensitivity: 0.5,
         blobStyle: 'moderate'
     },
@@ -102,7 +114,7 @@ const initializeStore = async () => {
         // Create store with default settings if initialization fails
         storeInstance = configureStore({
             reducer: rootReducer,
-            preloadedState: getDefaultState(),
+            preloadedState: getDefaultState() as any, // Type assertion to resolve conflicts
             middleware: (getDefaultMiddleware) =>
                 getDefaultMiddleware({
                     serializableCheck: false, // Disable for Electron IPC
@@ -120,7 +132,7 @@ const initializeStore = async () => {
 // Create the store immediately with default state
 storeInstance = configureStore({
     reducer: rootReducer,
-    preloadedState: getDefaultState(),
+    preloadedState: getDefaultState() as any, // Type assertion to resolve conflicts
     middleware: (getDefaultMiddleware) =>
         getDefaultMiddleware({
             serializableCheck: false, // Disable for Electron IPC compatibility

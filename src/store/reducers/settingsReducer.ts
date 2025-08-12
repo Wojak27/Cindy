@@ -34,6 +34,19 @@ const initialState = {
         surname: '',
         hasCompletedSetup: false
     },
+    // Search settings
+    search: {
+        preferredProvider: 'auto',
+        braveApiKey: '',
+        tavilyApiKey: '',
+        serpApiKey: '',
+        fallbackProviders: ['duckduckgo', 'brave', 'tavily', 'serp'],
+        rateLimit: {
+            enabled: true,
+            requestsPerMinute: 10,
+            cooldownSeconds: 5
+        }
+    },
     // Blob animation settings
     blobSensitivity: 0.5,
     blobStyle: 'moderate'

@@ -95,15 +95,17 @@ export const persistenceMiddleware = () => (next: any) => async (action: any) =>
                     startAtLogin: action.payload.autoStart || false,
                     minimizeToTray: true,
                     notifications: action.payload.notifications || true,
-                    language: 'en-US'
+                    language: 'en-US',
+                    blobSensitivity: action.payload.blobSensitivity || 0.5,
+                    blobStyle: action.payload.blobStyle || 'moderate'
                 },
                 voice: {
-                    activationPhrase: action.payload.voice || action.payload.wakeWord || 'cindy',
-                    wakeWordSensitivity: 0.5,
-                    audioThreshold: 0.01,
+                    activationPhrase: action.payload.voice?.activationPhrase || action.payload.voice || action.payload.wakeWord || 'cindy',
+                    wakeWordSensitivity: action.payload.voice?.wakeWordSensitivity || 0.5,
+                    audioThreshold: action.payload.voice?.audioThreshold || 0.01,
                     voiceSpeed: 1.0,
                     voicePitch: 1.0,
-                    sttProvider: 'auto',
+                    sttProvider: action.payload.voice?.sttProvider || 'auto',
                     ttsProvider: 'auto'
                 },
                 llm: action.payload.llm || {
@@ -158,6 +160,18 @@ export const persistenceMiddleware = () => (next: any) => async (action: any) =>
                     chunkOverlap: action.payload.database?.chunkOverlap || 200,
                     autoIndex: action.payload.database?.autoIndex || true,
                     notesPath: action.payload.database?.notesPath || ''
+                },
+                search: {
+                    preferredProvider: action.payload.search?.preferredProvider || 'auto',
+                    braveApiKey: action.payload.search?.braveApiKey || '',
+                    tavilyApiKey: action.payload.search?.tavilyApiKey || '',
+                    serpApiKey: action.payload.search?.serpApiKey || '',
+                    fallbackProviders: action.payload.search?.fallbackProviders || ['duckduckgo', 'brave', 'tavily', 'serp'],
+                    rateLimit: action.payload.search?.rateLimit || {
+                        enabled: true,
+                        requestsPerMinute: 10,
+                        cooldownSeconds: 5
+                    }
                 }
             };
 
@@ -205,6 +219,7 @@ export const persistenceMiddleware = () => (next: any) => async (action: any) =>
                 await invokeWithRetry('settings-set', 'llm', transformedForService.llm);
                 await invokeWithRetry('settings-set', 'profile', transformedForService.profile);
                 await invokeWithRetry('settings-set', 'database', transformedForService.database);
+                await invokeWithRetry('settings-set', 'search', transformedForService.search);
                 await invokeWithRetry('settings-set', 'vault', transformedForService.vault);
                 await invokeWithRetry('settings-set', 'research', transformedForService.research);
                 await invokeWithRetry('settings-set', 'privacy', transformedForService.privacy);
@@ -435,7 +450,15 @@ export const loadInitialSettings = async () => {
 
         const transformedSettings = {
             theme: 'light',
-            voice: settings.voice?.activationPhrase || 'cindy',
+            voice: settings.voice || {
+                activationPhrase: 'Hi Cindy!',
+                wakeWordSensitivity: 0.5,
+                audioThreshold: 0.01,
+                voiceSpeed: 1.0,
+                voicePitch: 1.0,
+                sttProvider: 'auto',
+                ttsProvider: 'auto'
+            },
             wakeWord: settings.voice?.activationPhrase || 'cindy',
             autoStart: settings.general?.startAtLogin || false,
             notifications: settings.general?.notifications || true,
@@ -471,6 +494,19 @@ export const loadInitialSettings = async () => {
             general: { ...settings.general },
             privacy: { ...settings.privacy },
             system: { ...settings.system },
+            // Search settings
+            search: {
+                preferredProvider: settings.search?.preferredProvider || 'auto',
+                braveApiKey: settings.search?.braveApiKey || '',
+                tavilyApiKey: settings.search?.tavilyApiKey || '',
+                serpApiKey: settings.search?.serpApiKey || '',
+                fallbackProviders: settings.search?.fallbackProviders || ['duckduckgo', 'brave', 'tavily', 'serp'],
+                rateLimit: settings.search?.rateLimit || {
+                    enabled: true,
+                    requestsPerMinute: 10,
+                    cooldownSeconds: 5
+                }
+            },
             // Blob settings
             blobSensitivity: settings.general?.blobSensitivity || 0.5,
             blobStyle: settings.general?.blobStyle || 'moderate'
