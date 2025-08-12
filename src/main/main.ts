@@ -1936,6 +1936,34 @@ app.on('ready', async () => {
     // IPC handler for processing messages with streaming
     ipcMain.handle('process-message', async (event, message: string, conversationId: string): Promise<string> => {
         console.log('Main process - process-message IPC called with:', message);
+        
+        // Save and emit user message IMMEDIATELY at start to prevent disappearing/duplicating
+        if (chatStorageService) {
+            try {
+                const userMessage = {
+                    conversationId,
+                    role: 'user' as const,
+                    content: message,
+                    timestamp: Date.now()
+                };
+                await chatStorageService.saveMessage(userMessage);
+                console.log('🔧 DEBUG: User message saved immediately at start');
+                
+                // Emit user message to frontend immediately
+                event.sender.send('user-message', { 
+                    message: {
+                        id: `user-${userMessage.timestamp}`,
+                        role: 'user',
+                        content: message,
+                        timestamp: userMessage.timestamp,
+                        conversationId
+                    }
+                });
+            } catch (saveError) {
+                console.error('🚨 DEBUG: Failed to persist user message at start:', saveError);
+            }
+        }
+        
         try {
             // Check current settings and update LLM provider if needed
             console.log('🔍 DEBUG: Checking provider switching conditions...');
@@ -2128,32 +2156,7 @@ app.on('ready', async () => {
             if (!langChainCindyAgent && !llmProvider) {
                 console.error('Main process - process-message: Still no LLM provider after auto-init attempt');
 
-                // Save user message first and emit to frontend
-                if (chatStorageService) {
-                    try {
-                        const userMessage = {
-                            conversationId,
-                            role: 'user' as const,
-                            content: message,
-                            timestamp: Date.now()
-                        };
-                        await chatStorageService.saveMessage(userMessage);
-                        console.log('🔧 DEBUG: User message persisted to ChatStorageService');
-                        
-                        // Emit user message to frontend to show in UI
-                        event.sender.send('user-message', { 
-                            message: {
-                                id: `user-${userMessage.timestamp}`,
-                                role: 'user',
-                                content: message,
-                                timestamp: userMessage.timestamp,
-                                conversationId
-                            }
-                        });
-                    } catch (saveError) {
-                        console.error('🚨 DEBUG: Failed to persist user message:', saveError);
-                    }
-                }
+                // User message already saved at start of handler
 
                 // Check LLM settings and provider to give appropriate message
                 const llmSettings = await settingsService?.get('llm');
@@ -2263,32 +2266,7 @@ app.on('ready', async () => {
                 }
             }
 
-            // Save user message first for successful processing path
-            if (chatStorageService) {
-                try {
-                    const userMessage = {
-                        conversationId,
-                        role: 'user' as const,
-                        content: message,
-                        timestamp: Date.now()
-                    };
-                    await chatStorageService.saveMessage(userMessage);
-                    console.log('🔧 DEBUG: User message persisted to ChatStorageService (successful path)');
-                    
-                    // Emit user message to frontend to show in UI
-                    event.sender.send('user-message', { 
-                        message: {
-                            id: `user-${userMessage.timestamp}`,
-                            role: 'user',
-                            content: message,
-                            timestamp: userMessage.timestamp,
-                            conversationId
-                        }
-                    });
-                } catch (saveError) {
-                    console.error('🚨 DEBUG: Failed to persist user message (successful path):', saveError);
-                }
-            }
+            // User message already saved at start of handler
 
             // Prefer Cindy Agent if available, fallback to direct LLM
             if (langChainCindyAgent) {
@@ -2310,6 +2288,23 @@ app.on('ready', async () => {
                     // Use streaming processing from the agent
                     for await (const chunk of langChainCindyAgent.processStreaming(message, agentContext)) {
                         assistantContent += chunk;
+                        
+                        // Parse tool calls from chunk and emit tool execution updates
+                        const toolRegex = /<tool>(.*?)<\/tool>/gs;
+                        let toolMatch;
+                        while ((toolMatch = toolRegex.exec(chunk)) !== null) {
+                            try {
+                                const toolCallData = JSON.parse(toolMatch[1]);
+                                console.log('🔧 DEBUG: Emitting tool execution update:', toolCallData);
+                                event.sender.send('tool-execution-update', { 
+                                    toolCall: toolCallData, 
+                                    conversationId 
+                                });
+                            } catch (parseError) {
+                                console.error('🔧 DEBUG: Failed to parse tool call JSON:', parseError);
+                            }
+                        }
+                        
                         event.sender.send('stream-chunk', { chunk, conversationId });
                     }
 

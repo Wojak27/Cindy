@@ -94,7 +94,27 @@ export class ThinkingCindyAgent {
     private async createThinkingPlan(cleanInput: string, forcedTools: string[], context?: AgentContext): Promise<ThinkingPlan> {
         const availableTools = this.toolExecutor.getAvailableTools();
 
-        // Build thinking prompt
+        // Check if this is a simple greeting that doesn't require complex planning
+        if (this.isSimpleGreeting(cleanInput) && forcedTools.length === 0) {
+            console.log('🎯 Simple greeting detected - skipping complex planning phase');
+            
+            const plan: ThinkingPlan = {
+                intent: 'simple greeting',
+                forcedTools: [],
+                suggestedTools: [],
+                reasoning: 'Simple greeting detected - no tools needed for direct response',
+                steps: []
+            };
+
+            this.addThinkingStep('think',
+                `Simple greeting detected: "${cleanInput}"\n` +
+                `No planning required - will respond directly without tools`
+            );
+
+            return plan;
+        }
+
+        // Build thinking prompt for complex requests
         const thinkingPrompt = `You are Cindy, an intelligent voice assistant. Analyze this user request and create an execution plan.
 
 User request: "${cleanInput}"
@@ -120,7 +140,8 @@ Respond with your thinking process and a clear plan. Be concise but thorough.`;
         const suggestedTools = this.suggestToolsFromContent(cleanInput, availableTools);
 
         // Combine forced and suggested tools, prioritizing forced tools
-        const allTools = [...new Set([...forcedTools, ...suggestedTools])];
+        const allToolsSet = new Set([...forcedTools, ...suggestedTools]);
+        const allTools = Array.from(allToolsSet);
 
         // Create tool intents
         const steps: ToolIntent[] = allTools.map(tool => ({
@@ -152,7 +173,7 @@ Respond with your thinking process and a clear plan. Be concise but thorough.`;
     /**
      * Phase 3: Execute tools according to plan
      */
-    private async executeTools(plan: ThinkingPlan, context?: AgentContext): Promise<Record<string, any>> {
+    private async executeTools(plan: ThinkingPlan, _context?: AgentContext): Promise<Record<string, any>> {
         const toolResults: Record<string, any> = {};
 
         if (plan.steps.length === 0) {
@@ -404,10 +425,23 @@ Keep it concise but informative.`;
             const totalTools = Object.keys(toolResults).length;
             console.log(`✅ Tool execution complete: ${successCount}/${totalTools} successful`);
 
-            // Phase 4: Synthesize response
-            console.log('\n📝 PHASE 4: SYNTHESIZING RESPONSE');
-            console.log('─'.repeat(40));
-            const finalResponse = await this.synthesizeResponse(cleanInput, plan, toolResults, context);
+            // Phase 4: Generate response
+            let finalResponse: string;
+            if (plan.steps.length === 0 && plan.intent === 'simple greeting') {
+                // Direct response for simple greetings - no synthesis needed
+                console.log('\n💬 PHASE 4: DIRECT RESPONSE (SIMPLE GREETING)');
+                console.log('─'.repeat(40));
+                const directResponse = await this.llmProvider.invoke([
+                    { role: 'system' as const, content: this.getSystemPrompt() },
+                    { role: 'user' as const, content: cleanInput }
+                ]);
+                finalResponse = directResponse.content as string;
+            } else {
+                // Complex response with synthesis
+                console.log('\n📝 PHASE 4: SYNTHESIZING RESPONSE');
+                console.log('─'.repeat(40));
+                finalResponse = await this.synthesizeResponse(cleanInput, plan, toolResults, context);
+            }
 
             console.log(`📄 Response length: ${finalResponse.length} characters`);
             console.log(`🎯 Response preview: "${finalResponse.substring(0, 100)}${finalResponse.length > 100 ? '...' : ''}"`);
@@ -580,6 +614,32 @@ Keep it concise but informative.`;
 
 
     // Helper methods
+    private isSimpleGreeting(input: string): boolean {
+        const cleanInput = input.toLowerCase().trim();
+        
+        // Simple greetings and basic interactions
+        const simpleGreetings = [
+            'hi', 'hello', 'hey', 'howdy', 'yo',
+            'good morning', 'good afternoon', 'good evening', 'good night',
+            'how are you', 'how are you doing', 'how\'s it going',
+            'what\'s up', 'whats up', 'sup',
+            'thanks', 'thank you', 'bye', 'goodbye', 'see you',
+            'yes', 'no', 'ok', 'okay', 'sure', 'alright'
+        ];
+
+        // Check exact matches
+        if (simpleGreetings.includes(cleanInput)) {
+            return true;
+        }
+
+        // Check if input is very short and likely conversational
+        if (cleanInput.length <= 10 && !cleanInput.includes('?') && !cleanInput.includes('search') && !cleanInput.includes('find')) {
+            return true;
+        }
+
+        return false;
+    }
+
     private addThinkingStep(step: ThinkingStep['step'], content: string): void {
         this.thinkingSteps.push({
             step,

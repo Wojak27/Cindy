@@ -62,6 +62,7 @@ const App: React.FC = () => {
     const [currentConversationId, setCurrentConversationId] = useState<string | undefined>(undefined);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [isAppLoading, setIsAppLoading] = useState(true);
+    const [isTransitioning, setIsTransitioning] = useState(false);
     const [isTTSPlaying, setIsTTSPlaying] = useState(false);
     const [currentTTSMessage, setCurrentTTSMessage] = useState<string | null>(null);
     const [isInputExpanded, setIsInputExpanded] = useState(false);
@@ -193,9 +194,14 @@ const App: React.FC = () => {
     useEffect(() => {
         dispatch(getSettings());
 
-        // Hide loading screen after a delay to show the app is ready
+        // Hide loading screen after a delay with transition effect
         const timer = setTimeout(() => {
-            setIsAppLoading(false);
+            setIsTransitioning(true);
+            // Wait for transition to start, then load the app
+            setTimeout(() => {
+                setIsAppLoading(false);
+                setIsTransitioning(false);
+            }, 800); // Allow time for transition animation
         }, 2000); // Show loading blob for 2 seconds
 
         return () => clearTimeout(timer);
@@ -323,8 +329,9 @@ const App: React.FC = () => {
                             // Don't add to frontend store here to prevent duplicates
 
                             // Create assistant message placeholder for streaming
+                            const assistantMessageId = `assistant-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
                             const assistantMessage = {
-                                id: `assistant-${Date.now()}`,
+                                id: assistantMessageId,
                                 role: 'assistant',
                                 content: '',
                                 timestamp: Date.now(),
@@ -459,8 +466,9 @@ const App: React.FC = () => {
             setActiveHashtags([]); // Clear hashtags after sending
 
             // Create assistant message placeholder for streaming
+            const assistantMessageId = `assistant-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             const assistantMessage = {
-                id: `assistant-${Date.now()}`,
+                id: assistantMessageId,
                 role: 'assistant',
                 content: '',
                 timestamp: Date.now(),
@@ -684,8 +692,6 @@ const App: React.FC = () => {
                     }
                 }
 
-                // Mark assistant message as complete
-                dispatch({ type: 'COMPLETE_ASSISTANT_MESSAGE' });
                 dispatch({ type: 'STOP_THINKING' });
             }
         };
@@ -873,9 +879,17 @@ const App: React.FC = () => {
                     display: 'flex',
                     justifyContent: 'center',
                     alignItems: 'center',
-                    backgroundColor: 'var(--background)'
+                    backgroundColor: 'var(--background)',
+                    transition: 'all 0.8s cubic-bezier(0.4, 0, 0.2, 1)',
+                    transform: isTransitioning ? 'scale(0.7) translateY(20vh)' : 'scale(1) translateY(0)',
+                    opacity: isTransitioning ? 0 : 1
                 }}>
-                    <div style={{ position: "relative", width: "280px", height: "280px" }}>
+                    <div style={{ 
+                        position: "relative", 
+                        width: "280px", 
+                        height: "280px",
+                        transition: 'all 0.8s cubic-bezier(0.4, 0, 0.2, 1)'
+                    }}>
                         <SoundReactiveBlob isActive={true} />
                     </div>
                 </div>
@@ -976,11 +990,12 @@ const App: React.FC = () => {
                                 } else if (availableDocuments.length > 0) {
                                     handleShowDocument(availableDocuments[0]);
                                 } else {
-                                    // If no documents, open database panel to help user index some
-                                    dispatch({ type: 'TOGGLE_DATABASE_SIDEBAR' });
+                                    // If no documents, show message to user to index documents first
+                                    console.log('No documents available. Please index documents from the database panel first.');
+                                    // Could also show a toast notification here
                                 }
                             }}
-                            aria-label={showDocumentPanel ? "Hide document" : "Show document"}
+                            aria-label={showDocumentPanel ? "Hide document" : "Show retrieved files"}
                             size="small"
                         >
                             <DocumentIcon fontSize="small" />
@@ -1024,9 +1039,23 @@ const App: React.FC = () => {
                             >
                                 {/* Show sound reactive circle when no messages and no current input */}
                                 {messages.length === 0 && (
-                                    <div style={{ display: 'flex', justifyContent: 'center', flexDirection: "column", alignItems: 'center', height: '100%', gap: '32px' }}>
+                                    <div style={{ 
+                                        display: 'flex', 
+                                        justifyContent: 'center', 
+                                        flexDirection: "column", 
+                                        alignItems: 'center', 
+                                        height: '100%', 
+                                        gap: '32px',
+                                        animation: 'fadeInUp 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards'
+                                    }}>
                                         <div>
-                                            <div style={{ position: "relative", width: "280px", height: "280px" }}>
+                                            <div style={{ 
+                                                position: "relative", 
+                                                width: "280px", 
+                                                height: "280px",
+                                                transform: 'scale(0.7)',
+                                                animation: 'blobEntrance 0.8s cubic-bezier(0.4, 0, 0.2, 1) 0.2s forwards'
+                                            }}>
                                                 <SoundReactiveBlob isActive={true} />
                                             </div>
                                         </div>

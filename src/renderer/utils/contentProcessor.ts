@@ -155,7 +155,14 @@ export class ContentProcessor {
         const updatedMessages = [];
         const extractedThinkingBlocks: ThinkingBlock[] = [];
 
-        for (const message of messages) {
+        // Sort messages by timestamp to ensure correct chronological order
+        const sortedMessages = [...messages].sort((a, b) => {
+            const timestampA = new Date(a.timestamp).getTime();
+            const timestampB = new Date(b.timestamp).getTime();
+            return timestampA - timestampB;
+        });
+
+        for (const message of sortedMessages) {
             if (message.role === 'assistant' && message.content) {
                 const processed = this.processMessageContent(
                     message.content, 

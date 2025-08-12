@@ -268,6 +268,8 @@ body:not([data-theme="dark"]) .message * {
     height: 100vh;
     overflow: hidden;
     min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
     /* Allow shrinking below content size */
     transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -311,14 +313,19 @@ body:not([data-theme="dark"]) .message * {
     flex: 1;
     height: calc(100vh - 60px);
     background: var(--background);
+    overflow: hidden;
+    max-width: 100%;
 }
 
 .chat-messages-container {
     z-index: 0;
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 24px;
     background: var(--background);
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 /* Custom scrollbar styling */
@@ -357,6 +364,7 @@ body:not([data-theme="dark"]) .message * {
     margin: 0;
     padding: 16px 0;
     animation: fadeIn 0.3s ease;
+    border-radius: 12px;
 }
 
 .message.user {
@@ -398,6 +406,7 @@ body:not([data-theme="dark"]) .message * {
     display: flex;
     flex-direction: column;
     gap: 12px;
+    border-radius: 12px;
 }
 
 /* User message content */
@@ -534,6 +543,28 @@ html:not([data-theme="dark"]) .message-text {
     to {
         opacity: 1;
         transform: translateY(0);
+    }
+}
+
+@keyframes fadeInUp {
+    0% {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes blobEntrance {
+    0% {
+        transform: scale(0.7);
+        opacity: 0.8;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
     }
 }
 

@@ -595,7 +595,7 @@ Please try a different search term or check if the relevant documents have been 
 
 ${formattedResults}
 
-Based on the above retrieved documents, please provide a detailed answer to the user's question. Include specific information from the documents and cite the sources with file links when referencing specific details.`;
+Based on the above retrieved documents, please provide a detailed answer to your question. Include specific information from the documents and cite the sources with file links when referencing specific details.`;
 
                     } catch (error: any) {
                         console.error('[VectorSearchTool] Error during search:', error);
