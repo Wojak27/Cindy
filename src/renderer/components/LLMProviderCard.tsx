@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     Card,
     CardContent,
@@ -12,10 +12,10 @@ import {
     IconButton,
     Alert,
     CircularProgress,
-    MenuItem,
     Slider,
     Divider,
     useTheme,
+    Autocomplete,
 } from '@mui/material';
 import {
     ExpandMore as ExpandMoreIcon,
@@ -26,6 +26,7 @@ import {
     Google as GoogleIcon,
     Microsoft as MicrosoftIcon,
     Hub as HubIcon,
+    Refresh as RefreshIcon,
 } from '@mui/icons-material';
 
 interface LLMProviderCardProps {
@@ -60,12 +61,60 @@ const LLMProviderCard: React.FC<LLMProviderCardProps> = ({
     const theme = useTheme();
     const [expanded, setExpanded] = useState(isSelected);
     const [showApiKey, setShowApiKey] = useState(false);
+    const [availableModels, setAvailableModels] = useState<string[]>(provider.models);
+    const [loadingModels, setLoadingModels] = useState(false);
+    const [modelInputValue, setModelInputValue] = useState(config?.model || provider.models[0] || '');
+
+    // Update model input when config changes or when provider becomes selected
+    useEffect(() => {
+        const expectedModel = config?.model || provider.models[0] || '';
+        if (expectedModel !== modelInputValue) {
+            console.log(`🔄 Updating model for ${provider.name}: ${modelInputValue} → ${expectedModel}`);
+            setModelInputValue(expectedModel);
+        }
+    }, [config?.model, provider.models, provider.name, modelInputValue, isSelected]);
 
     React.useEffect(() => {
         if (isSelected && !expanded) {
             setExpanded(true);
         }
     }, [isSelected, expanded]);
+
+    // Ensure model is set when provider becomes selected
+    React.useEffect(() => {
+        if (isSelected && (!config?.model || config.model === '')) {
+            const defaultModel = provider.models[0] || '';
+            if (defaultModel) {
+                console.log(`🎯 Setting default model for selected provider ${provider.name}: ${defaultModel}`);
+                onConfigChange({ ...config, model: defaultModel });
+            }
+        }
+    }, [isSelected, config, provider.models, provider.name, onConfigChange]);
+
+    // Fetch models from provider API
+    const fetchModels = useCallback(async () => {
+        if (!config?.apiKey && provider.requiresApiKey) {
+            return;
+        }
+
+        setLoadingModels(true);
+        try {
+            const { ipcRenderer } = window.require('electron');
+            const models = await ipcRenderer.invoke('fetch-provider-models', {
+                provider: provider.id,
+                config: config
+            });
+            
+            if (models && models.length > 0) {
+                setAvailableModels([...new Set([...provider.models, ...models])]);
+            }
+        } catch (error) {
+            console.error(`Failed to fetch models for ${provider.name}:`, error);
+            // Keep using default models on error
+        } finally {
+            setLoadingModels(false);
+        }
+    }, [provider.id, provider.name, provider.models, provider.requiresApiKey, config]);
 
     const handleExpandClick = () => {
         setExpanded(!expanded);
@@ -108,60 +157,96 @@ const LLMProviderCard: React.FC<LLMProviderCardProps> = ({
 
     const renderConfigFields = () => {
         const updateConfig = (field: string, value: any) => {
+            console.log(`🔧 ${provider.name} config update: ${field} = ${value}`);
             onConfigChange({ ...config, [field]: value });
         };
 
-        const commonFields = (
-            <>
-                <TextField
-                    fullWidth
-                    label="Model"
-                    select
-                    value={config?.model || provider.models[0]}
-                    onChange={(e) => updateConfig('model', e.target.value)}
-                    sx={{ mb: 2 }}
-                >
-                    {provider.models.map((model) => (
-                        <MenuItem key={model} value={model}>
-                            {model}
-                        </MenuItem>
-                    ))}
-                </TextField>
+        const modelField = (
+            <Box sx={{ mb: 2 }}>
+                <Autocomplete
+                    freeSolo
+                    options={availableModels}
+                    value={modelInputValue}
+                    inputValue={modelInputValue}
+                    onInputChange={(_, newInputValue) => {
+                        setModelInputValue(newInputValue);
+                        updateConfig('model', newInputValue);
+                    }}
+                    onChange={(_, newValue) => {
+                        const selectedModel = newValue || '';
+                        setModelInputValue(selectedModel);
+                        updateConfig('model', selectedModel);
+                    }}
+                    renderInput={(params) => (
+                        <TextField
+                            {...params}
+                            fullWidth
+                            label="Model"
+                            placeholder="Enter model name or select from dropdown"
+                            InputProps={{
+                                ...params.InputProps,
+                                endAdornment: (
+                                    <>
+                                        {loadingModels ? (
+                                            <CircularProgress size={20} />
+                                        ) : (
+                                            <IconButton
+                                                size="small"
+                                                onClick={fetchModels}
+                                                disabled={!config?.apiKey && provider.requiresApiKey}
+                                                title="Refresh available models"
+                                            >
+                                                <RefreshIcon fontSize="small" />
+                                            </IconButton>
+                                        )}
+                                        {params.InputProps.endAdornment}
+                                    </>
+                                ),
+                            }}
+                        />
+                    )}
+                />
+            </Box>
+        );
 
-                <Box sx={{ mb: 2 }}>
-                    <Typography gutterBottom>Temperature: {config?.temperature || 0.7}</Typography>
-                    <Slider
-                        value={config?.temperature || 0.7}
-                        onChange={(_, value) => updateConfig('temperature', value)}
-                        min={0}
-                        max={2}
-                        step={0.1}
-                        marks
-                        valueLabelDisplay="auto"
-                    />
-                </Box>
-            </>
+        const temperatureField = (
+            <Box sx={{ mb: 2 }}>
+                <Typography gutterBottom>Temperature: {config?.temperature || 0.7}</Typography>
+                <Slider
+                    value={config?.temperature || 0.7}
+                    onChange={(_, value) => updateConfig('temperature', value)}
+                    min={0}
+                    max={2}
+                    step={0.1}
+                    marks
+                    valueLabelDisplay="auto"
+                />
+            </Box>
+        );
+
+        const apiKeyField = (label: string) => (
+            <TextField
+                fullWidth
+                label={label}
+                type={showApiKey ? 'text' : 'password'}
+                value={config?.apiKey || ''}
+                onChange={(e) => updateConfig('apiKey', e.target.value)}
+                sx={{ mb: 2 }}
+                InputProps={{
+                    endAdornment: (
+                        <Button onClick={() => setShowApiKey(!showApiKey)}>
+                            {showApiKey ? 'Hide' : 'Show'}
+                        </Button>
+                    )
+                }}
+            />
         );
 
         switch (provider.id) {
             case 'openai':
                 return (
                     <>
-                        <TextField
-                            fullWidth
-                            label="OpenAI API Key"
-                            type={showApiKey ? 'text' : 'password'}
-                            value={config?.apiKey || ''}
-                            onChange={(e) => updateConfig('apiKey', e.target.value)}
-                            sx={{ mb: 2 }}
-                            InputProps={{
-                                endAdornment: (
-                                    <Button onClick={() => setShowApiKey(!showApiKey)}>
-                                        {showApiKey ? 'Hide' : 'Show'}
-                                    </Button>
-                                )
-                            }}
-                        />
+                        {apiKeyField('OpenAI API Key')}
                         <TextField
                             fullWidth
                             label="Organization ID (Optional)"
@@ -169,7 +254,8 @@ const LLMProviderCard: React.FC<LLMProviderCardProps> = ({
                             onChange={(e) => updateConfig('organizationId', e.target.value)}
                             sx={{ mb: 2 }}
                         />
-                        {commonFields}
+                        {modelField}
+                        {temperatureField}
                         <Box sx={{ mb: 2 }}>
                             <Typography gutterBottom>Max Tokens: {config?.maxTokens || 4096}</Typography>
                             <Slider
@@ -188,22 +274,9 @@ const LLMProviderCard: React.FC<LLMProviderCardProps> = ({
             case 'anthropic':
                 return (
                     <>
-                        <TextField
-                            fullWidth
-                            label="Anthropic API Key"
-                            type={showApiKey ? 'text' : 'password'}
-                            value={config?.apiKey || ''}
-                            onChange={(e) => updateConfig('apiKey', e.target.value)}
-                            sx={{ mb: 2 }}
-                            InputProps={{
-                                endAdornment: (
-                                    <Button onClick={() => setShowApiKey(!showApiKey)}>
-                                        {showApiKey ? 'Hide' : 'Show'}
-                                    </Button>
-                                )
-                            }}
-                        />
-                        {commonFields}
+                        {apiKeyField('Anthropic API Key')}
+                        {modelField}
+                        {temperatureField}
                         <Box sx={{ mb: 2 }}>
                             <Typography gutterBottom>Max Tokens: {config?.maxTokens || 4000}</Typography>
                             <Slider
@@ -219,25 +292,68 @@ const LLMProviderCard: React.FC<LLMProviderCardProps> = ({
                     </>
                 );
 
+            case 'openrouter':
+                return (
+                    <>
+                        {apiKeyField('OpenRouter API Key')}
+                        <TextField
+                            fullWidth
+                            label="Site URL (Optional)"
+                            value={config?.siteUrl || 'https://localhost:3000'}
+                            onChange={(e) => updateConfig('siteUrl', e.target.value)}
+                            sx={{ mb: 2 }}
+                        />
+                        <TextField
+                            fullWidth
+                            label="App Name (Optional)"
+                            value={config?.appName || 'Cindy Voice Assistant'}
+                            onChange={(e) => updateConfig('appName', e.target.value)}
+                            sx={{ mb: 2 }}
+                        />
+                        {modelField}
+                        {temperatureField}
+                        <Box sx={{ mb: 2 }}>
+                            <Typography gutterBottom>Max Tokens: {config?.maxTokens || 4096}</Typography>
+                            <Slider
+                                value={config?.maxTokens || 4096}
+                                onChange={(_, value) => updateConfig('maxTokens', value)}
+                                min={100}
+                                max={16000}
+                                step={100}
+                                marks
+                                valueLabelDisplay="auto"
+                            />
+                        </Box>
+                    </>
+                );
+
+            case 'groq':
+                return (
+                    <>
+                        {apiKeyField('Groq API Key')}
+                        {modelField}
+                        {temperatureField}
+                        <Box sx={{ mb: 2 }}>
+                            <Typography gutterBottom>Max Tokens: {config?.maxTokens || 4096}</Typography>
+                            <Slider
+                                value={config?.maxTokens || 4096}
+                                onChange={(_, value) => updateConfig('maxTokens', value)}
+                                min={100}
+                                max={8000}
+                                step={100}
+                                marks
+                                valueLabelDisplay="auto"
+                            />
+                        </Box>
+                    </>
+                );
+
             case 'google':
                 return (
                     <>
-                        <TextField
-                            fullWidth
-                            label="Google API Key"
-                            type={showApiKey ? 'text' : 'password'}
-                            value={config?.apiKey || ''}
-                            onChange={(e) => updateConfig('apiKey', e.target.value)}
-                            sx={{ mb: 2 }}
-                            InputProps={{
-                                endAdornment: (
-                                    <Button onClick={() => setShowApiKey(!showApiKey)}>
-                                        {showApiKey ? 'Hide' : 'Show'}
-                                    </Button>
-                                )
-                            }}
-                        />
-                        {commonFields}
+                        {apiKeyField('Google API Key')}
+                        {modelField}
+                        {temperatureField}
                         <Box sx={{ mb: 2 }}>
                             <Typography gutterBottom>Max Output Tokens: {config?.maxOutputTokens || 2048}</Typography>
                             <Slider
@@ -256,43 +372,16 @@ const LLMProviderCard: React.FC<LLMProviderCardProps> = ({
             case 'cohere':
                 return (
                     <>
-                        <TextField
-                            fullWidth
-                            label="Cohere API Key"
-                            type={showApiKey ? 'text' : 'password'}
-                            value={config?.apiKey || ''}
-                            onChange={(e) => updateConfig('apiKey', e.target.value)}
-                            sx={{ mb: 2 }}
-                            InputProps={{
-                                endAdornment: (
-                                    <Button onClick={() => setShowApiKey(!showApiKey)}>
-                                        {showApiKey ? 'Hide' : 'Show'}
-                                    </Button>
-                                )
-                            }}
-                        />
-                        {commonFields}
+                        {apiKeyField('Cohere API Key')}
+                        {modelField}
+                        {temperatureField}
                     </>
                 );
 
             case 'azure':
                 return (
                     <>
-                        <TextField
-                            fullWidth
-                            label="Azure API Key"
-                            type={showApiKey ? 'text' : 'password'}
-                            value={config?.apiKey || ''}
-                            onChange={(e) => updateConfig('apiKey', e.target.value)}
-                            sx={{ mb: 2 }}
-                            InputProps={{
-                                endAdornment: (
-                                    <Button onClick={() => setShowApiKey(!showApiKey)}>
-                                        {showApiKey ? 'Hide' : 'Show'}
-                                    </Button>
-                                )
-                            }}
-                        />
+                        {apiKeyField('Azure API Key')}
                         <TextField
                             fullWidth
                             label="Instance Name"
@@ -316,7 +405,8 @@ const LLMProviderCard: React.FC<LLMProviderCardProps> = ({
                             onChange={(e) => updateConfig('apiVersion', e.target.value)}
                             sx={{ mb: 2 }}
                         />
-                        {commonFields}
+                        {modelField}
+                        {temperatureField}
                         <Box sx={{ mb: 2 }}>
                             <Typography gutterBottom>Max Tokens: {config?.maxTokens || 4096}</Typography>
                             <Slider
@@ -335,21 +425,7 @@ const LLMProviderCard: React.FC<LLMProviderCardProps> = ({
             case 'huggingface':
                 return (
                     <>
-                        <TextField
-                            fullWidth
-                            label="HuggingFace API Key"
-                            type={showApiKey ? 'text' : 'password'}
-                            value={config?.apiKey || ''}
-                            onChange={(e) => updateConfig('apiKey', e.target.value)}
-                            sx={{ mb: 2 }}
-                            InputProps={{
-                                endAdornment: (
-                                    <Button onClick={() => setShowApiKey(!showApiKey)}>
-                                        {showApiKey ? 'Hide' : 'Show'}
-                                    </Button>
-                                )
-                            }}
-                        />
+                        {apiKeyField('HuggingFace API Key')}
                         <TextField
                             fullWidth
                             label="Custom Endpoint (Optional)"
@@ -358,7 +434,8 @@ const LLMProviderCard: React.FC<LLMProviderCardProps> = ({
                             sx={{ mb: 2 }}
                             placeholder="https://your-endpoint.com"
                         />
-                        {commonFields}
+                        {modelField}
+                        {temperatureField}
                         <Box sx={{ mb: 2 }}>
                             <Typography gutterBottom>Max Tokens: {config?.maxTokens || 2048}</Typography>
                             <Slider
@@ -384,7 +461,8 @@ const LLMProviderCard: React.FC<LLMProviderCardProps> = ({
                             onChange={(e) => updateConfig('baseUrl', e.target.value)}
                             sx={{ mb: 2 }}
                         />
-                        {commonFields}
+                        {modelField}
+                        {temperatureField}
                         <Alert severity="info" sx={{ mb: 2 }}>
                             Make sure Ollama is running locally and the model is pulled.
                         </Alert>
@@ -392,7 +470,13 @@ const LLMProviderCard: React.FC<LLMProviderCardProps> = ({
                 );
 
             default:
-                return commonFields;
+                return (
+                    <>
+                        {provider.requiresApiKey && apiKeyField(`${provider.name} API Key`)}
+                        {modelField}
+                        {temperatureField}
+                    </>
+                );
         }
     };
 

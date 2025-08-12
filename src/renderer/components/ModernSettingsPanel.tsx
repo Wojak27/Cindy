@@ -213,6 +213,14 @@ const ModernSettingsPanel: React.FC = () => {
         },
     ];
 
+    // Update original settings baseline after successful save
+    const updateOriginalSettingsBaseline = useCallback(() => {
+        // This ensures that after saving, if user makes new changes, 
+        // cancel will revert to the newly saved state, not the initial component state
+        setOriginalSettings(null);
+        setHasUnsavedChanges(false);
+    }, []);
+
     // Save all settings
     const saveSettings = useCallback(() => {
         const updatedSettings = {
@@ -244,16 +252,17 @@ const ModernSettingsPanel: React.FC = () => {
         };
 
         dispatch(updateSettings(updatedSettings));
-        setHasUnsavedChanges(false);
-        setOriginalSettings(null);
+        updateOriginalSettingsBaseline();
 
         // Initialize LLM service with new settings
         ipcRenderer.invoke('initialize-llm');
-    }, [dispatch, selectedProvider, providerConfigs, voiceSettings, profileSettings, searchSettings, settings]);
+    }, [dispatch, selectedProvider, providerConfigs, voiceSettings, profileSettings, searchSettings, settings, updateOriginalSettingsBaseline]);
 
     // Cancel changes
     const cancelChanges = useCallback(() => {
+        console.log('🔄 Cancel button clicked - originalSettings:', originalSettings);
         if (originalSettings) {
+            console.log('✅ Restoring settings from original state');
             setSelectedProvider(originalSettings.selectedProvider);
             setProviderConfigs(originalSettings.providerConfigs);
             setVoiceSettings(originalSettings.voiceSettings);
@@ -261,12 +270,16 @@ const ModernSettingsPanel: React.FC = () => {
             setSearchSettings(originalSettings.searchSettings);
             setHasUnsavedChanges(false);
             setOriginalSettings(null);
+            console.log('✅ Settings restored and state reset');
+        } else {
+            console.warn('❌ Cancel clicked but no originalSettings available');
         }
     }, [originalSettings]);
 
     // Track original settings when changes start
     const trackOriginalSettings = useCallback(() => {
         if (!originalSettings) {
+            console.log('📸 Tracking original settings as baseline for cancel functionality');
             setOriginalSettings({
                 selectedProvider,
                 providerConfigs: JSON.parse(JSON.stringify(providerConfigs)), // Deep copy for nested objects
@@ -274,6 +287,9 @@ const ModernSettingsPanel: React.FC = () => {
                 profileSettings: { ...profileSettings },
                 searchSettings: JSON.parse(JSON.stringify(searchSettings)) // Deep copy for nested rateLimit object
             });
+            console.log('📸 Original settings captured:', { selectedProvider, providerConfigs });
+        } else {
+            console.log('📸 Original settings already exist, not overriding');
         }
     }, [originalSettings, selectedProvider, providerConfigs, voiceSettings, profileSettings, searchSettings]);
 

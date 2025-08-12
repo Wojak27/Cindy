@@ -36,7 +36,8 @@ const setupSettingsIPC = () => {
         'wake-word:stop',
         'wake-word:update-keyword',
         'wake-word:status',
-        'get-link-preview'
+        'get-link-preview',
+        'fetch-provider-models'
     ];
 
     handlersToRemove.forEach(handler => {
@@ -165,6 +166,135 @@ const setupSettingsIPC = () => {
             throw new Error('LinkPreviewService not initialized');
         }
         return await linkPreviewService.getPreview(url);
+    });
+
+    // IPC handler for fetching models from provider APIs
+    ipcMain.handle('fetch-provider-models', async (event, { provider, config }) => {
+        console.log(`Main process - fetch-provider-models called for provider: ${provider}`);
+        
+        try {
+            let models: string[] = [];
+            
+            switch (provider) {
+                case 'openai':
+                    if (config?.apiKey) {
+                        const response = await axios.get('https://api.openai.com/v1/models', {
+                            headers: { 'Authorization': `Bearer ${config.apiKey}` },
+                            timeout: 10000
+                        });
+                        models = response.data.data
+                            .filter((model: any) => model.id.includes('gpt') || model.id.includes('text-davinci'))
+                            .map((model: any) => model.id)
+                            .sort();
+                    }
+                    break;
+                
+                case 'anthropic':
+                    // Anthropic doesn't have a public models API, return known models
+                    models = [
+                        'claude-3-opus-20240229',
+                        'claude-3-sonnet-20240229', 
+                        'claude-3-haiku-20240307',
+                        'claude-2.1',
+                        'claude-2.0',
+                        'claude-instant-1.2'
+                    ];
+                    break;
+                
+                case 'openrouter':
+                    if (config?.apiKey) {
+                        const response = await axios.get('https://openrouter.ai/api/v1/models', {
+                            headers: { 
+                                'Authorization': `Bearer ${config.apiKey}`,
+                                'HTTP-Referer': config?.siteUrl || 'https://localhost:3000',
+                                'X-Title': config?.appName || 'Cindy Voice Assistant'
+                            },
+                            timeout: 10000
+                        });
+                        models = response.data.data.map((model: any) => model.id).sort();
+                    }
+                    break;
+                
+                case 'groq':
+                    if (config?.apiKey) {
+                        const response = await axios.get('https://api.groq.com/openai/v1/models', {
+                            headers: { 'Authorization': `Bearer ${config.apiKey}` },
+                            timeout: 10000
+                        });
+                        models = response.data.data.map((model: any) => model.id).sort();
+                    }
+                    break;
+                
+                case 'google':
+                    // Google Gemini models - static list since no public API for model list
+                    models = [
+                        'gemini-pro',
+                        'gemini-pro-vision',
+                        'text-bison-001',
+                        'chat-bison-001'
+                    ];
+                    break;
+                
+                case 'cohere':
+                    if (config?.apiKey) {
+                        const response = await axios.get('https://api.cohere.ai/v1/models', {
+                            headers: { 'Authorization': `Bearer ${config.apiKey}` },
+                            timeout: 10000
+                        });
+                        models = response.data.models
+                            .filter((model: any) => model.name)
+                            .map((model: any) => model.name)
+                            .sort();
+                    }
+                    break;
+                
+                case 'ollama':
+                    try {
+                        const baseUrl = config?.baseUrl || 'http://127.0.0.1:11434';
+                        const response = await axios.get(`${baseUrl}/api/tags`, { timeout: 5000 });
+                        models = response.data.models.map((model: any) => model.name).sort();
+                    } catch (error) {
+                        console.warn('Failed to fetch Ollama models, using defaults:', error.message);
+                        models = ['qwen:4b', 'llama3.1:8b', 'codellama:7b', 'mistral:7b'];
+                    }
+                    break;
+                
+                case 'huggingface':
+                    // HuggingFace has many models, provide common ones
+                    models = [
+                        'microsoft/DialoGPT-medium',
+                        'microsoft/DialoGPT-large',
+                        'EleutherAI/gpt-neo-2.7B',
+                        'EleutherAI/gpt-j-6B',
+                        'bigscience/bloom-560m',
+                        'google/flan-t5-base',
+                        'google/flan-t5-large'
+                    ];
+                    break;
+                
+                case 'azure':
+                    // Azure OpenAI models depend on deployment, return common ones
+                    models = [
+                        'gpt-4',
+                        'gpt-4-32k', 
+                        'gpt-35-turbo',
+                        'gpt-35-turbo-16k',
+                        'text-davinci-003'
+                    ];
+                    break;
+                
+                default:
+                    console.warn(`Unknown provider: ${provider}`);
+                    models = [];
+            }
+            
+            console.log(`Fetched ${models.length} models for ${provider}:`, models);
+            return models;
+            
+        } catch (error) {
+            console.error(`Error fetching models for ${provider}:`, error);
+            return []; // Return empty array on error, component will use defaults
+        }
     });
 
     console.log('🔧 DEBUG: Settings IPC handlers setup complete');
@@ -1265,8 +1395,14 @@ app.on('ready', async () => {
     ipcMain.handle('initialize-llm', async () => {
         console.log('Main process - initialize-llm IPC called');
         try {
+            // Track whether this is a reinitialization
+            let wasReinitialization = false;
+            
+            // If LLM provider already exists, we need to reinitialize it with new settings
             if (llmProvider) {
-                return { success: true, message: 'LLM service is already initialized' };
+                console.log('Main process - LLM provider exists, reinitializing with updated settings');
+                llmProvider = null; // Reset the provider to force reinitialization
+                wasReinitialization = true;
             }
 
             if (!settingsService) {
@@ -1385,8 +1521,9 @@ app.on('ready', async () => {
                 console.error('Continuing without tool attachment');
             }
 
-            console.log('✅ DEBUG: LLM service initialized successfully via IPC');
-            return { success: true, message: 'LLM service initialized successfully' };
+            const action = wasReinitialization ? 'reinitialized' : 'initialized';
+            console.log(`✅ DEBUG: LLM service ${action} successfully via IPC`);
+            return { success: true, message: `LLM service ${action} successfully with provider: ${llmConfig.provider}` };
 
         } catch (error) {
             console.error('🚨 DEBUG: Manual LLM initialization failed:', error);
@@ -1398,6 +1535,92 @@ app.on('ready', async () => {
     ipcMain.handle('process-message', async (event, message: string, conversationId: string): Promise<string> => {
         console.log('Main process - process-message IPC called with:', message);
         try {
+            // Check current settings and update LLM provider if needed
+            if (settingsService) {
+                const currentSettings = await settingsService.get('llm');
+                const currentProvider = (currentSettings?.provider || 'ollama') as string;
+                
+                // Check if we need to reinitialize the LLM provider with new settings
+                // This ensures each message uses the currently selected provider
+                if (llmProvider) {
+                    const activeProvider = llmProvider.getCurrentProvider() || 'unknown';
+                    
+                    if (activeProvider !== currentProvider) {
+                        console.log(`🔄 Provider mismatch detected! Active: ${activeProvider}, Settings: ${currentProvider}`);
+                        console.log('🔄 Reinitializing LLM provider with current settings...');
+                        
+                        // Reset and reinitialize the LLM provider
+                        llmProvider = null;
+                        
+                        // Reinitialize with current settings by calling the initialization logic directly
+                        try {
+                            const apiKey = await settingsService.getApiKey();
+                            
+                            // Check if API key is required for the selected provider
+                            const providersRequiringApiKey = ['openai', 'anthropic', 'openrouter', 'groq', 'google', 'cohere', 'azure', 'huggingface'];
+                            
+                            if (providersRequiringApiKey.includes(currentProvider) && !apiKey) {
+                                console.error(`API key is required for ${currentProvider} provider`);
+                            } else {
+                                // Create LLM configuration from current settings
+                                const llmConfig = {
+                                    provider: currentProvider,
+                                    openai: currentSettings.openai ? {
+                                        ...currentSettings.openai,
+                                        apiKey: apiKey
+                                    } : undefined,
+                                    ollama: currentSettings.ollama || {
+                                        model: 'llama3:8b',
+                                        baseUrl: 'http://127.0.0.1:11434',
+                                        temperature: 0.7
+                                    },
+                                    anthropic: (currentSettings as any).anthropic,
+                                    openrouter: (currentSettings as any).openrouter,
+                                    groq: (currentSettings as any).groq,
+                                    google: (currentSettings as any).google,
+                                    cohere: (currentSettings as any).cohere,
+                                    azure: (currentSettings as any).azure,
+                                    huggingface: (currentSettings as any).huggingface,
+                                    streaming: true,
+                                    timeout: 15000
+                                };
+                                
+                                // Create new LLM provider instance
+                                const { LLMProvider } = require('./services/LLMProvider');
+                                llmProvider = new LLMProvider(llmConfig);
+                                
+                                console.log('✅ LLM provider reinitialized with:', currentProvider);
+                                
+                                // Log the model being used for this provider
+                                let modelForProvider = 'default';
+                                if (currentProvider === 'openai' && llmConfig.openai) {
+                                    modelForProvider = llmConfig.openai.model;
+                                } else if (currentProvider === 'ollama' && llmConfig.ollama) {
+                                    modelForProvider = llmConfig.ollama.model;
+                                } else if (currentProvider === 'anthropic' && llmConfig.anthropic) {
+                                    modelForProvider = llmConfig.anthropic.model;
+                                } else if (currentProvider === 'google' && llmConfig.google) {
+                                    modelForProvider = llmConfig.google.model;
+                                } else if (currentProvider === 'groq' && llmConfig.groq) {
+                                    modelForProvider = llmConfig.groq.model;
+                                } else if (currentProvider === 'cohere' && llmConfig.cohere) {
+                                    modelForProvider = llmConfig.cohere.model;
+                                } else if (currentProvider === 'openrouter' && llmConfig.openrouter) {
+                                    modelForProvider = llmConfig.openrouter.model;
+                                } else if (currentProvider === 'huggingface' && llmConfig.huggingface) {
+                                    modelForProvider = llmConfig.huggingface.model;
+                                } else if (currentProvider === 'azure' && llmConfig.azure) {
+                                    modelForProvider = llmConfig.azure.deploymentName;
+                                }
+                                console.log(`📝 Using model: ${modelForProvider} for provider: ${currentProvider}`);
+                            }
+                        } catch (error) {
+                            console.error('Failed to reinitialize LLM provider:', error);
+                        }
+                    }
+                }
+            }
+            
             // Try to dynamically load Cindy Agent if not available, fallback to direct LLM
             if (!langChainCindyAgent && !llmProvider) {
                 console.error('Main process - process-message: Neither Cindy Agent nor LLM provider initialized');

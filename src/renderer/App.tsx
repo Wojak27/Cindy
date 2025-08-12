@@ -724,14 +724,7 @@ const App: React.FC = () => {
         }
     };
 
-    // Handle input focus/blur
-    const handleInputFocus = (e: React.FocusEvent<HTMLTextAreaElement>) => {
-        setIsInputExpanded(true);
-        // Auto-resize on focus
-        const textarea = e.target;
-        textarea.style.height = 'auto';
-        textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
-    };
+
 
     const handleInputBlur = (e: React.FocusEvent<HTMLTextAreaElement>) => {
         setIsInputExpanded(inputValue.length > 0);
@@ -985,7 +978,6 @@ const App: React.FC = () => {
                                                         value={inputValue}
                                                         onChange={handleInputChange}
                                                         onKeyDown={handleKeyPress}
-                                                        onFocus={handleInputFocus}
                                                         onBlur={handleInputBlur}
                                                         placeholder="Type your message (try #search, #read, #write)... Press Shift+Enter for new line"
                                                         disabled={isRecording}
@@ -995,8 +987,9 @@ const App: React.FC = () => {
                                                             marginRight: '12px',
                                                             fontFamily: 'inherit',
                                                             resize: 'none',
-                                                            minHeight: '60px',
+                                                            minHeight: '40px',
                                                             maxHeight: '200px',
+                                                            width: "500px",
                                                             overflow: 'hidden',
                                                             wordWrap: 'break-word',
                                                             whiteSpace: 'pre-wrap',
@@ -1004,6 +997,25 @@ const App: React.FC = () => {
                                                             padding: '12px 16px'
                                                         }}
                                                     />
+                                                    <div className={`mic-button-wrapper ${isRecording ? 'is-recording' : ''} ${!isRecording ? 'is-listening' : ''}`}>
+                                                        <IconButton
+                                                            className="mic-button"
+                                                            onClick={handleMicClick}
+                                                            aria-label={isRecording ? "Stop recording" : "Start recording"}
+                                                            size="large"
+                                                            sx={{
+                                                                width: '48px',
+                                                                height: '48px',
+                                                                backgroundColor: isRecording ? '#dc3545' : '#28a745',
+                                                                color: 'white',
+                                                                '&:hover': {
+                                                                    backgroundColor: isRecording ? '#c82333' : '#218838'
+                                                                }
+                                                            }}
+                                                        >
+                                                            <MicIcon fontSize="large" />
+                                                        </IconButton>
+                                                    </div>
                                                     <IconButton
                                                         className="send-button"
                                                         onClick={handleSendClick}
@@ -1022,27 +1034,7 @@ const App: React.FC = () => {
                                                     >
                                                         <SendIcon fontSize="medium" />
                                                     </IconButton>
-                                                </div>
-                                                <div className="mic-button-container" style={{ marginTop: '12px' }}>
-                                                    <div className={`mic-button-wrapper ${isRecording ? 'is-recording' : ''} ${!isRecording ? 'is-listening' : ''}`}>
-                                                        <IconButton
-                                                            className="mic-button"
-                                                            onClick={handleMicClick}
-                                                            aria-label={isRecording ? "Stop recording" : "Start recording"}
-                                                            size="large"
-                                                            sx={{
-                                                                width: '64px',
-                                                                height: '64px',
-                                                                backgroundColor: isRecording ? '#dc3545' : '#28a745',
-                                                                color: 'white',
-                                                                '&:hover': {
-                                                                    backgroundColor: isRecording ? '#c82333' : '#218838'
-                                                                }
-                                                            }}
-                                                        >
-                                                            <MicIcon fontSize="large" />
-                                                        </IconButton>
-                                                    </div>
+
                                                 </div>
                                             </div>
                                         </div>
@@ -1286,13 +1278,12 @@ const App: React.FC = () => {
                                     value={inputValue}
                                     onChange={handleInputChange}
                                     onKeyDown={handleKeyPress}
-                                    onFocus={handleInputFocus}
                                     onBlur={handleInputBlur}
                                     disabled={isRecording}
                                     style={{
                                         fontFamily: 'inherit',
                                         resize: 'none',
-                                        minHeight: '60px',
+                                        minHeight: '40px',
                                         maxHeight: '200px',
                                         width: "400px",
                                         overflow: 'hidden',

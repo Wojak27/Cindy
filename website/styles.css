@@ -537,7 +537,8 @@ body {
     color: var(--neutral-dark);
     background-color: var(--bg-primary);
     font-size: var(--font-size-base);
-    padding-top: 80px; /* Space for fixed navbar */
+    padding-top: 80px;
+    /* Space for fixed navbar */
 }
 
 /* Landing page - remove body padding since hero is full height */
@@ -1001,7 +1002,7 @@ a:focus {
     left: 0;
     right: 0;
     bottom: 0;
-    background: 
+    background:
         radial-gradient(circle at 20% 20%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
         radial-gradient(circle at 80% 80%, rgba(255, 255, 255, 0.15) 0%, transparent 50%),
         radial-gradient(circle at 40% 40%, rgba(120, 119, 198, 0.15) 0%, transparent 50%);
@@ -1354,8 +1355,6 @@ a:focus {
     width: 100%;
     padding: var(--spacing-4) var(--spacing-5);
     border: 1px solid var(--border-color);
-    border-radius: var(--border-radius);
-    font-size: var(--font-size-base);
     transition: all var(--transition-base);
     box-shadow: var(--shadow-inner);
 }
@@ -1364,9 +1363,6 @@ a:focus {
 .form-group textarea:focus,
 .form-group select:focus {
     outline: var(--focus-ring-width) solid var(--focus-ring-color);
-    outline-offset: var(--focus-ring-offset);
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 var(--focus-ring-width) rgba(99, 102, 241, 0.1);
 }
 
 .form-group input::placeholder,
@@ -2061,7 +2057,7 @@ footer::before {
         align-items: center;
         justify-content: center;
     }
-    
+
     .nav-links {
         display: none;
     }
@@ -2095,7 +2091,7 @@ footer::before {
         transform: translateZ(0);
         display: flex;
     }
-    
+
     .nav-links.active {
         right: 0;
         display: flex;
@@ -2286,7 +2282,7 @@ footer::before {
     .step {
         min-width: 280px;
     }
-    
+
     .footer-content {
         grid-template-columns: 2fr 1fr 1fr 1fr;
     }
@@ -2297,7 +2293,7 @@ footer::before {
     .nav-toggle {
         display: none;
     }
-    
+
     .nav-links {
         display: flex;
         position: static;
@@ -2310,7 +2306,7 @@ footer::before {
         box-shadow: none;
         backdrop-filter: none;
     }
-    
+
     .nav-links a {
         color: var(--neutral-dark) !important;
         font-size: clamp(0.9rem, 1.5vw, 1rem);
@@ -2327,28 +2323,28 @@ footer::before {
         grid-template-columns: 1fr 1fr;
         gap: 40px;
     }
-    
+
     .footer-logo {
         grid-column: 1 / -1;
         text-align: center;
         margin-bottom: 30px;
     }
-    
+
     .download-grid {
         grid-template-columns: repeat(2, 1fr);
         gap: 25px;
     }
-    
+
     .download-card:last-child {
         grid-column: 1 / -1;
         max-width: 400px;
         margin: 0 auto;
     }
-    
+
     .help-grid {
         grid-template-columns: repeat(2, 1fr);
     }
-    
+
     .help-item:last-child {
         grid-column: 1 / -1;
     }
@@ -2367,7 +2363,7 @@ footer::before {
         gap: 30px;
         padding-top: 20px;
     }
-    
+
     .hero {
         min-height: 85vh;
         padding: 120px 0 60px 0;
@@ -2894,23 +2890,23 @@ main {
         background: none !important;
         transform: none !important;
     }
-    
+
     .nav-links a:hover {
         background: rgba(255, 255, 255, 0.2) !important;
         transform: translateX(5px) !important;
     }
-    
+
     .nav-links a.active {
         background: rgba(255, 255, 255, 0.3) !important;
         font-weight: 700 !important;
     }
-    
+
     .main-nav .container {
         padding: var(--spacing-3) var(--spacing-4);
         min-height: 56px;
         max-width: 100%;
     }
-    
+
     .nav-logo {
         font-size: 1.3rem !important;
     }
@@ -2922,16 +2918,16 @@ main {
         padding: 100px 0 60px 0;
         min-height: 80vh;
     }
-    
+
     body {
         padding-top: 70px;
     }
-    
+
     .main-nav .container {
         padding: var(--spacing-3);
         min-height: 52px;
     }
-    
+
     .nav-logo {
         font-size: 1.2rem !important;
     }
@@ -2968,80 +2964,80 @@ main {
         font-size: 0.9rem;
         margin: 10px 0;
     }
-    
+
     /* Download section responsive */
     .download-grid {
         grid-template-columns: 1fr;
         gap: 20px;
     }
-    
+
     .download-card {
         min-height: 350px;
     }
-    
+
     .download-header {
         padding: 20px;
         flex-direction: column;
         text-align: center;
     }
-    
+
     .platform-icon {
         margin-right: 0;
         margin-bottom: 15px;
         width: 70px;
         height: 70px;
     }
-    
+
     .platform-icon img {
         width: 40px;
         height: 40px;
     }
-    
+
     .download-body {
         padding: 20px;
     }
-    
+
     .download-buttons {
         gap: 10px;
     }
-    
+
     .download-buttons .btn {
         padding: 12px 16px;
     }
-    
+
     .help-grid {
         grid-template-columns: 1fr;
         gap: 20px;
     }
-    
+
     .help-item {
         padding: 20px;
     }
-    
+
     .help-buttons {
         flex-direction: column;
         align-items: center;
     }
-    
+
     .help-buttons .btn {
         width: 100%;
         max-width: 280px;
     }
-    
+
     .hero-content h1 {
         font-size: clamp(2rem, 8vw, 2.8rem);
     }
-    
+
     .hero-content p {
         font-size: clamp(1rem, 4vw, 1.2rem);
         padding: 0 10px;
     }
-    
+
     .cta-buttons {
         flex-direction: column;
         gap: 15px;
     }
-    
+
     .btn {
         width: 90%;
         max-width: 280px;
@@ -3066,6 +3062,7 @@ main {
         opacity: 0;
         transform: translateY(30px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);
@@ -3077,6 +3074,7 @@ main {
         opacity: 0;
         transform: translateX(50px);
     }
+
     to {
         opacity: 1;
         transform: translateX(0);
@@ -3088,13 +3086,16 @@ main {
         opacity: 0;
         transform: scale(0.3);
     }
+
     50% {
         opacity: 1;
         transform: scale(1.05);
     }
+
     70% {
         transform: scale(0.9);
     }
+
     100% {
         opacity: 1;
         transform: scale(1);
