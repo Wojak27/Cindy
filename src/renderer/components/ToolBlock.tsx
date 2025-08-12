@@ -21,6 +21,10 @@ interface ToolCall {
     retryCount?: number;
     maxRetries?: number;
     retryErrors?: string[];
+    reasoning?: string;
+    forced?: boolean;
+    stepNumber?: number;
+    totalSteps?: number;
 }
 
 interface ToolBlockProps {
@@ -124,7 +128,15 @@ const ToolBlock: React.FC<ToolBlockProps> = ({
                 aria-controls={`${toolCall.id}-content`}
             >
                 <span className="tool-icon">{getStatusIcon(toolCall.status)}</span>
-                <span className="tool-name">{toolCall.name}</span>
+                <span className="tool-name">
+                    {toolCall.name}
+                    {toolCall.stepNumber && toolCall.totalSteps && (
+                        <span className="tool-step-counter"> ({toolCall.stepNumber}/{toolCall.totalSteps})</span>
+                    )}
+                </span>
+                {toolCall.forced && (
+                    <span className="tool-forced-badge">🔒 FORCED</span>
+                )}
                 <span 
                     className="tool-status"
                     style={{ color: getStatusColor(toolCall.status) }}
@@ -146,6 +158,21 @@ const ToolBlock: React.FC<ToolBlockProps> = ({
                 aria-labelledby={`${toolCall.id}-toggle`}
             >
                 <div className="tool-content-inner">
+                    {/* Reasoning Section */}
+                    {toolCall.reasoning && (
+                        <div className="tool-section">
+                            <div className="tool-section-header">Reasoning</div>
+                            <div className="tool-reasoning">
+                                {toolCall.reasoning}
+                                {toolCall.forced && (
+                                    <div className="tool-forced-notice">
+                                        🔒 This tool was forced by a hashtag in your message
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Parameters Section */}
                     <div className="tool-section">
                         <div className="tool-section-header">Parameters</div>

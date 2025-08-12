@@ -1,6 +1,7 @@
 import { LLMProvider } from '../services/LLMProvider';
 import { LangChainMemoryService as MemoryService } from '../services/LangChainMemoryService';
 import { LangChainToolExecutorService as ToolExecutorService } from '../services/LangChainToolExecutorService';
+import { CitationManager } from '../../renderer/utils/citationManager';
 
 interface AgentContext {
     conversationId: string;
@@ -212,7 +213,7 @@ Respond with your thinking process and a clear plan. Be concise but thorough.`;
     }
 
     /**
-     * Phase 4: Synthesize final response
+     * Phase 4: Synthesize final response with citations
      */
     private async synthesizeResponse(
         cleanInput: string,
@@ -265,10 +266,23 @@ Keep it concise but informative.`;
             { role: 'user' as const, content: synthesisPrompt }
         ]);
 
-        const finalResponse = response.content as string;
+        let finalResponse = response.content as string;
+
+        // Use CitationManager to insert citations into the response text
+        const citationManager = CitationManager.getInstance();
+        citationManager.reset(); // Reset for new conversation
+
+        const citationResult = citationManager.insertCitationsIntoText(finalResponse, toolResults);
+        finalResponse = citationResult.text;
+
+        // Add formatted citations at the end if any were found
+        if (citationResult.citations.length > 0) {
+            finalResponse += citationManager.formatCitationsForDisplay(citationResult.citations);
+        }
 
         this.addThinkingStep('synthesize',
-            `Final response generated:\n"${finalResponse.substring(0, 200)}${finalResponse.length > 200 ? '...' : ''}"`
+            `Final response generated with citations:\n"${finalResponse.substring(0, 200)}${finalResponse.length > 200 ? '...' : ''}"\n` +
+            `Citations found: ${citationResult.citations.length}`
         );
 
         return finalResponse;
@@ -375,17 +389,30 @@ Keep it concise but informative.`;
             // Phase 3: Execute tools
             if (plan.steps.length > 0) {
                 console.log('\n⚙️ [STREAMING] Phase 3: Executing tools...');
-                yield `⚙️ **Executing ${plan.steps.length} tool(s):**\n\n`;
+                yield `⚙️ [STREAMING] Phase 3: Executing tools...\n`;
 
                 const toolResults: Record<string, any> = {};
 
                 for (let i = 0; i < plan.steps.length; i++) {
                     const step = plan.steps[i];
                     const stepNum = i + 1;
+                    const toolId = `tool-${context?.conversationId || 'default'}-${Date.now()}-${i}`;
 
-                    yield `🛠️  **Tool ${stepNum}: ${step.tool}** ${step.forced ? '(🔒 forced by hashtag)' : '(💡 suggested)'}\n`;
-                    yield `   📋 ${step.reasoning}\n`;
-                    yield `   🚀 Executing...\n`;
+                    // Start tool execution block with structured information
+                    const toolCallInfo = {
+                        id: toolId,
+                        name: step.tool,
+                        parameters: step.parameters,
+                        status: 'executing',
+                        startTime: Date.now(),
+                        reasoning: step.reasoning,
+                        forced: step.forced,
+                        stepNumber: stepNum,
+                        totalSteps: plan.steps.length
+                    };
+
+                    // Emit structured tool execution start
+                    yield `<tool>${JSON.stringify(toolCallInfo)}</tool>\n`;
 
                     const startTime = Date.now();
                     try {
@@ -393,33 +420,47 @@ Keep it concise but informative.`;
                         const duration = Date.now() - startTime;
                         toolResults[step.tool] = result;
 
-                        if (result.success) {
-                            yield `   ✅ Success (${duration}ms)\n`;
-                            // Show brief result preview
-                            const preview = typeof result.result === 'string' ?
-                                result.result.substring(0, 100) + (result.result.length > 100 ? '...' : '') :
-                                JSON.stringify(result.result).substring(0, 100);
-                            yield `   📄 ${preview}\n\n`;
-                        } else {
-                            yield `   ❌ Failed (${duration}ms): ${result.error}\n\n`;
-                        }
+                        // Update tool call with completion status
+                        const completedToolCall = {
+                            ...toolCallInfo,
+                            status: result.success ? 'completed' : 'failed',
+                            endTime: Date.now(),
+                            duration: `${(duration / 1000).toFixed(1)}s`,
+                            result: result.success ? result.result : undefined,
+                            error: result.success ? undefined : result.error
+                        };
+
+                        // Emit structured tool completion
+                        yield `<tool>${JSON.stringify(completedToolCall)}</tool>\n`;
+
                     } catch (error) {
                         const duration = Date.now() - startTime;
                         toolResults[step.tool] = { success: false, error: (error as Error).message };
-                        yield `   💥 Error (${duration}ms): ${(error as Error).message}\n\n`;
+
+                        // Update tool call with error status
+                        const failedToolCall = {
+                            ...toolCallInfo,
+                            status: 'failed',
+                            endTime: Date.now(),
+                            duration: `${(duration / 1000).toFixed(1)}s`,
+                            error: (error as Error).message
+                        };
+
+                        // Emit structured tool error
+                        yield `<tool>${JSON.stringify(failedToolCall)}</tool>\n`;
                     }
                 }
 
-                // Phase 4: Synthesize response
+                // Phase 4: Synthesize response with citations
                 console.log('\n📝 [STREAMING] Phase 4: Synthesizing response...');
-                yield "📝 **Generating response based on results...**\n\n";
+                yield "📝 [STREAMING] Phase 4: Synthesizing response...\n";
 
                 const finalResponse = await this.synthesizeResponse(cleanInput, plan, toolResults, context);
-
+                
                 // Store conversation
                 await this.storeConversation(input, finalResponse, context);
 
-                yield "💬 **Final Response:**\n\n";
+                yield "📝 **Final Response:**\n\n";
                 yield finalResponse;
             } else {
                 // No tools needed, direct response
@@ -446,6 +487,7 @@ Keep it concise but informative.`;
             yield `\n❌ **Error:** I encountered an issue while processing your request: ${(error as Error).message}`;
         }
     }
+
 
     // Helper methods
     private addThinkingStep(step: ThinkingStep['step'], content: string): void {
