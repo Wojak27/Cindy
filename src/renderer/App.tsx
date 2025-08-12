@@ -319,15 +319,8 @@ const App: React.FC = () => {
                                 }
                             }
 
-                            // Add user message to store with unique ID
-                            const userMessage = {
-                                id: `user-${Date.now()}`,
-                                role: 'user',
-                                content: messageContent,
-                                timestamp: Date.now(),
-                                conversationId: chatID
-                            };
-                            dispatch({ type: 'ADD_MESSAGE', payload: userMessage });
+                            // User message will be saved by backend during processing
+                            // Don't add to frontend store here to prevent duplicates
 
                             // Create assistant message placeholder for streaming
                             const assistantMessage = {
@@ -460,17 +453,10 @@ const App: React.FC = () => {
                 }
             }
 
-            // Add user message to store with unique ID
-            const userMessage = {
-                id: `user-${Date.now()}`,
-                role: 'user',
-                content: messageContent,
-                timestamp: Date.now(),
-                conversationId: convID
-            };
+            // User message will be saved by backend during processing
+            // Don't add to frontend store here to prevent duplicates
             setInputValue('');
             setActiveHashtags([]); // Clear hashtags after sending
-            dispatch({ type: 'ADD_MESSAGE', payload: userMessage });
 
             // Create assistant message placeholder for streaming
             const assistantMessage = {
@@ -733,10 +719,18 @@ const App: React.FC = () => {
             }
         };
 
+        // Handle user message emitted from backend (to prevent duplicates)
+        const handleUserMessage = (_: any, data: { message: any }) => {
+            if (data.message.conversationId === currentConversationId) {
+                dispatch({ type: 'ADD_MESSAGE', payload: data.message });
+            }
+        };
+
         ipcRenderer.on('stream-chunk', handleStreamChunk);
         ipcRenderer.on('stream-complete', handleStreamComplete);
         ipcRenderer.on('stream-error', handleStreamError);
         ipcRenderer.on('tool-execution-update', handleToolExecutionUpdate);
+        ipcRenderer.on('user-message', handleUserMessage);
 
         // Cleanup listeners on unmount
         return () => {
@@ -744,6 +738,7 @@ const App: React.FC = () => {
             ipcRenderer.off('stream-complete', handleStreamComplete);
             ipcRenderer.off('stream-error', handleStreamError);
             ipcRenderer.off('tool-execution-update', handleToolExecutionUpdate);
+            ipcRenderer.off('user-message', handleUserMessage);
             if (streamController.current) {
                 streamController.current.abort();
             }

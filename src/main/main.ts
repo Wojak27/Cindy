@@ -2128,16 +2128,28 @@ app.on('ready', async () => {
             if (!langChainCindyAgent && !llmProvider) {
                 console.error('Main process - process-message: Still no LLM provider after auto-init attempt');
 
-                // Save user message first
+                // Save user message first and emit to frontend
                 if (chatStorageService) {
                     try {
-                        await chatStorageService.saveMessage({
+                        const userMessage = {
                             conversationId,
-                            role: 'user',
+                            role: 'user' as const,
                             content: message,
                             timestamp: Date.now()
-                        });
+                        };
+                        await chatStorageService.saveMessage(userMessage);
                         console.log('🔧 DEBUG: User message persisted to ChatStorageService');
+                        
+                        // Emit user message to frontend to show in UI
+                        event.sender.send('user-message', { 
+                            message: {
+                                id: `user-${userMessage.timestamp}`,
+                                role: 'user',
+                                content: message,
+                                timestamp: userMessage.timestamp,
+                                conversationId
+                            }
+                        });
                     } catch (saveError) {
                         console.error('🚨 DEBUG: Failed to persist user message:', saveError);
                     }
@@ -2248,6 +2260,33 @@ app.on('ready', async () => {
                 } catch (error) {
                     console.warn('Main process - failed to load Cindy Agent dynamically:', error.message);
                     // Continue without agent, will use direct LLM
+                }
+            }
+
+            // Save user message first for successful processing path
+            if (chatStorageService) {
+                try {
+                    const userMessage = {
+                        conversationId,
+                        role: 'user' as const,
+                        content: message,
+                        timestamp: Date.now()
+                    };
+                    await chatStorageService.saveMessage(userMessage);
+                    console.log('🔧 DEBUG: User message persisted to ChatStorageService (successful path)');
+                    
+                    // Emit user message to frontend to show in UI
+                    event.sender.send('user-message', { 
+                        message: {
+                            id: `user-${userMessage.timestamp}`,
+                            role: 'user',
+                            content: message,
+                            timestamp: userMessage.timestamp,
+                            conversationId
+                        }
+                    });
+                } catch (saveError) {
+                    console.error('🚨 DEBUG: Failed to persist user message (successful path):', saveError);
                 }
             }
 

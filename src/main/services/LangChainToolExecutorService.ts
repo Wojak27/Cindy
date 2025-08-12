@@ -568,19 +568,34 @@ export class LangChainToolExecutorService extends EventEmitter {
                         const results = await this.vectorStore.similaritySearch(query.trim(), limit);
                         
                         if (!results || results.length === 0) {
-                            return `No documents found matching your search query: "${query.trim()}". Try rephrasing your search or check if documents have been indexed.`;
+                            return `I searched through the indexed documents but could not find any information related to "${query.trim()}". This could mean:
+1. The information is not in the indexed documents
+2. Try rephrasing your search with different keywords
+3. The documents may need to be re-indexed if recently added
+
+Please try a different search term or check if the relevant documents have been indexed.`;
                         }
 
-                        // Format results for the LLM
+                        // Format results with clear instructions for the LLM
                         const formattedResults = results.map((doc: any, index: number) => {
                             const metadata = doc.metadata || {};
                             const source = metadata.source || metadata.fileName || 'Unknown source';
                             const content = doc.pageContent || '';
+                            const pageNumber = metadata.pdf?.page || metadata.page || 'N/A';
                             
-                            return `**Result ${index + 1}** (Source: ${source}):\n${content.substring(0, 500)}${content.length > 500 ? '...' : ''}`;
+                            // Create clickable file path for links
+                            const fileName = source.split('/').pop() || source;
+                            const fileLink = `[${fileName}](file://${source})`;
+                            
+                            return `**Document ${index + 1}** - ${fileLink} (Page: ${pageNumber})\n${content.substring(0, 800)}${content.length > 800 ? '...' : ''}`;
                         }).join('\n\n---\n\n');
 
-                        return `Found ${results.length} relevant document${results.length === 1 ? '' : 's'} for "${query.trim()}":\n\n${formattedResults}`;
+                        // Provide clear instruction to the LLM about how to use this information
+                        return `I found ${results.length} relevant document${results.length === 1 ? '' : 's'} that contain information to answer your question about "${query.trim()}". Use the following retrieved information to provide a comprehensive answer:
+
+${formattedResults}
+
+Based on the above retrieved documents, please provide a detailed answer to the user's question. Include specific information from the documents and cite the sources with file links when referencing specific details.`;
 
                     } catch (error: any) {
                         console.error('[VectorSearchTool] Error during search:', error);

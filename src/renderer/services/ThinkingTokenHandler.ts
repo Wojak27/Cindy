@@ -11,6 +11,7 @@ interface ThinkingBlock {
     startTime: number;
     endTime?: number;
     duration?: string;
+    isStreaming?: boolean;  // Flag for ongoing thinking
 }
 
 interface ProcessedContent {
@@ -21,11 +22,9 @@ interface ProcessedContent {
 
 export class ThinkingTokenHandler {
     private static instance: ThinkingTokenHandler;
-    private thinkingStack: string[] = [];
+    private thinkingStack: {content: string, id: string, startTime: number}[] = [];
     private currentBlockId = 0;
-    private readonly THINKING_START_TOKEN = '<think>';
-    private readonly THINKING_END_TOKEN = '</think>';
-    private readonly TOKEN_REGEX_END = new RegExp(`${this.THINKING_START_TOKEN}|${this.THINKING_END_TOKEN}`, 'g');
+    private readonly TOKEN_REGEX = /<think[^>]*>|<\/think[^>]*>/g;
 
     private constructor() { }
 
@@ -69,7 +68,7 @@ export class ThinkingTokenHandler {
         };
 
         // Reset regex lastIndex to ensure proper matching
-        this.TOKEN_REGEX_END.lastIndex = 0;
+        this.TOKEN_REGEX.lastIndex = 0;
 
         let match;
         let lastIndex = 0;
@@ -77,7 +76,7 @@ export class ThinkingTokenHandler {
         let inThinkingBlock = this.thinkingStack.length > 0;
 
         // Process all tokens in the chunk
-        while ((match = this.TOKEN_REGEX_END.exec(chunk)) !== null) {
+        while ((match = this.TOKEN_REGEX.exec(chunk)) !== null) {
             const token = match[0];
             const tokenIndex = match.index;
 
@@ -87,7 +86,7 @@ export class ThinkingTokenHandler {
             if (inThinkingBlock) {
                 // We're inside a thinking block, so add to the current block
                 if (this.thinkingStack.length > 0) {
-                    this.thinkingStack[this.thinkingStack.length - 1] += contentBeforeToken;
+                    this.thinkingStack[this.thinkingStack.length - 1].content += contentBeforeToken;
                 }
             } else {
                 // We're in display content, so add to display
@@ -95,41 +94,72 @@ export class ThinkingTokenHandler {
             }
 
             // Handle the token
-            if (token === this.THINKING_START_TOKEN) {
-                // Start of thinking block
-                console.log('🐛 DEBUG - ThinkingTokenHandler: Found THINKING_START_TOKEN, starting new block');
-                this.thinkingStack.push('');
+            if (token.startsWith('<think')) {
+                // Start of thinking block - parse attributes
+                console.log('🐛 DEBUG - ThinkingTokenHandler: Found thinking start token:', token);
+                
+                const idMatch = token.match(/id="([^"]*)"/) || token.match(/id='([^']*)'/);
+                const startMatch = token.match(/start="([^"]*)"/) || token.match(/start='([^']*)'/);
+                
+                const blockId = idMatch ? idMatch[1] : `thinking-${conversationId}-${this.currentBlockId++}`;
+                const startTime = startMatch ? parseInt(startMatch[1]) : Date.now();
+                
+                this.thinkingStack.push({
+                    content: '',
+                    id: blockId,
+                    startTime: startTime
+                });
                 inThinkingBlock = true;
-            } else if (token === this.THINKING_END_TOKEN) {
-                // End of thinking block
-                console.log('🐛 DEBUG - ThinkingTokenHandler: Found THINKING_END_TOKEN, finishing block');
+                
+                // Immediately emit incomplete thinking block for display
+                result.thinkingBlocks.push({
+                    id: blockId,
+                    content: '',
+                    startTime: startTime,
+                    isStreaming: true
+                });
+                
+                console.log('🐛 DEBUG - ThinkingTokenHandler: Started thinking block immediately:', {
+                    blockId,
+                    startTime
+                });
+                
+            } else if (token.startsWith('</think')) {
+                // End of thinking block - parse attributes
+                console.log('🐛 DEBUG - ThinkingTokenHandler: Found thinking end token:', token);
+                
                 if (this.thinkingStack.length > 0) {
-                    const thinkingContent = this.thinkingStack.pop() || '';
-                    const blockId = `thinking-${conversationId}-${this.currentBlockId++}`;
-
-                    console.log('🐛 DEBUG - ThinkingTokenHandler: Created thinking block:', {
-                        blockId,
-                        contentLength: thinkingContent.length,
-                        contentPreview: thinkingContent.substring(0, 50) + '...',
-                        startTime: Date.now()
+                    const thinkingBlock = this.thinkingStack.pop()!;
+                    const endMatch = token.match(/end="([^"]*)"/) || token.match(/end='([^']*)'/);
+                    const endTime = endMatch ? parseInt(endMatch[1]) : Date.now();
+                    
+                    console.log('🐛 DEBUG - ThinkingTokenHandler: Completed thinking block:', {
+                        blockId: thinkingBlock.id,
+                        contentLength: thinkingBlock.content.length,
+                        contentPreview: thinkingBlock.content.substring(0, 50) + '...',
+                        startTime: thinkingBlock.startTime,
+                        endTime: endTime
                     });
 
+                    // Add completed thinking block (will replace the streaming one)
                     result.thinkingBlocks.push({
-                        id: blockId,
-                        content: thinkingContent,
-                        startTime: Date.now()
+                        id: thinkingBlock.id,
+                        content: thinkingBlock.content,
+                        startTime: thinkingBlock.startTime,
+                        endTime: endTime,
+                        isStreaming: false
                     });
                 }
                 inThinkingBlock = this.thinkingStack.length > 0;
             }
 
-            lastIndex = this.TOKEN_REGEX_END.lastIndex;
+            lastIndex = this.TOKEN_REGEX.lastIndex;
         }
 
         // Handle remaining content after the last token
         const remainingContent = chunk.slice(lastIndex);
         if (inThinkingBlock && this.thinkingStack.length > 0) {
-            this.thinkingStack[this.thinkingStack.length - 1] += remainingContent;
+            this.thinkingStack[this.thinkingStack.length - 1].content += remainingContent;
         } else {
             displayContent += remainingContent;
         }
@@ -144,6 +174,20 @@ export class ThinkingTokenHandler {
         });
 
         return result;
+    }
+
+    /**
+     * Get incomplete thinking blocks that are currently streaming
+     * @param conversationId - The current conversation ID
+     * @returns Array of incomplete thinking blocks
+     */
+    public getIncompleteThinkingBlocks(conversationId: string): ThinkingBlock[] {
+        return this.thinkingStack.map(block => ({
+            id: block.id,
+            content: block.content,
+            startTime: block.startTime,
+            isStreaming: true
+        }));
     }
 
     /**
@@ -192,26 +236,10 @@ export class ThinkingTokenHandler {
     }
 
     /**
-     * Get incomplete thinking blocks that are currently being processed
-     * This allows showing thinking blocks before the closing </think> tag
-     * @param conversationId - The conversation ID for generating block IDs
-     * @returns Array of incomplete thinking blocks
+     * Clear incomplete thinking blocks (for cleanup)
      */
-    public getIncompleteThinkingBlocks(conversationId: string): ThinkingBlock[] {
-        const incompleteBlocks: ThinkingBlock[] = [];
-
-        // Process current thinking stack content
-        this.thinkingStack.forEach((thinkingContent, index) => {
-            if (thinkingContent.trim()) {
-                incompleteBlocks.push({
-                    id: `incomplete-thinking-${conversationId}-${index}`,
-                    content: thinkingContent,
-                    startTime: Date.now()
-                });
-            }
-        });
-
-        return incompleteBlocks;
+    public clearIncompleteBlocks(): void {
+        // Any cleanup logic if needed in the future
     }
 }
 

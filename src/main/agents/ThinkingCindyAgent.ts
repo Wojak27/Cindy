@@ -51,7 +51,7 @@ export class ThinkingCindyAgent {
         '#read': 'read_file',
         '#write': 'write_file',
         '#list': 'list_directory',
-        '#web': 'web_search',
+        '#web': 'web_search_preferred',  // Special flag to use preferred web search provider
         '#brave': 'brave_search',
         '#tavily': 'tavily_search',
         '#dir': 'list_directory',
@@ -181,7 +181,16 @@ Respond with your thinking process and a clear plan. Be concise but thorough.`;
             const startTime = Date.now();
             try {
                 console.log(`   🚀 Executing...`);
-                const result = await this.toolExecutor.executeTool(step.tool, step.parameters);
+                
+                // Handle special web search preference routing
+                let actualTool = step.tool;
+                if (step.tool === 'web_search_preferred') {
+                    // Route to user's preferred web search provider
+                    actualTool = 'web_search'; // This will be handled by LangChainToolExecutorService routing
+                    console.log(`   🔄 Routing #web hashtag to preferred web search provider`);
+                }
+                
+                const result = await this.toolExecutor.executeTool(actualTool, step.parameters);
                 const duration = Date.now() - startTime;
 
                 toolResults[step.tool] = result;
@@ -430,7 +439,9 @@ Keep it concise but informative.`;
 
             this.thinkingSteps = [];
 
-            // Show thinking process header
+            // Start thinking block with timer
+            const thinkingStartTime = Date.now();
+            yield `<think id="thinking-${context?.conversationId || 'default'}-${thinkingStartTime}" start="${thinkingStartTime}">`;
             yield "🧠 **Cindy is thinking...**\n\n";
             yield `💭 **Analyzing:** "${input}"\n\n`;
 
@@ -451,6 +462,10 @@ Keep it concise but informative.`;
 
             yield `🎯 **Intent:** ${plan.intent}\n`;
             yield `🛠️  **Tools planned:** ${plan.steps.length > 0 ? plan.steps.map(s => `${s.tool}${s.forced ? ' (forced)' : ''}`).join(', ') : 'none'}\n\n`;
+            
+            // End thinking block before tool execution
+            const thinkingEndTime = Date.now();
+            yield `</think end="${thinkingEndTime}">`;
 
             // Phase 3: Execute tools
             if (plan.steps.length > 0) {
@@ -482,7 +497,15 @@ Keep it concise but informative.`;
 
                     const startTime = Date.now();
                     try {
-                        const result = await this.toolExecutor.executeTool(step.tool, step.parameters);
+                        // Handle special web search preference routing
+                        let actualTool = step.tool;
+                        if (step.tool === 'web_search_preferred') {
+                            // Route to user's preferred web search provider
+                            actualTool = 'web_search'; // This will be handled by LangChainToolExecutorService routing
+                            console.log(`   🔄 [STREAMING] Routing #web hashtag to preferred web search provider`);
+                        }
+                        
+                        const result = await this.toolExecutor.executeTool(actualTool, step.parameters);
                         const duration = Date.now() - startTime;
                         toolResults[step.tool] = result;
 
