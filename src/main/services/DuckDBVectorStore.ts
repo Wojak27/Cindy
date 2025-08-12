@@ -101,6 +101,11 @@ export class DuckDBVectorStore extends EventEmitter {
         switch (provider) {
             case 'ollama':
                 console.log('[DuckDBVectorStore] Using Ollama embeddings:', this.config.embeddingModel);
+                if (this.config.ollamaBaseUrl?.includes('localhost')) {
+                    this.config.ollamaBaseUrl = this.config.ollamaBaseUrl.replace('localhost', '127.0.0.1');
+                    console.log('[DuckDBVectorStore] Normalized Ollama base URL to IPv4:', this.config.ollamaBaseUrl);
+                }
+                console.log('[DuckDBVectorStore] Ollama base URL:', this.config.ollamaBaseUrl);
                 return new OllamaEmbeddings({
                     model: this.config.embeddingModel!,
                     baseUrl: this.config.ollamaBaseUrl
@@ -251,6 +256,11 @@ export class DuckDBVectorStore extends EventEmitter {
         if (!this.db) throw new Error('Database not initialized');
         // TODO: Fix error below
         try {
+            console.log('[DuckDBVectorStore] Embedding documents using provider:', this.config.embeddingProvider);
+            console.log('[DuckDBVectorStore] Embedding model:', this.config.embeddingModel);
+            if (this.config.embeddingProvider === 'ollama') {
+                console.log('[DuckDBVectorStore] Ollama base URL (before embedDocuments):', this.config.ollamaBaseUrl);
+            }
             const embeddings = await this.embeddings.embedDocuments(
                 documents.map(doc => doc.pageContent)
             );
@@ -262,7 +272,7 @@ export class DuckDBVectorStore extends EventEmitter {
             const embedDim = embeddings[0]?.length || this.config.vectorDimension || 0;
             const stmt = await this.db.prepare(`
                 INSERT INTO documents (id, content, metadata, embedding)
-                VALUES (?, ?, ?, ?::FLOAT[${embedDim}])
+                VALUES (?, ?, ?, ?)
             `);
 
             for (let i = 0; i < documents.length; i++) {
@@ -276,21 +286,89 @@ export class DuckDBVectorStore extends EventEmitter {
                 }
 
                 const content = doc.pageContent ?? '';
-                const metadataStr = JSON.stringify(doc.metadata || {});
-                const embeddingStr = `[${(embedding || []).join(',')}]`;
+                let metadataStr: string;
+                try {
+                    metadataStr = JSON.stringify(doc.metadata || {});
+                } catch (metaErr) {
+                    console.warn(`[DuckDBVectorStore] Failed to serialize metadata for ${id}, using empty object`, metaErr);
+                    metadataStr = '{}';
+                }
+                // Pass embedding as Float32Array so DuckDB binds it as a native FLOAT[] instead of varchar
+                const embeddingArray = new Float32Array(embedding);
+
+                console.log('[DuckDBVectorStore][DEBUG] Insert parameters', {
+                    id,
+                    contentLength: content.length,
+                    metadataStrType: typeof metadataStr,
+                    metadataStrSnippet: metadataStr.slice(0, 100),
+                    embeddingLength: embedding.length,
+                    embeddingSample: embedding.slice(0, 5),
+                    embeddingArrayType: embeddingArray.constructor.name,
+                    isPlainArray: Array.isArray(embeddingArray),
+                    firstFiveTypes: Array.from(embeddingArray.slice(0, 5)).map(v => typeof v)
+                });
 
                 try {
-                    await stmt.run(id, content, metadataStr, embeddingStr);
+                    console.log('[DuckDBVectorStore][DEBUG] SQL statement before run:', stmt.toString ? stmt.toString() : '(no toString)');
+                    console.log('[DuckDBVectorStore][DEBUG] Bound values:', {
+                        param1_id: id,
+                        param2_content_preview: content.slice(0, 50),
+                        param3_metadata_preview: metadataStr.slice(0, 50),
+                        param4_embedding_length: embedding.length,
+                        param4_type: embeddingArray.constructor.name,
+                        param4_isArray: Array.isArray(embeddingArray),
+                        param4_first5: Array.from(embeddingArray.slice(0, 5))
+                    });
+                    // Ensure content and metadata are valid UTF-8 strings to prevent STRING -> BLOB conversion errors
+                    const safeContent = Buffer.from(content, 'utf8').toString('utf8');
+                    const safeMetadataStr = Buffer.from(metadataStr, 'utf8').toString('utf8');
+
+                    // Convert Float32Array to plain JS array to ensure DuckDB binds it as FLOAT[]
+                    const embeddingPlain = Array.from(embeddingArray);
+                    if (embeddingPlain.length !== embedDim) {
+                        console.warn(`[DuckDBVectorStore] Embedding length mismatch for ${id}: got ${embeddingPlain.length}, expected ${embedDim}`);
+                    }
+                    // Pass as string literal to match CAST(? AS FLOAT[n]) expected input
+                    // Ensure this matches DuckDB expected array literal format without trailing commas
+                    const duckdbArrayLiteral = embeddingArray; // pass Float32Array directly for native binding
+                    console.log(`[DuckDBVectorStore][DEBUG] Using Float32Array for DuckDB binding, length: ${embeddingArray.length}`);
+                    // Debug parameter count issue
+                    console.log(`[DuckDBVectorStore][DEBUG] stmt expected params:`, stmt.toString ? stmt.toString() : '(no toString)');
+                    console.log(`[DuckDBVectorStore][DEBUG] Running stmt with id/content/metadata/embedding only`);
+                    const params = [id, safeContent, safeMetadataStr, duckdbArrayLiteral];
+                    console.log(`[DuckDBVectorStore][DEBUG] Param count: ${params.length}, types:`, params.map(p => typeof p));
+                    await stmt.run(...params).catch(err => {
+                        console.error(`[DuckDBVectorStore][ERROR] stmt.run failed for ${id}:`, err);
+                    });
                 } catch (err) {
                     console.error(`[DuckDBVectorStore] Failed to insert document ${id}:`, err);
+                    if (err instanceof Error && /Invalid byte encountered/.test(err.message)) {
+                        console.error(`[DuckDBVectorStore] Detected encoding error for document ${id}, attempting to hex-escape non-ASCII characters and retry`);
+                        try {
+                            const escapedContent = content.replace(/[^\x00-\x7F]/g, ch => {
+                                return '\\x' + Buffer.from(ch).toString('hex').toUpperCase();
+                            });
+                            const escapedMetadata = metadataStr.replace(/[^\x00-\x7F]/g, ch => {
+                                return '\\x' + Buffer.from(ch).toString('hex').toUpperCase();
+                            });
+                            await stmt.run(id, escapedContent, escapedMetadata, embeddingArray);
+                            console.log(`[DuckDBVectorStore] Successfully retried document ${id} with escaped characters`);
+                        } catch (retryErr) {
+                            console.error(`[DuckDBVectorStore] Retry failed for document ${id}:`, retryErr);
+                        }
+                    }
                 }
             }
 
             await stmt.finalize();
-            console.log(`[DuckDBVectorStore] Added ${documents.length} documents`);
+            console.log(`[DuckDBVectorStore] Added ${documents.length} documents (bound embedding arrays directly)`);
         }
         catch (error) {
             console.error('[DuckDBVectorStore] Error embedding documents:', error);
+            if (error && typeof (error as any).stack === 'string') {
+                console.error((error as any).stack);
+            }
+            // Ensure we don't have unhandled promise rejections
             throw new Error('Failed to embed documents');
         }
     }

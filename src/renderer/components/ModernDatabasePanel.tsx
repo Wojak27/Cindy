@@ -452,15 +452,7 @@ const ModernDatabasePanel: React.FC = () => {
                                         >
                                             {isIndexing ? 'Indexing...' : 'Start Full Indexing'}
                                         </Button>
-                                        <Button
-                                            variant="outlined"
-                                            onClick={startDirectoryOnlyIndexing}
-                                            disabled={isIndexing || !databasePath}
-                                            startIcon={<FolderIcon />}
-                                            fullWidth
-                                        >
-                                            Index Directory Only
-                                        </Button>
+                                        {/* Removed "Index Directory Only" button as per requirement */}
                                     </Box>
 
                                     {isIndexing && (

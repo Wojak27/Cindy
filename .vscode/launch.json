@@ -40,7 +40,8 @@
             "env": {
                 "NODE_ENV": "development",
                 "NODE_OPTIONS": "--max-old-space-size=8192",
-                "TS_NODE_COMPILER_OPTIONS": "{\"sourceMap\":true,\"inlineSources\":true,\"mapRoot\":\"${workspaceFolder}\",\"sourceRoot\":\"${workspaceFolder}\"}"
+                "TS_NODE_COMPILER_OPTIONS": "{\"sourceMap\":true,\"inlineSources\":true,\"mapRoot\":\"${workspaceFolder}\",\"sourceRoot\":\"${workspaceFolder}\"}",
+                "PATH": "/Users/karwo09/.nvm/versions/node/v20.19.2/bin:${env:PATH}"
             },
             "autoAttachChildProcesses": true,
             "skipFiles": [
@@ -73,7 +74,8 @@
             },
             "outputCapture": "std",
             "env": {
-                "NODE_ENV": "development"
+                "NODE_ENV": "development",
+                "PATH": "/Users/karwo09/.nvm/versions/node/v20.19.2/bin:${env:PATH}"
             }
         },
         {
@@ -94,7 +96,8 @@
             },
             "timeout": 30000,
             "env": {
-                "NODE_ENV": "development"
+                "NODE_ENV": "development",
+                "PATH": "/Users/karwo09/.nvm/versions/node/v20.19.2/bin:${env:PATH}"
             }
         },
         {
@@ -121,7 +124,8 @@
             "console": "integratedTerminal",
             "env": {
                 "NODE_ENV": "development",
-                "NODE_OPTIONS": "--inspect --max-old-space-size=8192"
+                "NODE_OPTIONS": "--inspect --max-old-space-size=8192",
+                "PATH": "/Users/karwo09/.nvm/versions/node/v20.19.2/bin:${env:PATH}"
             },
             "sourceMaps": true,
             "outFiles": [
@@ -149,7 +153,8 @@
             ],
             "console": "integratedTerminal",
             "env": {
-                "NODE_ENV": "development"
+                "NODE_ENV": "development",
+                "PATH": "/Users/karwo09/.nvm/versions/node/v20.19.2/bin:${env:PATH}"
             }
         },
         {
@@ -165,7 +170,8 @@
             "console": "integratedTerminal",
             "env": {
                 "NODE_ENV": "development",
-                "ELECTRON_RUN_AS_NODE": "1"
+                "ELECTRON_RUN_AS_NODE": "1",
+                "PATH": "/Users/karwo09/.nvm/versions/node/v20.19.2/bin:${env:PATH}"
             }
         },
         {
@@ -178,7 +184,8 @@
             "console": "integratedTerminal",
             "env": {
                 "NODE_ENV": "development",
-                "TS_NODE_PROJECT": "${workspaceFolder}/tsconfig.debug.json"
+                "TS_NODE_PROJECT": "${workspaceFolder}/tsconfig.debug.json",
+                "PATH": "/Users/karwo09/.nvm/versions/node/v20.19.2/bin:${env:PATH}"
             },
             "sourceMaps": true,
             "resolveSourceMapLocations": [

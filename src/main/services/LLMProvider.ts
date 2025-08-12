@@ -234,26 +234,26 @@ export class LLMProvider extends EventEmitter {
                 if (!this.config.openai) return null;
                 console.log('[LLMProvider] Creating OpenAI model:', this.config.openai.model);
                 console.log('[LLMProvider] API key available:', this.config.openai.apiKey ? 'Yes (' + this.config.openai.apiKey.length + ' chars)' : 'No');
-                
+
                 // Set environment variable as fallback for LangChain compatibility
                 if (this.config.openai.apiKey) {
                     process.env.OPENAI_API_KEY = this.config.openai.apiKey;
                     console.log('[LLMProvider] Set OPENAI_API_KEY environment variable');
                 }
-                
+
                 // Handle temperature parameter based on model
                 let temperature = this.config.openai.temperature;
                 const modelName = this.config.openai.model;
-                
+
                 // Some models (like gpt-5-nano) only support default temperature
                 const modelsWithFixedTemp = ['gpt-5-nano', 'gpt-5-nano-2025'];
                 const requiresDefaultTemp = modelsWithFixedTemp.some(model => modelName.includes(model));
-                
+
                 if (requiresDefaultTemp) {
                     temperature = 1.0; // Use default temperature
                     console.log('[LLMProvider] Model', modelName, 'requires default temperature (1.0)');
                 }
-                
+
                 const chatOpenAIConfig = {
                     modelName: this.config.openai.model,
                     openAIApiKey: this.config.openai.apiKey,
@@ -263,13 +263,13 @@ export class LLMProvider extends EventEmitter {
                     streaming: true,
                     maxRetries: 3,
                 };
-                
+
                 // Remove temperature parameter entirely for models that don't support it
                 if (requiresDefaultTemp) {
                     delete (chatOpenAIConfig as any).temperature;
                     console.log('[LLMProvider] Removed temperature parameter for model compatibility');
                 }
-                
+
                 return new ChatOpenAI(chatOpenAIConfig);
 
             case 'anthropic':
@@ -377,6 +377,7 @@ export class LLMProvider extends EventEmitter {
             case 'ollama':
                 if (!this.config.ollama) return null;
                 console.log('[LLMProvider] Creating Ollama model:', this.config.ollama.model);
+                console.log('[LLMProvider] Ollama base URL being used for ChatOllama:', this.config.ollama.baseUrl);
                 return new ChatOllama({
                     baseUrl: this.config.ollama.baseUrl,
                     model: this.config.ollama.model,
@@ -486,16 +487,16 @@ export class LLMProvider extends EventEmitter {
                             streaming: true,
                             maxRetries: 3,
                         };
-                        
+
                         const { ChatOpenAI } = require('@langchain/openai');
                         this.model = new ChatOpenAI(configWithoutTemp);
                         console.log('[LLMProvider] Recreated model without temperature parameter');
-                        
+
                         // Retry the request
                         const response = await this.model.invoke(baseMessages, {
                             signal: options.signal
                         });
-                        
+
                         this.emit('invokeComplete', { provider: this.currentProvider });
                         return response;
                     }
@@ -600,16 +601,16 @@ export class LLMProvider extends EventEmitter {
                             streaming: true,
                             maxRetries: 3,
                         };
-                        
+
                         const { ChatOpenAI } = require('@langchain/openai');
                         this.model = new ChatOpenAI(configWithoutTemp);
                         console.log('[LLMProvider] Recreated streaming model without temperature parameter');
-                        
+
                         // Retry the stream request
                         const retryStream = await this.model.stream(baseMessages, {
                             signal: options.signal
                         });
-                        
+
                         for await (const chunk of retryStream) {
                             const content = chunk.content as string;
                             if (content) {
@@ -617,7 +618,7 @@ export class LLMProvider extends EventEmitter {
                                 yield content;
                             }
                         }
-                        
+
                         this.emit('streamComplete', { provider: this.currentProvider });
                         return; // Successfully completed retry
                     }
