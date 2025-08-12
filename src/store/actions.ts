@@ -42,6 +42,19 @@ export const toggleSettings = () => ({
     type: 'TOGGLE_SETTINGS'
 });
 
+export const toggleDocumentPanel = () => ({
+    type: 'TOGGLE_DOCUMENT_PANEL'
+});
+
+export const showDocument = (document: any) => ({
+    type: 'SHOW_DOCUMENT',
+    payload: document
+});
+
+export const hideDocument = () => ({
+    type: 'HIDE_DOCUMENT'
+});
+
 export const setSpeaking = (isSpeaking: boolean) => ({
     type: 'SET_SPEAKING',
     payload: isSpeaking

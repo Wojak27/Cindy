@@ -4,6 +4,8 @@
 const initialState = {
   showSettings: false,
   showDatabase: false,
+  showDocumentPanel: false,
+  currentDocument: null,
   isSpeaking: false,
   isListening: false,
   thinkingStartTime: null
@@ -20,6 +22,23 @@ const uiReducer = (state = initialState, action: any) => {
       return {
         ...state,
         showDatabase: !state.showDatabase
+      };
+    case 'TOGGLE_DOCUMENT_PANEL':
+      return {
+        ...state,
+        showDocumentPanel: !state.showDocumentPanel
+      };
+    case 'SHOW_DOCUMENT':
+      return {
+        ...state,
+        showDocumentPanel: true,
+        currentDocument: action.payload
+      };
+    case 'HIDE_DOCUMENT':
+      return {
+        ...state,
+        showDocumentPanel: false,
+        currentDocument: null
       };
     case 'SET_SPEAKING':
       return {

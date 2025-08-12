@@ -1628,6 +1628,11 @@ app.on('ready', async () => {
 
     // Extracted initialization logic that can be called from both IPC and background
     async function initializeLLMServices(): Promise<{ success: boolean; message: string }> {
+        console.log('🔧 DEBUG: initializeLLMServices() called');
+        console.log('🔧 DEBUG: Current duckDBVectorStore status:', !!duckDBVectorStore);
+        console.log('🔧 DEBUG: Current duckDBVectorStore type:', duckDBVectorStore?.constructor?.name);
+        console.log('🔧 DEBUG: Current duckDBVectorStore has initialize method:', typeof duckDBVectorStore?.initialize === 'function');
+        
         try {
             // Track whether this is a reinitialization
             let wasReinitialization = false;
@@ -1703,9 +1708,85 @@ app.on('ready', async () => {
             // Update ServiceManager with current providers
             serviceManager.updateCoreServices(settingsService, llmProvider);
 
+            // Ensure vector store is available for tool registration
+            if (!duckDBVectorStore) {
+                try {
+                    console.log('🔧 DEBUG: Initializing DuckDB vector store for tool registration...');
+                    
+                    // Get database path from settings, with fallback to default
+                    const settingsData = await settingsService?.getAll();
+                    let databasePath = settingsData?.database?.path;
+                    
+                    // If no database path configured, use default app data directory
+                    if (!databasePath) {
+                        const { app } = require('electron');
+                        databasePath = path.join(app.getPath('userData'), 'default-database');
+                        console.log('🔧 DEBUG: No database path configured, using default:', databasePath);
+                    }
+                    
+                    // Get current LLM settings to determine embedding provider
+                    const llmSettings = settingsData?.llm || { provider: 'ollama' };
+                    const provider = llmSettings.provider || 'ollama';
+
+                    // Create vector store config based on provider
+                    let vectorStoreConfig: any = {
+                        databasePath: path.join(databasePath, '.vector_store', 'duckdb_vectors.db')
+                    };
+
+                    if (provider === 'ollama') {
+                        vectorStoreConfig.embeddingProvider = 'ollama';
+                        vectorStoreConfig.embeddingModel = 'dengcao/Qwen3-Embedding-0.6B:Q8_0';
+                        vectorStoreConfig.ollamaBaseUrl = 'http://localhost:11434';
+                        console.log('[DEBUG] Using Ollama embeddings for tool registration');
+                    } else if (provider === 'openai') {
+                        const openaiApiKey = await settingsService?.getApiKey();
+                        if (openaiApiKey) {
+                            vectorStoreConfig.embeddingProvider = 'openai';
+                            vectorStoreConfig.openaiApiKey = openaiApiKey;
+                            vectorStoreConfig.embeddingModel = 'text-embedding-3-small';
+                            console.log('[DEBUG] Using OpenAI embeddings for tool registration');
+                        } else {
+                            // Fall back to Ollama if no OpenAI key
+                            vectorStoreConfig.embeddingProvider = 'ollama';
+                            vectorStoreConfig.embeddingModel = 'dengcao/Qwen3-Embedding-0.6B:Q8_0';
+                            vectorStoreConfig.ollamaBaseUrl = 'http://localhost:11434';
+                            console.log('[DEBUG] No OpenAI API key, using Ollama for tool registration');
+                        }
+                    } else {
+                        // Default to Ollama
+                        vectorStoreConfig.embeddingProvider = 'ollama';
+                        vectorStoreConfig.embeddingModel = 'dengcao/Qwen3-Embedding-0.6B:Q8_0';
+                        vectorStoreConfig.ollamaBaseUrl = 'http://localhost:11434';
+                        console.log('[DEBUG] Using default Ollama embeddings for tool registration');
+                    }
+
+                    console.log('🔧 DEBUG: Vector store config:', {
+                        databasePath: vectorStoreConfig.databasePath,
+                        embeddingProvider: vectorStoreConfig.embeddingProvider,
+                        embeddingModel: vectorStoreConfig.embeddingModel
+                    });
+
+                    // Create the vector store for tool registration
+                    duckDBVectorStore = new DuckDBVectorStore(vectorStoreConfig);
+                    await duckDBVectorStore.initialize();
+                    console.log('✅ DEBUG: DuckDB vector store initialized for tool registration');
+                } catch (vectorStoreError) {
+                    console.error('❌ DEBUG: Failed to initialize vector store for tool registration:', vectorStoreError);
+                    console.error('❌ DEBUG: Vector store error details:', vectorStoreError.message);
+                    console.error('❌ DEBUG: Vector store error stack:', vectorStoreError.stack);
+                    duckDBVectorStore = null;
+                }
+            }
+
             try {
                 console.log('🔧 DEBUG: Loading LangChain ToolExecutorService via ServiceManager');
-                langChainToolExecutorService = await serviceManager.getToolExecutorService();
+                console.log('🔧 DEBUG: DuckDB vector store available:', !!duckDBVectorStore);
+                console.log('🔧 DEBUG: Vector store being passed to ServiceManager:', {
+                    exists: !!duckDBVectorStore,
+                    type: duckDBVectorStore?.constructor?.name,
+                    hasInitialize: typeof duckDBVectorStore?.initialize === 'function'
+                });
+                langChainToolExecutorService = await serviceManager.getToolExecutorService(duckDBVectorStore);
                 console.log('✅ DEBUG: LangChain ToolExecutorService loaded successfully');
             } catch (toolExecutorError) {
                 console.error('❌ DEBUG: Failed to load LangChain ToolExecutorService:', toolExecutorError);

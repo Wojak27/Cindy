@@ -14,10 +14,12 @@ import HashtagManager from './components/HashtagManager';
 import SoundReactiveBlob from './components/SoundReactiveBlob';
 import ModernSettingsPanel from './components/ModernSettingsPanel';
 import ModernDatabasePanel from './components/ModernDatabasePanel';
+import ChatDocumentPanel from './components/ChatDocumentPanel';
 import ThemeToggle from './components/ThemeToggle';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { getSettings } from '../store/actions';
 import { toggleSettings } from '../store/actions';
+import { hideDocument, showDocument } from '../store/actions';
 import { streamError } from '../store/actions';
 import { getWelcomeMessage, getPersonalizedMessage, shouldShowWelcome } from './utils/personalizedMessages';
 import './styles/main.css';
@@ -38,13 +40,16 @@ import {
     Refresh as RetryIcon,
     PlayArrow as PlayIcon,
     Stop as StopIcon,
-    ContentCopy as CopyIcon
+    ContentCopy as CopyIcon,
+    Description as DocumentIcon
 } from '@mui/icons-material';
 
 const App: React.FC = () => {
     const dispatch = useDispatch();
     const showSettings = useSelector((state: any) => state.ui.showSettings);
     const showDatabase = useSelector((state: any) => state.ui.showDatabase);
+    const showDocumentPanel = useSelector((state: any) => state.ui.showDocumentPanel);
+    const currentDocument = useSelector((state: any) => state.ui.currentDocument);
     // const thinkingStartTime = useSelector((state: any) => state.ui.thinkingStartTime);
     const thinkingBlocks = useSelector((state: any) => state.messages?.thinkingBlocks || []);
     const toolCalls = useSelector((state: any) => state.messages?.toolCalls || []);
@@ -67,6 +72,7 @@ const App: React.FC = () => {
     const settingsSidebarRef = useRef<HTMLDivElement>(null);
     const databaseSidebarRef = useRef<HTMLDivElement>(null);
     const chatMessagesRef = useRef<HTMLDivElement>(null);
+    const [availableDocuments, setAvailableDocuments] = useState<any[]>([]);
 
     // Memoize welcome message to prevent re-calculation on every render
     const welcomeMessage = useMemo(() => {
@@ -504,6 +510,30 @@ const App: React.FC = () => {
             }
         }
     };
+
+    // Document handling functions
+    const loadAvailableDocuments = async () => {
+        try {
+            const databasePath = settings?.database?.path;
+            if (!databasePath) return;
+            
+            const result = await ipcRenderer.invoke('vector-store:get-indexed-items', databasePath);
+            if (result.success) {
+                setAvailableDocuments(result.items || []);
+            }
+        } catch (error) {
+            console.error('Error loading documents:', error);
+        }
+    };
+
+    const handleShowDocument = (document: any) => {
+        dispatch(showDocument(document));
+    };
+
+    // Load documents when component mounts or database path changes
+    useEffect(() => {
+        loadAvailableDocuments();
+    }, [settings?.database?.path]);
 
     // Cleanup function
     useEffect(() => {
@@ -944,6 +974,24 @@ const App: React.FC = () => {
                         </IconButton>
 
                         <IconButton
+                            className={`document-button ${showDocumentPanel ? 'active' : ''}`}
+                            onClick={() => {
+                                if (showDocumentPanel) {
+                                    dispatch(hideDocument());
+                                } else if (availableDocuments.length > 0) {
+                                    handleShowDocument(availableDocuments[0]);
+                                } else {
+                                    // If no documents, open database panel to help user index some
+                                    dispatch({ type: 'TOGGLE_DATABASE_SIDEBAR' });
+                                }
+                            }}
+                            aria-label={showDocumentPanel ? "Hide document" : "Show document"}
+                            size="small"
+                        >
+                            <DocumentIcon fontSize="small" />
+                        </IconButton>
+
+                        <IconButton
                             className={`settings-button ${showSettings ? 'active' : ''}`}
                             onClick={() => dispatch(toggleSettings())}
                             aria-label={showSettings ? "Close settings" : "Open settings"}
@@ -954,12 +1002,30 @@ const App: React.FC = () => {
                         <ThemeToggle variant="icon" />
                     </div>
 
-                    <div className="chat-container">
-                        <div className="chat-messages-container">
+                    <div className="chat-container" style={{ 
+                        display: 'flex', 
+                        height: '100%',
+                        gap: showDocumentPanel ? '12px' : '0'
+                    }}>
+                        {/* Chat area - adjust width when document panel is open */}
+                        <div 
+                            className="chat-messages-container"
+                            style={{
+                                flex: showDocumentPanel ? '1 1 60%' : '1 1 100%',
+                                minWidth: 0,
+                                display: 'flex',
+                                flexDirection: 'column',
+                            }}
+                        >
                             <div
                                 ref={chatMessagesRef}
                                 className="chat-messages"
-                                style={{ height: '100%', overflowY: 'auto', display: 'flex', flexDirection: 'column-reverse' }}
+                                style={{ 
+                                    flex: 1, 
+                                    overflowY: 'auto', 
+                                    display: 'flex', 
+                                    flexDirection: 'column-reverse' 
+                                }}
                             >
                                 {/* Show sound reactive circle when no messages and no current input */}
                                 {messages.length === 0 && (
@@ -1276,78 +1342,93 @@ const App: React.FC = () => {
                                     );
                                 })}
                             </div>
-                        </div>
 
+                            {/* Only show input area at bottom when there are messages */}
+                            {messages.length > 0 && (
+                                <div className="input-area" style={{ alignItems: "center" }}>
+                                    {/* Hashtag Manager */}
+                                    <HashtagManager
+                                        inputValue={inputValue}
+                                        onHashtagsChange={setActiveHashtags}
+                                    />
 
-                        {/* Only show input area at bottom when there are messages */}
-                        {messages.length > 0 && (
-                            <div className="input-area" style={{ alignItems: "center" }}>
-                                {/* Hashtag Manager */}
-                                <HashtagManager
-                                    inputValue={inputValue}
-                                    onHashtagsChange={setActiveHashtags}
-                                />
-
-                                <textarea
-                                    placeholder="Type your message... Press Shift+Enter for new line"
-                                    className="message-input"
-                                    value={inputValue}
-                                    onChange={handleInputChange}
-                                    onKeyDown={handleKeyPress}
-                                    onBlur={handleInputBlur}
-                                    disabled={isRecording}
-                                    style={{
-                                        fontFamily: 'inherit',
-                                        resize: 'none',
-                                        minHeight: '40px',
-                                        maxHeight: '200px',
-                                        width: "400px",
-                                        overflow: 'hidden',
-                                        wordWrap: 'break-word',
-                                        whiteSpace: 'pre-wrap',
-                                        fontSize: '16px',
-                                        padding: '12px 16px'
-                                    }}
-                                />
-                                <div className="button-group">
-                                    <div className={`mic-button-wrapper ${isRecording ? 'is-recording' : ''} ${!isRecording ? 'is-listening' : ''}`}>
+                                    <textarea
+                                        placeholder="Type your message... Press Shift+Enter for new line"
+                                        className="message-input"
+                                        value={inputValue}
+                                        onChange={handleInputChange}
+                                        onKeyDown={handleKeyPress}
+                                        onBlur={handleInputBlur}
+                                        disabled={isRecording}
+                                        style={{
+                                            fontFamily: 'inherit',
+                                            resize: 'none',
+                                            minHeight: '40px',
+                                            maxHeight: '200px',
+                                            width: "400px",
+                                            overflow: 'hidden',
+                                            wordWrap: 'break-word',
+                                            whiteSpace: 'pre-wrap',
+                                            fontSize: '16px',
+                                            padding: '12px 16px'
+                                        }}
+                                    />
+                                    <div className="button-group">
+                                        <div className={`mic-button-wrapper ${isRecording ? 'is-recording' : ''} ${!isRecording ? 'is-listening' : ''}`}>
+                                            <IconButton
+                                                className="mic-button"
+                                                onClick={handleMicClick}
+                                                aria-label={isRecording ? "Stop recording" : "Start recording"}
+                                                size="large"
+                                                sx={{
+                                                    width: '48px',
+                                                    height: '48px',
+                                                    backgroundColor: isRecording ? '#dc3545' : '#28a745',
+                                                    color: 'white',
+                                                    '&:hover': {
+                                                        backgroundColor: isRecording ? '#c82333' : '#218838'
+                                                    }
+                                                }}
+                                            >
+                                                <MicIcon fontSize="medium" />
+                                            </IconButton>
+                                        </div>
                                         <IconButton
-                                            className="mic-button"
-                                            onClick={handleMicClick}
-                                            aria-label={isRecording ? "Stop recording" : "Start recording"}
+                                            className="send-button"
+                                            onClick={handleSendClick}
+                                            aria-label="Send message"
                                             size="large"
+                                            disabled={!inputValue.trim() || isRecording}
                                             sx={{
                                                 width: '48px',
                                                 height: '48px',
-                                                backgroundColor: isRecording ? '#dc3545' : '#28a745',
+                                                backgroundColor: '#007ACC',
                                                 color: 'white',
                                                 '&:hover': {
-                                                    backgroundColor: isRecording ? '#c82333' : '#218838'
+                                                    backgroundColor: '#005A9E'
                                                 }
                                             }}
                                         >
-                                            <MicIcon fontSize="medium" />
+                                            <SendIcon fontSize="medium" />
                                         </IconButton>
                                     </div>
-                                    <IconButton
-                                        className="send-button"
-                                        onClick={handleSendClick}
-                                        aria-label="Send message"
-                                        size="large"
-                                        disabled={!inputValue.trim() || isRecording}
-                                        sx={{
-                                            width: '48px',
-                                            height: '48px',
-                                            backgroundColor: '#007ACC',
-                                            color: 'white',
-                                            '&:hover': {
-                                                backgroundColor: '#005A9E'
-                                            }
-                                        }}
-                                    >
-                                        <SendIcon fontSize="medium" />
-                                    </IconButton>
                                 </div>
+                            )}
+                        </div>
+
+                        {/* Document panel - shows when a document is selected */}
+                        {showDocumentPanel && currentDocument && (
+                            <div style={{
+                                flex: '1 1 40%',
+                                minWidth: '300px',
+                                maxWidth: '500px',
+                                height: '100%',
+                                overflow: 'hidden',
+                            }}>
+                                <ChatDocumentPanel 
+                                    document={currentDocument}
+                                    onClose={() => dispatch(hideDocument())}
+                                />
                             </div>
                         )}
                     </div>

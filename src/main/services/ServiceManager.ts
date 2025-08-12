@@ -56,9 +56,52 @@ export class ServiceManager extends EventEmitter {
 
         try {
             console.log('[ServiceManager] Dynamically loading LangChainToolExecutorService...');
+            console.log('[ServiceManager] DuckDB vector store provided:', !!duckdbVectorStore);
+            
+            // If no vector store provided, try to create one
+            if (!duckdbVectorStore) {
+                console.log('[ServiceManager] No vector store provided, attempting to create one...');
+                try {
+                    const { DuckDBVectorStore } = require('./DuckDBVectorStore');
+                    const path = require('path');
+                    const { app } = require('electron');
+                    
+                    // Get settings for configuration
+                    const settingsData = await this.settingsService?.getAll();
+                    const databasePath = settingsData?.database?.path || path.join(app.getPath('userData'), 'default-database');
+                    const llmSettings = settingsData?.llm || { provider: 'ollama' };
+                    const provider = llmSettings.provider || 'ollama';
 
-            // Dynamic import to avoid loading at startup - using completely lightweight version with NO LangChain imports
+                    // Create vector store config
+                    let vectorStoreConfig: any = {
+                        databasePath: path.join(databasePath, '.vector_store', 'duckdb_vectors.db'),
+                        embeddingProvider: 'ollama',
+                        embeddingModel: 'dengcao/Qwen3-Embedding-0.6B:Q8_0',
+                        ollamaBaseUrl: 'http://localhost:11434'
+                    };
 
+                    if (provider === 'openai') {
+                        const openaiApiKey = await this.settingsService?.getApiKey();
+                        if (openaiApiKey) {
+                            vectorStoreConfig.embeddingProvider = 'openai';
+                            vectorStoreConfig.openaiApiKey = openaiApiKey;
+                            vectorStoreConfig.embeddingModel = 'text-embedding-3-small';
+                        }
+                    }
+
+                    console.log('[ServiceManager] Creating vector store with config:', {
+                        databasePath: vectorStoreConfig.databasePath,
+                        embeddingProvider: vectorStoreConfig.embeddingProvider
+                    });
+
+                    duckdbVectorStore = new DuckDBVectorStore(vectorStoreConfig);
+                    await duckdbVectorStore.initialize();
+                    console.log('[ServiceManager] ✅ Vector store created and initialized successfully');
+                } catch (vectorError) {
+                    console.error('[ServiceManager] ❌ Failed to create vector store:', vectorError.message);
+                    duckdbVectorStore = null;
+                }
+            }
 
             // Pass DuckDB vector store and settings service
             this.langChainToolExecutorService = new LangChainToolExecutorService(duckdbVectorStore, this.settingsService);

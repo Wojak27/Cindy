@@ -361,41 +361,121 @@ export class DuckDBVectorStore extends EventEmitter {
     async similaritySearch(query: string, k: number = 5): Promise<Document[]> {
         if (!this.db) throw new Error('Database not initialized');
 
+        console.log(`[DuckDBVectorStore] Starting similarity search for: "${query}" (k=${k})`);
+
         // Get query embedding
         const queryEmbedding = await this.embeddings.embedQuery(query);
         const queryDimension = queryEmbedding.length;
+        console.log(`[DuckDBVectorStore] Query embedding dimension: ${queryDimension}`);
 
-        // Perform similarity search using VSS (with or without HNSW index)
+        // Check what vector functions are available
         try {
-            const results = await this.db.all(`
-                SELECT 
-                    content,
-                    metadata,
-                    vss_distance_cosine(embedding, ?::FLOAT[${queryDimension}]) as distance
-                FROM documents
-                ORDER BY distance ASC
-                LIMIT ?
-            `, [`[${queryEmbedding.join(',')}]`, k]);
+            console.log('[DuckDBVectorStore] Checking available functions...');
+            const functions = await this.db.all(`
+                SELECT function_name 
+                FROM duckdb_functions() 
+                WHERE function_name LIKE '%distance%' OR function_name LIKE '%cosine%'
+            `);
+            console.log('[DuckDBVectorStore] Available vector functions:', functions);
+        } catch (funcError) {
+            console.log('[DuckDBVectorStore] Could not query available functions:', funcError.message);
+        }
 
-            return results.map(row => new Document({
-                pageContent: row.content,
-                metadata: JSON.parse(row.metadata)
-            }));
-        } catch (error) {
-            console.error('[DuckDBVectorStore] VSS search failed:', error);
-            // Fallback to basic search without similarity scoring
-            console.log('[DuckDBVectorStore] Falling back to basic text search');
-            const results = await this.db.all(`
+        // Try multiple similarity search approaches with direct query execution
+        const vectorQueryStr = `[${queryEmbedding.join(',')}]`;
+        const searchMethods = [
+            {
+                name: 'array_cosine_distance',
+                query: `
+                    SELECT 
+                        content,
+                        metadata,
+                        array_cosine_distance(embedding, '${vectorQueryStr}'::FLOAT[${queryDimension}]) as distance
+                    FROM documents
+                    ORDER BY distance ASC
+                    LIMIT ${k}
+                `
+            },
+            {
+                name: 'list_cosine_distance',
+                query: `
+                    SELECT 
+                        content,
+                        metadata,
+                        list_cosine_distance(embedding, '${vectorQueryStr}'::FLOAT[${queryDimension}]) as distance
+                    FROM documents
+                    ORDER BY distance ASC
+                    LIMIT ${k}
+                `
+            },
+            {
+                name: 'array_cosine_similarity',
+                query: `
+                    SELECT 
+                        content,
+                        metadata,
+                        (1 - array_cosine_similarity(embedding, '${vectorQueryStr}'::FLOAT[${queryDimension}])) as distance
+                    FROM documents
+                    ORDER BY distance ASC
+                    LIMIT ${k}
+                `
+            },
+            {
+                name: 'list_cosine_similarity',
+                query: `
+                    SELECT 
+                        content,
+                        metadata,
+                        (1 - list_cosine_similarity(embedding, '${vectorQueryStr}'::FLOAT[${queryDimension}])) as distance
+                    FROM documents
+                    ORDER BY distance ASC
+                    LIMIT ${k}
+                `
+            }
+        ];
+
+        for (const method of searchMethods) {
+            try {
+                console.log(`[DuckDBVectorStore] Trying similarity search method: ${method.name}`);
+                
+                const results = await this.db.all(method.query);
+
+                console.log(`[DuckDBVectorStore] ✅ ${method.name} worked! Found ${results.length} results`);
+                return results.map(row => new Document({
+                    pageContent: row.content,
+                    metadata: JSON.parse(row.metadata)
+                }));
+            } catch (methodError) {
+                console.log(`[DuckDBVectorStore] ❌ ${method.name} failed:`, methodError.message);
+                continue;
+            }
+        }
+
+        // If all vector similarity methods fail, fall back to text search
+        console.log('[DuckDBVectorStore] All vector similarity methods failed, falling back to text search');
+        try {
+            const searchPattern = `%${query.toLowerCase()}%`;
+            console.log('[DuckDBVectorStore] Fallback search pattern:', searchPattern, 'limit:', k);
+            
+            // Use direct string interpolation for text search as well
+            const textSearchQuery = `
                 SELECT content, metadata
                 FROM documents
-                WHERE content LIKE ?
-                LIMIT ?
-            `, [`%${query}%`, k]);
+                WHERE LOWER(content) LIKE '${searchPattern.replace(/'/g, "''")}'
+                ORDER BY LENGTH(content) ASC
+                LIMIT ${k}
+            `;
+            
+            const results = await this.db.all(textSearchQuery);
 
+            console.log(`[DuckDBVectorStore] Text search found ${results.length} results`);
             return results.map(row => new Document({
                 pageContent: row.content,
                 metadata: JSON.parse(row.metadata)
             }));
+        } catch (fallbackError) {
+            console.error('[DuckDBVectorStore] All search methods failed:', fallbackError);
+            return [];
         }
     }
 

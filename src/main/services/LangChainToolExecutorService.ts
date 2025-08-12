@@ -293,7 +293,16 @@ export class LangChainToolExecutorService extends EventEmitter {
         this.settingsService = settingsService;
         console.log('[LangChainToolExecutorService] Created with web search tools and vector store');
         console.log('[LangChainToolExecutorService] Vector store provided:', !!vectorStore);
+        console.log('[LangChainToolExecutorService] Vector store type:', vectorStore?.constructor?.name);
+        console.log('[LangChainToolExecutorService] Vector store initialized:', vectorStore?.isInitialized);
         console.log('[LangChainToolExecutorService] Settings service provided:', !!settingsService);
+        
+        if (!vectorStore) {
+            console.warn('[LangChainToolExecutorService] ⚠️ WARNING: No vector store provided to constructor!');
+            console.warn('[LangChainToolExecutorService] ⚠️ This means search_documents tool will not be available');
+        } else {
+            console.log('[LangChainToolExecutorService] ✅ Vector store available in constructor');
+        }
     }
 
     async initialize(): Promise<void> {
@@ -303,6 +312,9 @@ export class LangChainToolExecutorService extends EventEmitter {
         await this.initializeVectorStoreTools();
         console.log(`[LangChainToolExecutorService] Initialized with ${this.tools.size} tools (web search + vector store)`);
         console.log('[LangChainToolExecutorService] Final tool list:', Array.from(this.tools.keys()));
+        
+        // Debug tool registration status
+        this.debugToolStatus();
     }
 
     private async initializeWebSearchTools(): Promise<void> {
@@ -511,9 +523,12 @@ export class LangChainToolExecutorService extends EventEmitter {
         });
 
         if (!this.vectorStore) {
-            console.log('[LangChainToolExecutorService] No vector store provided - skipping vector store tools');
+            console.error('[LangChainToolExecutorService] ❌ No vector store provided - skipping vector store tools');
+            console.error('[LangChainToolExecutorService] ❌ This means search_documents tool will NOT be registered');
             return;
         }
+
+        console.log('[LangChainToolExecutorService] ✅ Vector store is available, proceeding with tool registration...');
 
         try {
             // Create vector store search tool by extending Tool class
@@ -525,12 +540,19 @@ export class LangChainToolExecutorService extends EventEmitter {
                     super();
                 }
 
+                async invoke(input: any): Promise<string> {
+                    console.log('[VectorSearchTool] invoke called with:', input);
+                    console.log('[VectorSearchTool] input type:', typeof input);
+                    return this._call(input);
+                }
+
                 async _call(input: any): Promise<string> {
                     try {
-                        console.log('[VectorSearchTool] Searching documents for:', input);
+                        console.log('[VectorSearchTool] _call method called with:', input);
+                        console.log('[VectorSearchTool] input type in _call:', typeof input);
                         
                         // Handle both string input and object input
-                        const query = typeof input === 'string' ? input : input.query;
+                        const query = typeof input === 'string' ? input : (input?.query || input);
                         const limit = typeof input === 'object' && input.limit ? input.limit : 5;
 
                         if (!query || query.trim().length === 0) {
@@ -567,8 +589,11 @@ export class LangChainToolExecutorService extends EventEmitter {
                 }
             }
 
+            console.log('[LangChainToolExecutorService] Creating VectorSearchTool instance...');
             const vectorSearchTool = new VectorSearchTool(this.vectorStore);
+            console.log('[LangChainToolExecutorService] VectorSearchTool created successfully');
 
+            console.log('[LangChainToolExecutorService] Attempting to register search_documents tool...');
             // Register the tool
             this.registerTool({
                 name: 'search_documents',
@@ -591,8 +616,16 @@ export class LangChainToolExecutorService extends EventEmitter {
                 tool: vectorSearchTool
             });
 
-            console.log('[LangChainToolExecutorService] Vector store search tool registered successfully');
-            console.log('[LangChainToolExecutorService] Available tools after registration:', Array.from(this.tools.keys()));
+            console.log('[LangChainToolExecutorService] ✅ Vector store search tool registered successfully');
+            console.log('[LangChainToolExecutorService] ✅ Available tools after registration:', Array.from(this.tools.keys()));
+            console.log('[LangChainToolExecutorService] ✅ Tools map size:', this.tools.size);
+            
+            // Verify the tool was actually registered
+            if (this.tools.has('search_documents')) {
+                console.log('[LangChainToolExecutorService] ✅ CONFIRMED: search_documents tool is in the tools map');
+            } else {
+                console.error('[LangChainToolExecutorService] ❌ ERROR: search_documents tool was NOT added to tools map');
+            }
         } catch (error: any) {
             console.error('[LangChainToolExecutorService] Failed to initialize vector store tools:', error);
             console.error('[LangChainToolExecutorService] Error stack:', error.stack);
@@ -605,8 +638,25 @@ export class LangChainToolExecutorService extends EventEmitter {
      * Register a new tool
      */
     registerTool(definition: ToolDefinition): void {
+        console.log(`[LangChainToolExecutorService] registerTool() called for: ${definition.name}`);
+        console.log(`[LangChainToolExecutorService] Tool definition:`, {
+            name: definition.name,
+            hasDescription: !!definition.description,
+            hasParameters: !!definition.parameters,
+            hasTool: !!definition.tool,
+            toolType: definition.tool?.constructor?.name
+        });
+        
         this.tools.set(definition.name, definition);
-        console.log(`[LangChainToolExecutorService] Registered tool: ${definition.name}`);
+        console.log(`[LangChainToolExecutorService] ✅ Tool ${definition.name} added to map. Map size now: ${this.tools.size}`);
+        
+        // Verify it was actually added
+        if (this.tools.has(definition.name)) {
+            console.log(`[LangChainToolExecutorService] ✅ Verified: ${definition.name} is in tools map`);
+        } else {
+            console.error(`[LangChainToolExecutorService] ❌ ERROR: ${definition.name} was not added to tools map`);
+        }
+        
         this.emit('toolRegistered', definition.name);
     }
 
@@ -959,6 +1009,9 @@ export class LangChainToolExecutorService extends EventEmitter {
 
             const toolDef = this.tools.get(toolName);
             if (!toolDef) {
+                console.error(`[LangChainToolExecutorService] Tool not found: ${toolName}`);
+                console.error(`[LangChainToolExecutorService] Available tools:`, Array.from(this.tools.keys()));
+                console.error(`[LangChainToolExecutorService] Total tools registered:`, this.tools.size);
                 throw new Error(`Tool not found: ${toolName}`);
             }
 
@@ -997,7 +1050,15 @@ export class LangChainToolExecutorService extends EventEmitter {
 
                 this.lastWebSearchTime = Date.now();
                 result = await toolDef.tool.invoke(parameters);
+            } else if (toolName === 'search_documents') {
+                // Handle search_documents tool specifically
+                console.log(`[LangChainToolExecutorService] Executing search_documents with parameters:`, parameters);
+                result = await toolDef.tool.invoke(parameters);
+            } else if (toolName === 'wikipedia_search') {
+                // Handle Wikipedia search
+                result = await toolDef.tool.invoke(parameters.input || parameters.query || parameters);
             } else {
+                // Generic tool execution
                 result = await toolDef.tool.invoke(parameters);
             }
 
@@ -1043,6 +1104,23 @@ export class LangChainToolExecutorService extends EventEmitter {
      */
     getAvailableTools(): string[] {
         return Array.from(this.tools.keys());
+    }
+
+    /**
+     * Debug method to check tool registration status
+     */
+    debugToolStatus(): void {
+        console.log(`[LangChainToolExecutorService] Tool registration status:`);
+        console.log(`  Total tools: ${this.tools.size}`);
+        console.log(`  Available tools:`, Array.from(this.tools.keys()));
+        console.log(`  Vector store available: ${!!this.vectorStore}`);
+        console.log(`  Vector store initialized: ${this.vectorStore?.isInitialized}`);
+        
+        if (this.tools.has('search_documents')) {
+            console.log(`  ✅ search_documents tool is registered`);
+        } else {
+            console.log(`  ❌ search_documents tool is NOT registered`);
+        }
     }
 
     /**
