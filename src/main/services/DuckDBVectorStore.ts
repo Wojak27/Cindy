@@ -598,6 +598,74 @@ export class DuckDBVectorStore extends EventEmitter {
         }));
     }
 
+    async checkDirectoryStatus(folderPath: string): Promise<{
+        totalFiles: number;
+        indexedFiles: number;
+        newFiles: string[];
+        deletedFiles: string[];
+        modifiedFiles: string[];
+        upToDate: boolean;
+    }> {
+        if (!fs.existsSync(folderPath)) {
+            return {
+                totalFiles: 0,
+                indexedFiles: 0,
+                newFiles: [],
+                deletedFiles: [],
+                modifiedFiles: [],
+                upToDate: true
+            };
+        }
+
+        // Get current files in directory
+        const currentFiles = this.getAllFiles(folderPath);
+        
+        // Get indexed files from database
+        const indexedFiles = await this.getIndexedFiles();
+        const indexedFilePaths = new Set(indexedFiles.map(f => f.path));
+        const indexedFileMap = new Map(indexedFiles.map(f => [f.path, f]));
+
+        // Find new files (in directory but not indexed)
+        const newFiles = currentFiles.filter(file => !indexedFilePaths.has(file));
+
+        // Find deleted files (indexed but not in directory)
+        const deletedFiles = indexedFiles
+            .filter(indexedFile => !currentFiles.includes(indexedFile.path))
+            .map(f => f.path);
+
+        // Find modified files (different modification time)
+        const modifiedFiles: string[] = [];
+        for (const file of currentFiles) {
+            if (indexedFilePaths.has(file)) {
+                const indexedFile = indexedFileMap.get(file);
+                if (indexedFile) {
+                    try {
+                        const stats = fs.statSync(file);
+                        const currentMtime = stats.mtime.toISOString();
+                        if (currentMtime !== indexedFile.mtime) {
+                            modifiedFiles.push(file);
+                        }
+                    } catch (error) {
+                        // If we can't stat the file, consider it modified
+                        modifiedFiles.push(file);
+                    }
+                }
+            }
+        }
+
+        const hasChanges = newFiles.length > 0 || deletedFiles.length > 0 || modifiedFiles.length > 0;
+        const indexedCount = indexedFiles.filter(f => currentFiles.includes(f.path)).length;
+
+        return {
+            totalFiles: currentFiles.length,
+            indexedFiles: indexedCount,
+            newFiles,
+            deletedFiles,
+            modifiedFiles,
+            upToDate: !hasChanges
+        };
+    }
+
     async clearIndex(): Promise<void> {
         if (!this.db) return;
 

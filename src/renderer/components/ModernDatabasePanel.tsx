@@ -87,6 +87,15 @@ const ModernDatabasePanel: React.FC = () => {
     const [indexedItems, setIndexedItems] = useState<any[]>([]);
     const [pathValidation, setPathValidation] = useState<{ valid: boolean; message?: string } | null>(null);
     const [indexingResult, setIndexingResult] = useState<{ success: number; errors: number; show: boolean } | null>(null);
+    const [directoryStatus, setDirectoryStatus] = useState<{
+        totalFiles: number;
+        indexedFiles: number;
+        newFiles: string[];
+        deletedFiles: string[];
+        modifiedFiles: string[];
+        upToDate: boolean;
+    } | null>(null);
+    const [statusLoading, setStatusLoading] = useState(false);
 
     // Save all settings
     const saveSettings = useCallback(() => {
@@ -151,6 +160,30 @@ const ModernDatabasePanel: React.FC = () => {
         }
     };
 
+    // Check directory status function
+    const checkDirectoryStatus = useCallback(async () => {
+        if (!databasePath) {
+            setDirectoryStatus(null);
+            return;
+        }
+
+        setStatusLoading(true);
+        try {
+            const response = await ipcRenderer.invoke('vector-store:check-status', databasePath);
+            if (response.success) {
+                setDirectoryStatus(response.status);
+            } else {
+                console.error('Error checking directory status:', response.message);
+                setDirectoryStatus(null);
+            }
+        } catch (error) {
+            console.error('Error checking directory status:', error);
+            setDirectoryStatus(null);
+        } finally {
+            setStatusLoading(false);
+        }
+    }, [databasePath]);
+
     // Indexing functions
     const startIndexing = async () => {
         if (!databasePath) {
@@ -164,6 +197,10 @@ const ModernDatabasePanel: React.FC = () => {
 
         try {
             await ipcRenderer.invoke('start-full-indexing', databasePath, notesPath);
+            // Refresh status after indexing
+            setTimeout(() => {
+                checkDirectoryStatus();
+            }, 1000);
         } catch (error) {
             console.error('Error starting indexing:', error);
             setIsIndexing(false);
@@ -181,6 +218,13 @@ const ModernDatabasePanel: React.FC = () => {
             setAutoIndex(settings.database.autoIndex ?? true);
         }
     }, [settings]);
+
+    // Check directory status when database path changes
+    useEffect(() => {
+        if (databasePath) {
+            checkDirectoryStatus();
+        }
+    }, [databasePath, checkDirectoryStatus]);
 
     useEffect(() => {
         dispatch(getSettings());
@@ -214,6 +258,11 @@ const ModernDatabasePanel: React.FC = () => {
             setTimeout(() => {
                 setIndexingResult(prev => prev ? { ...prev, show: false } : null);
             }, 5000);
+
+            // Refresh directory status after indexing completes
+            setTimeout(() => {
+                checkDirectoryStatus();
+            }, 1000);
         };
 
         const handleIndexingError = (_: any, error: string) => {
@@ -460,18 +509,60 @@ const ModernDatabasePanel: React.FC = () => {
 
                             <Card sx={{ mb: 3 }}>
                                 <CardContent>
-                                    <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
-                                        <Button
-                                            variant="contained"
-                                            onClick={startIndexing}
-                                            disabled={isIndexing || !databasePath}
-                                            startIcon={isIndexing ? <CircularProgress size={20} /> : <RefreshIcon />}
-                                            fullWidth
-                                        >
-                                            {isIndexing ? 'Indexing...' : 'Start Full Indexing'}
-                                        </Button>
-                                        {/* Removed "Index Directory Only" button as per requirement */}
-                                    </Box>
+                                    {/* Status Display */}
+                                    {statusLoading ? (
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+                                            <CircularProgress size={20} />
+                                            <Typography variant="body2" color="text.secondary">
+                                                Checking directory status...
+                                            </Typography>
+                                        </Box>
+                                    ) : directoryStatus ? (
+                                        <Box sx={{ mb: 3 }}>
+                                            {directoryStatus.upToDate ? (
+                                                <Alert severity="success" sx={{ mb: 2 }}>
+                                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <Typography variant="body2">
+                                                            ✅ All files are indexed ({directoryStatus.indexedFiles} of {directoryStatus.totalFiles} files)
+                                                        </Typography>
+                                                        <Button 
+                                                            size="small" 
+                                                            onClick={checkDirectoryStatus}
+                                                            disabled={statusLoading}
+                                                        >
+                                                            Refresh
+                                                        </Button>
+                                                    </Box>
+                                                </Alert>
+                                            ) : (
+                                                <Alert severity="info" sx={{ mb: 2 }}>
+                                                    <Typography variant="body2">
+                                                        📂 {directoryStatus.indexedFiles} of {directoryStatus.totalFiles} files indexed
+                                                        {directoryStatus.newFiles.length > 0 && ` • ${directoryStatus.newFiles.length} new files`}
+                                                        {directoryStatus.modifiedFiles.length > 0 && ` • ${directoryStatus.modifiedFiles.length} modified files`}
+                                                        {directoryStatus.deletedFiles.length > 0 && ` • ${directoryStatus.deletedFiles.length} deleted files`}
+                                                    </Typography>
+                                                </Alert>
+                                            )}
+                                        </Box>
+                                    ) : null}
+
+                                    {/* Conditional Indexing Button */}
+                                    {(!directoryStatus?.upToDate || !directoryStatus) && (
+                                        <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+                                            <Button
+                                                variant="contained"
+                                                onClick={startIndexing}
+                                                disabled={isIndexing || !databasePath}
+                                                startIcon={isIndexing ? <CircularProgress size={20} /> : <RefreshIcon />}
+                                                fullWidth
+                                            >
+                                                {isIndexing ? 'Indexing...' : 
+                                                 directoryStatus?.indexedFiles === 0 ? 'Start Indexing' :
+                                                 'Update Index'}
+                                            </Button>
+                                        </Box>
+                                    )}
 
                                     {isIndexing && (
                                         <Box sx={{ mb: 2 }}>

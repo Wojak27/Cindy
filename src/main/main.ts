@@ -548,6 +548,28 @@ const setupDatabaseIPC = () => {
         }
     });
 
+    // Check directory indexing status
+    ipcMain.handle('vector-store:check-status', async (event, directoryPath) => {
+        console.log('[IPC] Checking directory status:', directoryPath);
+        try {
+            if (!directoryPath) {
+                return { success: false, message: 'Directory path is required' };
+            }
+
+            // Use DuckDB vector store if available
+            if (duckDBVectorStore) {
+                await duckDBVectorStore.initialize();
+                const status = await duckDBVectorStore.checkDirectoryStatus(directoryPath);
+                return { success: true, status };
+            } else {
+                return { success: false, message: 'Vector store not available' };
+            }
+        } catch (error) {
+            console.error('[IPC] Error checking directory status:', error);
+            return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
+        }
+    });
+
     // Get indexed items handler
     ipcMain.handle('vector-store:get-indexed-items', async (event, databasePath) => {
         console.log('[IPC] Getting indexed items for path:', databasePath);
