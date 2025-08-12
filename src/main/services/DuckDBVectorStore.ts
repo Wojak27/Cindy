@@ -89,7 +89,7 @@ export class DuckDBVectorStore extends EventEmitter {
                     embeddingModel: 'dengcao/Qwen3-Embedding-0.6B:Q8_0', // Smallest Qwen model for efficiency
                     chunkSize: 1000,
                     chunkOverlap: 200,
-                    vectorDimension: 768, // Same dimension as nomic-embed-text
+                    vectorDimension: 1024, // Qwen3-Embedding-0.6B outputs 1024 dimensions
                     ollamaBaseUrl: 'http://localhost:11434'
                 };
         }
@@ -254,7 +254,8 @@ export class DuckDBVectorStore extends EventEmitter {
 
     async addDocuments(documents: Document[]): Promise<void> {
         if (!this.db) throw new Error('Database not initialized');
-        // TODO: Fix error below
+        
+        let stmt: any = null;
         try {
             console.log('[DuckDBVectorStore] Embedding documents using provider:', this.config.embeddingProvider);
             console.log('[DuckDBVectorStore] Embedding model:', this.config.embeddingModel);
@@ -270,11 +271,15 @@ export class DuckDBVectorStore extends EventEmitter {
                 return;
             }
             const embedDim = embeddings[0]?.length || this.config.vectorDimension || 0;
-            const stmt = await this.db.prepare(`
+
+            console.log(`[DuckDBVectorStore] Preparing INSERT statement for ${embedDim} dimensions`);
+            stmt = await this.db.prepare(`
                 INSERT INTO documents (id, content, metadata, embedding)
                 VALUES (?, ?, ?, ?)
             `);
+            console.log(`[DuckDBVectorStore] Statement prepared successfully`);
 
+            let successCount = 0;
             for (let i = 0; i < documents.length; i++) {
                 const doc = documents[i];
                 const embedding = embeddings[i];
@@ -296,29 +301,7 @@ export class DuckDBVectorStore extends EventEmitter {
                 // Pass embedding as Float32Array so DuckDB binds it as a native FLOAT[] instead of varchar
                 const embeddingArray = new Float32Array(embedding);
 
-                console.log('[DuckDBVectorStore][DEBUG] Insert parameters', {
-                    id,
-                    contentLength: content.length,
-                    metadataStrType: typeof metadataStr,
-                    metadataStrSnippet: metadataStr.slice(0, 100),
-                    embeddingLength: embedding.length,
-                    embeddingSample: embedding.slice(0, 5),
-                    embeddingArrayType: embeddingArray.constructor.name,
-                    isPlainArray: Array.isArray(embeddingArray),
-                    firstFiveTypes: Array.from(embeddingArray.slice(0, 5)).map(v => typeof v)
-                });
-
                 try {
-                    console.log('[DuckDBVectorStore][DEBUG] SQL statement before run:', stmt.toString ? stmt.toString() : '(no toString)');
-                    console.log('[DuckDBVectorStore][DEBUG] Bound values:', {
-                        param1_id: id,
-                        param2_content_preview: content.slice(0, 50),
-                        param3_metadata_preview: metadataStr.slice(0, 50),
-                        param4_embedding_length: embedding.length,
-                        param4_type: embeddingArray.constructor.name,
-                        param4_isArray: Array.isArray(embeddingArray),
-                        param4_first5: Array.from(embeddingArray.slice(0, 5))
-                    });
                     // Ensure content and metadata are valid UTF-8 strings to prevent STRING -> BLOB conversion errors
                     const safeContent = Buffer.from(content, 'utf8').toString('utf8');
                     const safeMetadataStr = Buffer.from(metadataStr, 'utf8').toString('utf8');
@@ -328,18 +311,13 @@ export class DuckDBVectorStore extends EventEmitter {
                     if (embeddingPlain.length !== embedDim) {
                         console.warn(`[DuckDBVectorStore] Embedding length mismatch for ${id}: got ${embeddingPlain.length}, expected ${embedDim}`);
                     }
-                    // Pass as string literal to match CAST(? AS FLOAT[n]) expected input
-                    // Ensure this matches DuckDB expected array literal format without trailing commas
-                    const duckdbArrayLiteral = embeddingArray; // pass Float32Array directly for native binding
-                    console.log(`[DuckDBVectorStore][DEBUG] Using Float32Array for DuckDB binding, length: ${embeddingArray.length}`);
-                    // Debug parameter count issue
-                    console.log(`[DuckDBVectorStore][DEBUG] stmt expected params:`, stmt.toString ? stmt.toString() : '(no toString)');
-                    console.log(`[DuckDBVectorStore][DEBUG] Running stmt with id/content/metadata/embedding only`);
-                    const params = [id, safeContent, safeMetadataStr, duckdbArrayLiteral];
-                    console.log(`[DuckDBVectorStore][DEBUG] Param count: ${params.length}, types:`, params.map(p => typeof p));
-                    await stmt.run(...params).catch(err => {
-                        console.error(`[DuckDBVectorStore][ERROR] stmt.run failed for ${id}:`, err);
-                    });
+                    // Convert Float32Array to DuckDB array literal format: [val1, val2, ...]
+                    // DuckDB expects a string representation of the array for FLOAT[] columns
+                    const embeddingArrayString = `[${Array.from(embeddingArray).join(',')}]`;
+
+                    // Use positional parameters correctly
+                    await stmt.run(id, safeContent, safeMetadataStr, embeddingArrayString);
+                    successCount++;
                 } catch (err) {
                     console.error(`[DuckDBVectorStore] Failed to insert document ${id}:`, err);
                     if (err instanceof Error && /Invalid byte encountered/.test(err.message)) {
@@ -351,8 +329,11 @@ export class DuckDBVectorStore extends EventEmitter {
                             const escapedMetadata = metadataStr.replace(/[^\x00-\x7F]/g, ch => {
                                 return '\\x' + Buffer.from(ch).toString('hex').toUpperCase();
                             });
-                            await stmt.run(id, escapedContent, escapedMetadata, embeddingArray);
+                            // Use the same array string format for retry - need to recreate it
+                            const retryEmbeddingString = `[${Array.from(embeddingArray).join(',')}]`;
+                            await stmt.run(id, escapedContent, escapedMetadata, retryEmbeddingString);
                             console.log(`[DuckDBVectorStore] Successfully retried document ${id} with escaped characters`);
+                            successCount++;
                         } catch (retryErr) {
                             console.error(`[DuckDBVectorStore] Retry failed for document ${id}:`, retryErr);
                         }
@@ -360,16 +341,20 @@ export class DuckDBVectorStore extends EventEmitter {
                 }
             }
 
-            await stmt.finalize();
-            console.log(`[DuckDBVectorStore] Added ${documents.length} documents (bound embedding arrays directly)`);
-        }
-        catch (error) {
-            console.error('[DuckDBVectorStore] Error embedding documents:', error);
-            if (error && typeof (error as any).stack === 'string') {
-                console.error((error as any).stack);
+            console.log(`[DuckDBVectorStore] Added ${successCount} of ${documents.length} documents successfully`);
+        } catch (error) {
+            console.error('[DuckDBVectorStore] Error in addDocuments:', error);
+            throw error;
+        } finally {
+            // Always finalize the statement if it was created
+            if (stmt) {
+                try {
+                    await stmt.finalize();
+                    console.log('[DuckDBVectorStore] Statement finalized');
+                } catch (finalizeErr) {
+                    console.error('[DuckDBVectorStore] Error finalizing statement:', finalizeErr);
+                }
             }
-            // Ensure we don't have unhandled promise rejections
-            throw new Error('Failed to embed documents');
         }
     }
 
@@ -378,6 +363,7 @@ export class DuckDBVectorStore extends EventEmitter {
 
         // Get query embedding
         const queryEmbedding = await this.embeddings.embedQuery(query);
+        const queryDimension = queryEmbedding.length;
 
         // Perform similarity search using VSS (with or without HNSW index)
         try {
@@ -385,7 +371,7 @@ export class DuckDBVectorStore extends EventEmitter {
                 SELECT 
                     content,
                     metadata,
-                    vss_distance_cosine(embedding, ?::FLOAT[${this.config.vectorDimension}]) as distance
+                    vss_distance_cosine(embedding, ?::FLOAT[${queryDimension}]) as distance
                 FROM documents
                 ORDER BY distance ASC
                 LIMIT ?
@@ -449,71 +435,96 @@ export class DuckDBVectorStore extends EventEmitter {
         }
 
         console.log(`[DuckDBVectorStore] Indexing complete. Success: ${stats.success}, Errors: ${stats.errors}`);
+
+        // Emit completion event for UI updates
+        this.emit('indexingCompleted', {
+            success: stats.success,
+            errors: stats.errors,
+            total: totalFiles
+        });
+
         return stats;
     }
 
     private async indexFile(filePath: string): Promise<void> {
-        const ext = path.extname(filePath).toLowerCase();
-        let loader: any;
+        try {
 
-        switch (ext) {
-            case '.pdf':
-                loader = new PDFLoader(filePath);
-                break;
-            case '.txt':
-            case '.md':
-                loader = new TextLoader(filePath);
-                break;
-            case '.json':
-                loader = new JSONLoader(filePath);
-                break;
-            case '.docx':
-                loader = new DocxLoader(filePath);
-                break;
-            default:
-                // Skip unsupported file types
-                console.log(`[DuckDBVectorStore] Skipping unsupported file type: ${ext}`);
-                return;
-        }
+            const ext = path.extname(filePath).toLowerCase();
+            let loader: any;
 
-        const docs = await loader.load();
-        const splitDocs = await this.textSplitter.splitDocuments(docs);
-
-        // Add file metadata to each chunk
-        const docsWithMetadata = splitDocs.map(doc => ({
-            ...doc,
-            metadata: {
-                ...doc.metadata,
-                source: filePath,
-                fileName: path.basename(filePath),
-                fileType: ext
+            switch (ext) {
+                case '.pdf':
+                    loader = new PDFLoader(filePath);
+                    break;
+                case '.txt':
+                case '.md':
+                    loader = new TextLoader(filePath);
+                    break;
+                case '.json':
+                    loader = new JSONLoader(filePath);
+                    break;
+                case '.docx':
+                    loader = new DocxLoader(filePath);
+                    break;
+                default:
+                    // Skip unsupported file types
+                    console.log(`[DuckDBVectorStore] Skipping unsupported file type: ${ext}`);
+                    return;
             }
-        }));
 
-        await this.addDocuments(docsWithMetadata);
+            const docs = await loader.load();
+            const splitDocs = await this.textSplitter.splitDocuments(docs);
 
-        // Track indexed file
-        const stats = fs.statSync(filePath);
-        const fileInfo: IndexedFile = {
-            path: filePath,
-            name: path.basename(filePath),
-            size: stats.size,
-            mtime: stats.mtime.toISOString(),
-            chunks: docsWithMetadata.length
-        };
+            // Add file metadata to each chunk
+            const docsWithMetadata = splitDocs.map(doc => ({
+                ...doc,
+                metadata: {
+                    ...doc.metadata,
+                    source: filePath,
+                    fileName: path.basename(filePath),
+                    fileType: ext
+                }
+            }));
 
-        this.indexedFiles.set(filePath, fileInfo);
-        await this.saveIndexedFileInfo(fileInfo);
+            await this.addDocuments(docsWithMetadata);
+
+            // Track indexed file
+            const stats = fs.statSync(filePath);
+            const fileInfo: IndexedFile = {
+                path: filePath,
+                name: path.basename(filePath),
+                size: stats.size,
+                mtime: stats.mtime.toISOString(),
+                chunks: docsWithMetadata.length
+            };
+
+            this.indexedFiles.set(filePath, fileInfo);
+            await this.saveIndexedFileInfo(fileInfo);
+        } catch (error) {
+            console.error(`[DuckDBVectorStore] Error indexing file ${filePath}:`, error);
+            throw error; // Re-throw to be caught by the caller
+        }
     }
 
     private async saveIndexedFileInfo(fileInfo: IndexedFile): Promise<void> {
         if (!this.db) return;
 
-        await this.db.run(`
-            INSERT OR REPLACE INTO indexed_files 
-            (file_path, file_name, file_size, modified_time, chunk_count)
-            VALUES (?, ?, ?, ?, ?)
-        `, [fileInfo.path, fileInfo.name, fileInfo.size, fileInfo.mtime, fileInfo.chunks]);
+        try {
+            // Prepare and execute the statement separately for DuckDB compatibility
+            const stmt = await this.db.prepare(`
+                INSERT OR REPLACE INTO indexed_files 
+                (file_path, file_name, file_size, modified_time, chunk_count)
+                VALUES (?, ?, ?, ?, ?)
+            `);
+            
+            await stmt.run(fileInfo.path, fileInfo.name, fileInfo.size, fileInfo.mtime, fileInfo.chunks);
+            await stmt.finalize();
+            
+            console.log(`[DuckDBVectorStore] Saved indexed file info for ${fileInfo.name}`);
+        } catch (error) {
+            console.error('[DuckDBVectorStore] Error saving indexed file info:', error);
+            // Don't throw - this is metadata tracking, not critical for indexing
+        }
     }
 
     private getAllFiles(dirPath: string, arrayOfFiles: string[] = []): string[] {

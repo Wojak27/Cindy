@@ -86,6 +86,7 @@ const ModernDatabasePanel: React.FC = () => {
     const [indexingProgress, setIndexingProgress] = useState(0);
     const [indexedItems, setIndexedItems] = useState<any[]>([]);
     const [pathValidation, setPathValidation] = useState<{ valid: boolean; message?: string } | null>(null);
+    const [indexingResult, setIndexingResult] = useState<{ success: number; errors: number; show: boolean } | null>(null);
 
     // Save all settings
     const saveSettings = useCallback(() => {
@@ -210,9 +211,22 @@ const ModernDatabasePanel: React.FC = () => {
             }
         };
 
-        const handleIndexingComplete = () => {
+        const handleIndexingComplete = (_: any, data: any) => {
             setIsIndexing(false);
             setIndexingProgress(100);
+            console.log(`[DatabasePanel] Indexing complete. Success: ${data?.success || 0}, Errors: ${data?.errors || 0}`);
+            
+            // Show indexing result
+            setIndexingResult({
+                success: data?.success || 0,
+                errors: data?.errors || 0,
+                show: true
+            });
+            
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                setIndexingResult(prev => prev ? { ...prev, show: false } : null);
+            }, 5000);
         };
 
         const handleIndexingError = (_: any, error: string) => {
@@ -220,13 +234,18 @@ const ModernDatabasePanel: React.FC = () => {
             setIsIndexing(false);
         };
 
-        ipcRenderer.on('indexing-progress', handleIndexingProgress);
-        ipcRenderer.on('indexing-complete', handleIndexingComplete);
+        // Listen for vector store events
+        ipcRenderer.on('vector-store:indexing-progress', handleIndexingProgress);
+        ipcRenderer.on('vector-store:indexing-completed', handleIndexingComplete);
+        ipcRenderer.on('vector-store:file-indexed', (_: any, data: any) => {
+            console.log('[DatabasePanel] File indexed:', data);
+        });
         ipcRenderer.on('indexing-error', handleIndexingError);
 
         return () => {
-            ipcRenderer.off('indexing-progress', handleIndexingProgress);
-            ipcRenderer.off('indexing-complete', handleIndexingComplete);
+            ipcRenderer.off('vector-store:indexing-progress', handleIndexingProgress);
+            ipcRenderer.off('vector-store:indexing-completed', handleIndexingComplete);
+            ipcRenderer.off('vector-store:file-indexed', () => {});
             ipcRenderer.off('indexing-error', handleIndexingError);
         };
     }, [dispatch]);
@@ -439,6 +458,18 @@ const ModernDatabasePanel: React.FC = () => {
                             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
                                 Index documents for semantic search and retrieval.
                             </Typography>
+
+                            {/* Indexing Result Alert */}
+                            {indexingResult?.show && (
+                                <Alert 
+                                    severity={indexingResult.errors > 0 ? "warning" : "success"}
+                                    sx={{ mb: 3 }}
+                                    onClose={() => setIndexingResult(prev => prev ? { ...prev, show: false } : null)}
+                                >
+                                    Indexing complete: {indexingResult.success} files indexed successfully
+                                    {indexingResult.errors > 0 && `, ${indexingResult.errors} errors occurred`}
+                                </Alert>
+                            )}
 
                             <Card sx={{ mb: 3 }}>
                                 <CardContent>
