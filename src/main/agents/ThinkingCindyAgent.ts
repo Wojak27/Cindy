@@ -66,6 +66,7 @@ export class ThinkingCindyAgent {
         this.llmProvider = options.llmRouter;
 
         console.log('[ThinkingCindyAgent] Initialized thinking agent with tool forcing capabilities');
+        console.log('[ThinkingCindyAgent] Using provider:', this.llmProvider.getCurrentProvider());
     }
 
     /**

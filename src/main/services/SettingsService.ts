@@ -143,6 +143,7 @@ class SettingsService extends EventEmitter {
             // Initialize electron-store with schema and migrations
             this.store = new Store({
                 name: 'cindy-settings',
+                projectName: 'cindy-voice-assistant',
                 defaults: this.getDefaultSettings(),
                 clearInvalidConfig: true,
                 fileExtension: 'json',
@@ -187,13 +188,27 @@ class SettingsService extends EventEmitter {
         // Update settings
         this.settings[section] = { ...this.settings[section], ...value } as Settings[T];
 
-        // Handle sensitive data
-        if (section === 'llm' && 'openai' in value && value.openai) {
-            const openaiSettings = value.openai as Partial<Settings['llm']['openai'] & { apiKey?: string }>;
-            if (openaiSettings.apiKey) {
-                await this.setApiKey(openaiSettings.apiKey);
-                // Don't store the actual key in settings
-                (this.settings.llm.openai as any).apiKey = '';
+        // Handle sensitive data for all LLM providers
+        if (section === 'llm') {
+            // Handle OpenAI API key
+            if ('openai' in value && value.openai) {
+                const openaiSettings = value.openai as Partial<Settings['llm']['openai'] & { apiKey?: string }>;
+                if (openaiSettings.apiKey) {
+                    await this.setApiKey(openaiSettings.apiKey);
+                    // Store a placeholder to indicate key exists
+                    (this.settings.llm.openai as any).apiKey = '***';
+                }
+            }
+            
+            // Handle other provider API keys (store them in settings for now)
+            // These could be moved to keychain in the future for better security
+            const providers = ['anthropic', 'openrouter', 'groq', 'google', 'cohere', 'azure', 'huggingface'] as const;
+            for (const provider of providers) {
+                if (provider in value && (value as any)[provider]?.apiKey) {
+                    // For now, keep the API keys in settings for these providers
+                    // TODO: Move to keychain for better security
+                    console.log(`Storing API key for ${provider}`);
+                }
             }
         }
 

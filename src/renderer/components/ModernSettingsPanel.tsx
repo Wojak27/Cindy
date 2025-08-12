@@ -233,7 +233,15 @@ const ModernSettingsPanel: React.FC = () => {
             // Settings managed by this panel
             llm: {
                 provider: selectedProvider,
-                ...providerConfigs,
+                openai: providerConfigs.openai,
+                anthropic: providerConfigs.anthropic,
+                openrouter: providerConfigs.openrouter,
+                groq: providerConfigs.groq,
+                google: providerConfigs.google,
+                cohere: providerConfigs.cohere,
+                azure: providerConfigs.azure,
+                huggingface: providerConfigs.huggingface,
+                ollama: providerConfigs.ollama,
             },
             voice: voiceSettings,
             profile: {
