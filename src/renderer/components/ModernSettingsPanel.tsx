@@ -222,7 +222,7 @@ const ModernSettingsPanel: React.FC = () => {
     }, []);
 
     // Save all settings
-    const saveSettings = useCallback(() => {
+    const saveSettings = useCallback(async () => {
         const updatedSettings = {
             // Preserve existing general settings that aren't managed by this panel
             theme: settings?.theme || 'light',
@@ -259,11 +259,24 @@ const ModernSettingsPanel: React.FC = () => {
             },
         };
 
-        dispatch(updateSettings(updatedSettings));
-        updateOriginalSettingsBaseline();
-
-        // Initialize LLM service with new settings
-        ipcRenderer.invoke('initialize-llm');
+        try {
+            // First: Use direct LLM provider switching for immediate effect
+            console.log(`🚀 Direct LLM provider switch: ${selectedProvider}`);
+            const switchResult = await ipcRenderer.invoke('update-llm-provider', updatedSettings.llm);
+            console.log('✅ Direct LLM provider switch result:', switchResult);
+            
+            // Second: Update Redux store and persist all settings in background
+            dispatch(updateSettings(updatedSettings));
+            updateOriginalSettingsBaseline();
+            
+            console.log('🎯 Settings save completed successfully');
+        } catch (error) {
+            console.error('❌ Failed to save settings:', error);
+            // Fallback to old method if direct switch fails
+            dispatch(updateSettings(updatedSettings));
+            updateOriginalSettingsBaseline();
+            ipcRenderer.invoke('initialize-llm');
+        }
     }, [dispatch, selectedProvider, providerConfigs, voiceSettings, profileSettings, searchSettings, settings, updateOriginalSettingsBaseline]);
 
     // Cancel changes
@@ -315,10 +328,32 @@ const ModernSettingsPanel: React.FC = () => {
     };
 
     // Handle provider selection
-    const handleProviderSelect = (providerId: string) => {
+    const handleProviderSelect = async (providerId: string) => {
         trackOriginalSettings();
         setSelectedProvider(providerId);
         setHasUnsavedChanges(true);
+        
+        // Immediately switch provider for instant feedback
+        try {
+            console.log(`⚡ Immediate provider switch: ${providerId}`);
+            const currentLlmConfig = {
+                provider: providerId,
+                openai: providerConfigs.openai,
+                anthropic: providerConfigs.anthropic,
+                openrouter: providerConfigs.openrouter,
+                groq: providerConfigs.groq,
+                google: providerConfigs.google,
+                cohere: providerConfigs.cohere,
+                azure: providerConfigs.azure,
+                huggingface: providerConfigs.huggingface,
+                ollama: providerConfigs.ollama,
+            };
+            await ipcRenderer.invoke('update-llm-provider', currentLlmConfig);
+            console.log('✅ Immediate provider switch completed');
+        } catch (error) {
+            console.error('❌ Immediate provider switch failed:', error);
+            // Continue with UI update even if immediate switch fails
+        }
     };
 
     // Handle provider config changes

@@ -322,8 +322,20 @@ class SettingsService extends EventEmitter {
     }
 
     async getBraveApiKey(): Promise<string> {
-        const apiKey = await keytar.getPassword(this.SERVICE_NAME, this.BRAVE_ACCOUNT_NAME);
-        return apiKey || '';
+        try {
+            // Primary source: keychain (where API keys are securely stored)
+            const apiKey = await keytar.getPassword(this.SERVICE_NAME, this.BRAVE_ACCOUNT_NAME);
+            if (apiKey) {
+                return apiKey;
+            }
+            
+            // Fallback: check settings (for backward compatibility or if keychain fails)
+            const searchSettings = await this.get('search');
+            return searchSettings?.braveApiKey || '';
+        } catch (error) {
+            console.warn('[SettingsService] Failed to get Brave API key:', error);
+            return '';
+        }
     }
 
     private async setBraveApiKey(apiKey: string): Promise<void> {
@@ -331,8 +343,20 @@ class SettingsService extends EventEmitter {
     }
 
     async getTavilyApiKey(): Promise<string> {
-        const apiKey = await keytar.getPassword(this.SERVICE_NAME, this.TAVILY_ACCOUNT_NAME);
-        return apiKey || '';
+        try {
+            // Primary source: keychain (where API keys are securely stored)
+            const apiKey = await keytar.getPassword(this.SERVICE_NAME, this.TAVILY_ACCOUNT_NAME);
+            if (apiKey) {
+                return apiKey;
+            }
+            
+            // Fallback: check settings (for backward compatibility or if keychain fails)
+            const searchSettings = await this.get('search');
+            return searchSettings?.tavilyApiKey || '';
+        } catch (error) {
+            console.warn('[SettingsService] Failed to get Tavily API key:', error);
+            return '';
+        }
     }
 
     private async setTavilyApiKey(apiKey: string): Promise<void> {
@@ -340,8 +364,20 @@ class SettingsService extends EventEmitter {
     }
 
     async getSerpApiKey(): Promise<string> {
-        const apiKey = await keytar.getPassword(this.SERVICE_NAME, this.SERP_ACCOUNT_NAME);
-        return apiKey || '';
+        try {
+            // Primary source: keychain (where API keys are securely stored)
+            const apiKey = await keytar.getPassword(this.SERVICE_NAME, this.SERP_ACCOUNT_NAME);
+            if (apiKey) {
+                return apiKey;
+            }
+            
+            // Fallback: check settings (for backward compatibility or if keychain fails)
+            const searchSettings = await this.get('search');
+            return searchSettings?.serpApiKey || '';
+        } catch (error) {
+            console.warn('[SettingsService] Failed to get SERP API key:', error);
+            return '';
+        }
     }
 
     private async setSerpApiKey(apiKey: string): Promise<void> {

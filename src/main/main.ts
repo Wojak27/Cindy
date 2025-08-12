@@ -1558,6 +1558,40 @@ app.on('ready', async () => {
         return await initializeLLMServices();
     });
 
+    // IPC handler for immediate LLM provider switching (bypasses async persistence)
+    ipcMain.handle('update-llm-provider', async (event, providerConfig) => {
+        console.log('Main process - update-llm-provider IPC called with:', providerConfig);
+        
+        try {
+            if (!settingsService) {
+                return { success: false, message: 'Settings service not available' };
+            }
+            
+            // Update LLM settings directly and synchronously
+            console.log('🔧 DEBUG: Updating LLM settings directly for immediate provider switch');
+            await settingsService.set('llm', providerConfig);
+            
+            // Force immediate LLM reinitialization with new settings
+            console.log('🔧 DEBUG: Forcing immediate LLM reinitialization');
+            const initResult = await initializeLLMServices();
+            
+            if (initResult.success) {
+                console.log('✅ DEBUG: Provider switched successfully to:', providerConfig.provider);
+                return { 
+                    success: true, 
+                    message: `Provider switched to ${providerConfig.provider}`,
+                    activeProvider: llmProvider?.getCurrentProvider()
+                };
+            } else {
+                return initResult;
+            }
+            
+        } catch (error) {
+            console.error('❌ DEBUG: Failed to switch provider:', error);
+            return { success: false, message: `Provider switch failed: ${error.message}` };
+        }
+    });
+
     // IPC handler for processing messages with streaming
     ipcMain.handle('process-message', async (event, message: string, conversationId: string): Promise<string> => {
         console.log('Main process - process-message IPC called with:', message);

@@ -113,9 +113,6 @@ export class DuckDBSettingsService extends EventEmitter {
     private isInitialized: boolean = false;
     private readonly SERVICE_NAME = 'Cindy';
     private readonly ACCOUNT_NAME = 'openai_api_key';
-    private readonly BRAVE_ACCOUNT_NAME = 'brave_api_key';
-    private readonly TAVILY_ACCOUNT_NAME = 'tavily_api_key';
-    private readonly SERP_ACCOUNT_NAME = 'serp_api_key';
 
     constructor() {
         super();
@@ -168,14 +165,14 @@ export class DuckDBSettingsService extends EventEmitter {
             for (const row of rows) {
                 const keys = row.key.split('.');
                 let current = dbSettings;
-                
+
                 for (let i = 0; i < keys.length - 1; i++) {
                     if (!current[keys[i]]) {
                         current[keys[i]] = {};
                     }
                     current = current[keys[i]];
                 }
-                
+
                 try {
                     current[keys[keys.length - 1]] = JSON.parse(row.value);
                 } catch {
@@ -194,7 +191,7 @@ export class DuckDBSettingsService extends EventEmitter {
 
     private mergeSettings(defaults: any, loaded: any): any {
         const merged = { ...defaults };
-        
+
         for (const key in loaded) {
             if (loaded.hasOwnProperty(key)) {
                 if (typeof loaded[key] === 'object' && !Array.isArray(loaded[key]) && loaded[key] !== null) {
@@ -204,7 +201,7 @@ export class DuckDBSettingsService extends EventEmitter {
                 }
             }
         }
-        
+
         return merged;
     }
 
@@ -231,23 +228,6 @@ export class DuckDBSettingsService extends EventEmitter {
                 await this.setApiKey(openaiSettings.apiKey);
                 // Don't store the actual key in database
                 (this.settings.llm.openai as any).apiKey = '';
-            }
-        }
-
-        // Handle search API keys
-        if (section === 'search' && value) {
-            const searchSettings = value as Partial<Settings['search']>;
-            if (searchSettings.braveApiKey) {
-                await this.setBraveApiKey(searchSettings.braveApiKey);
-                (this.settings.search as any).braveApiKey = '';
-            }
-            if (searchSettings.tavilyApiKey) {
-                await this.setTavilyApiKey(searchSettings.tavilyApiKey);
-                (this.settings.search as any).tavilyApiKey = '';
-            }
-            if (searchSettings.serpApiKey) {
-                await this.setSerpApiKey(searchSettings.serpApiKey);
-                (this.settings.search as any).serpApiKey = '';
             }
         }
 
@@ -286,7 +266,7 @@ export class DuckDBSettingsService extends EventEmitter {
         for (const key in obj) {
             if (obj.hasOwnProperty(key)) {
                 const fullKey = prefix ? `${prefix}.${key}` : key;
-                
+
                 if (typeof obj[key] === 'object' && !Array.isArray(obj[key]) && obj[key] !== null) {
                     Object.assign(flattened, this.flattenObject(obj[key], fullKey));
                 } else {
@@ -325,12 +305,12 @@ export class DuckDBSettingsService extends EventEmitter {
         }
 
         this.settings = this.getDefaultSettings();
-        
+
         if (this.db) {
             await this.db.exec('DELETE FROM settings');
             await this.save();
         }
-        
+
         this.emit('settingsReset');
     }
 
@@ -344,32 +324,6 @@ export class DuckDBSettingsService extends EventEmitter {
         await keytar.setPassword(this.SERVICE_NAME, this.ACCOUNT_NAME, apiKey);
     }
 
-    async getBraveApiKey(): Promise<string> {
-        const apiKey = await keytar.getPassword(this.SERVICE_NAME, this.BRAVE_ACCOUNT_NAME);
-        return apiKey || '';
-    }
-
-    private async setBraveApiKey(apiKey: string): Promise<void> {
-        await keytar.setPassword(this.SERVICE_NAME, this.BRAVE_ACCOUNT_NAME, apiKey);
-    }
-
-    async getTavilyApiKey(): Promise<string> {
-        const apiKey = await keytar.getPassword(this.SERVICE_NAME, this.TAVILY_ACCOUNT_NAME);
-        return apiKey || '';
-    }
-
-    private async setTavilyApiKey(apiKey: string): Promise<void> {
-        await keytar.setPassword(this.SERVICE_NAME, this.TAVILY_ACCOUNT_NAME, apiKey);
-    }
-
-    async getSerpApiKey(): Promise<string> {
-        const apiKey = await keytar.getPassword(this.SERVICE_NAME, this.SERP_ACCOUNT_NAME);
-        return apiKey || '';
-    }
-
-    private async setSerpApiKey(apiKey: string): Promise<void> {
-        await keytar.setPassword(this.SERVICE_NAME, this.SERP_ACCOUNT_NAME, apiKey);
-    }
 
     private getDefaultSettings(): Settings {
         return {
