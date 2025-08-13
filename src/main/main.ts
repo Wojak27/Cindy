@@ -1013,13 +1013,22 @@ const setupTTSIPC = () => {
 
     // Update TTS options
     ipcMain.handle('tts-update-options', async (event, options: any) => {
-        console.log('Main process - tts-update-options IPC called with:', options);
+        console.log('Main process - tts-update-options IPC called with provider:', options.provider);
         try {
             if (!textToSpeechService) {
                 return { success: false, error: 'TextToSpeechService not initialized' };
             }
 
-            await textToSpeechService.updateOptions(options);
+            // Handle 'auto' provider resolution before passing to TTS service
+            const resolvedOptions = { ...options };
+            if (resolvedOptions.provider === 'auto') {
+                // For auto, prefer faster local models: kokoro > xenova > system
+                resolvedOptions.provider = 'kokoro';
+                console.log('Main process - Auto TTS provider resolved to:', resolvedOptions.provider);
+            }
+
+            await textToSpeechService.updateOptions(resolvedOptions);
+            console.log('Main process - TTS options updated successfully with provider:', resolvedOptions.provider);
             return { success: true };
         } catch (error) {
             console.error('Main process - tts-update-options error:', error);
@@ -1380,13 +1389,37 @@ app.on('ready', async () => {
         }
     }
 
-    // Initialize TextToSpeechService (lazy initialization - will be initialized on first use)
+    // Initialize TextToSpeechService with voice settings
     if (!textToSpeechService) {
         try {
-            // Use default constructor options which include the correct Orpheus model
-            textToSpeechService = new TextToSpeechService();
+            console.log('🔧 DEBUG: Initializing TextToSpeechService...');
+            const voiceSettings = (await settingsService?.get('voice') || {}) as any;
+            
+            // Handle 'auto' ttsProvider by selecting best available option
+            let selectedProvider = voiceSettings.ttsProvider || 'auto';
+            if (selectedProvider === 'auto') {
+                // For auto, prefer faster local models: kokoro > xenova > system
+                selectedProvider = 'kokoro'; // Default to fast local model
+                console.log('🔧 DEBUG: Auto TTS provider resolved to:', selectedProvider);
+            }
+            
+            const ttsConfig = {
+                provider: selectedProvider,
+                enableStreaming: voiceSettings.enableStreaming || false,
+                sentenceBufferSize: voiceSettings.sentenceBufferSize || 2,
+                // ElevenLabs options
+                apiKey: voiceSettings.elevenlabsApiKey,
+                voiceId: voiceSettings.elevenlabsVoiceId || 'pNInz6obpgDQGcFmaJgB',
+                stability: voiceSettings.elevenlabsStability || 0.5,
+                similarityBoost: voiceSettings.elevenlabsSimilarityBoost || 0.5,
+                // Kokoro options
+                kokoroVoice: voiceSettings.kokoroVoice || 'default',
+                // Xenova options
+                xenovaModel: voiceSettings.xenovaModel || 'Xenova/speecht5_tts',
+            };
+            textToSpeechService = new TextToSpeechService(ttsConfig);
             // Don't initialize now - will initialize lazily on first use to avoid memory issues
-            console.log('🔧 DEBUG: TextToSpeechService created (will initialize lazily on first use)');
+            console.log('🔧 DEBUG: TextToSpeechService created with provider:', selectedProvider);
         } catch (error) {
             console.error('🚨 DEBUG: Failed to create TextToSpeechService:', error);
             // Don't block app startup if TTS fails

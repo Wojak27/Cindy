@@ -37,6 +37,7 @@ import {
     ExpandMore as ExpandMoreIcon,
     ExpandLess as ExpandLessIcon,
     Cancel as CancelIcon,
+    Settings as SettingsIcon,
 } from '@mui/icons-material';
 import { ipcRenderer } from 'electron';
 
@@ -94,6 +95,19 @@ const ModernSettingsPanel: React.FC = () => {
         sttProvider: settings?.voice?.sttProvider || 'auto',
         wakeWordSensitivity: settings?.voice?.wakeWordSensitivity || 0.5,
         audioThreshold: settings?.voice?.audioThreshold || 0.01,
+        // TTS Settings
+        ttsProvider: settings?.voice?.ttsProvider || 'auto',
+        enableStreaming: settings?.voice?.enableStreaming || false,
+        sentenceBufferSize: settings?.voice?.sentenceBufferSize || 2,
+        // ElevenLabs settings
+        elevenlabsApiKey: settings?.voice?.elevenlabsApiKey || '',
+        elevenlabsVoiceId: settings?.voice?.elevenlabsVoiceId || 'pNInz6obpgDQGcFmaJgB',
+        elevenlabsStability: settings?.voice?.elevenlabsStability || 0.5,
+        elevenlabsSimilarityBoost: settings?.voice?.elevenlabsSimilarityBoost || 0.5,
+        // Kokoro settings
+        kokoroVoice: settings?.voice?.kokoroVoice || 'default',
+        // Xenova settings
+        xenovaModel: settings?.voice?.xenovaModel || 'Xenova/speecht5_tts',
     });
 
     // Profile Settings State
@@ -265,7 +279,26 @@ const ModernSettingsPanel: React.FC = () => {
             const switchResult = await ipcRenderer.invoke('update-llm-provider', updatedSettings.llm);
             console.log('✅ Direct LLM provider switch result:', switchResult);
 
-            // Second: Update Redux store and persist all settings in background
+            // Second: Update TTS service with new voice settings
+            console.log(`🎵 Direct TTS provider update: ${voiceSettings.ttsProvider}`);
+            const ttsOptions = {
+                provider: voiceSettings.ttsProvider,
+                enableStreaming: voiceSettings.enableStreaming,
+                sentenceBufferSize: voiceSettings.sentenceBufferSize,
+                // ElevenLabs options
+                apiKey: voiceSettings.elevenlabsApiKey,
+                voiceId: voiceSettings.elevenlabsVoiceId,
+                stability: voiceSettings.elevenlabsStability,
+                similarityBoost: voiceSettings.elevenlabsSimilarityBoost,
+                // Kokoro options
+                kokoroVoice: voiceSettings.kokoroVoice,
+                // Xenova options
+                xenovaModel: voiceSettings.xenovaModel,
+            };
+            const ttsResult = await ipcRenderer.invoke('tts-update-options', ttsOptions);
+            console.log('✅ Direct TTS provider update result:', ttsResult);
+
+            // Third: Update Redux store and persist all settings in background
             dispatch(updateSettings(updatedSettings));
             updateOriginalSettingsBaseline();
 
@@ -478,9 +511,63 @@ const ModernSettingsPanel: React.FC = () => {
         const target = event.target as Element;
         const settingsPanel = document.querySelector('[data-settings-panel="true"]');
 
-        if (settingsPanel && !settingsPanel.contains(target)) {
-            dispatch(toggleSettings());
+        // Check if target is inside the settings panel
+        if (settingsPanel && settingsPanel.contains(target)) {
+            return; // Click is inside the panel, don't close
         }
+
+        // Check if target is inside a MUI portal (dropdown, menu, etc.)
+        // MUI creates portals with classes like MuiPaper-root, MuiList-root, MuiMenu-root, etc.
+        const muiPortalSelectors = [
+            '.MuiPaper-root',
+            '.MuiList-root', 
+            '.MuiMenu-root',
+            '.MuiMenuItem-root',
+            '.MuiSelect-root',
+            '.MuiPopper-root',
+            '.MuiModal-root',
+            '.MuiDialog-root',
+            '.MuiAutocomplete-popper',
+            '[role="presentation"]',
+            '[role="tooltip"]',
+            '[role="menu"]',
+            '[role="listbox"]'
+        ];
+
+        // Check if the click target or any of its parents match MUI portal selectors
+        for (const selector of muiPortalSelectors) {
+            if (target.closest(selector)) {
+                return; // Click is inside a MUI portal, don't close
+            }
+        }
+
+        // Check if target is inside any element with a MUI class
+        if (target.closest('[class*="Mui"]')) {
+            return; // Click is inside a MUI component, don't close
+        }
+
+        // Additional check for React portals and other dynamic content
+        // Check if the click target has any data attributes that suggest it's part of a component
+        if (target.hasAttribute && (
+            target.hasAttribute('data-testid') ||
+            target.hasAttribute('data-value') ||
+            target.hasAttribute('aria-labelledby') ||
+            target.hasAttribute('aria-describedby')
+        )) {
+            return; // Likely part of a component, don't close
+        }
+
+        // Final check: if target is inside any element with role attributes
+        if (target.closest('[role]')) {
+            const roleElement = target.closest('[role]');
+            const role = roleElement?.getAttribute('role');
+            if (role && ['menu', 'listbox', 'option', 'menuitem', 'combobox'].includes(role)) {
+                return; // Click is inside a form control, don't close
+            }
+        }
+
+        // If we get here, it's a genuine outside click
+        dispatch(toggleSettings());
     }, [dispatch]);
 
     // Handle escape key
@@ -523,6 +610,19 @@ const ModernSettingsPanel: React.FC = () => {
                 sttProvider: settings?.voice?.sttProvider || 'auto',
                 wakeWordSensitivity: settings?.voice?.wakeWordSensitivity || 0.5,
                 audioThreshold: settings?.voice?.audioThreshold || 0.01,
+                // TTS Settings
+                ttsProvider: settings?.voice?.ttsProvider || 'auto',
+                enableStreaming: settings?.voice?.enableStreaming || false,
+                sentenceBufferSize: settings?.voice?.sentenceBufferSize || 2,
+                // ElevenLabs settings
+                elevenlabsApiKey: settings?.voice?.elevenlabsApiKey || '',
+                elevenlabsVoiceId: settings?.voice?.elevenlabsVoiceId || 'pNInz6obpgDQGcFmaJgB',
+                elevenlabsStability: settings?.voice?.elevenlabsStability || 0.5,
+                elevenlabsSimilarityBoost: settings?.voice?.elevenlabsSimilarityBoost || 0.5,
+                // Kokoro settings
+                kokoroVoice: settings?.voice?.kokoroVoice || 'default',
+                // Xenova settings
+                xenovaModel: settings?.voice?.xenovaModel || 'Xenova/speecht5_tts',
             });
             setProfileSettings({
                 name: settings?.profile?.name || '',
@@ -621,7 +721,8 @@ const ModernSettingsPanel: React.FC = () => {
                 <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
                     <Tabs value={tabValue} onChange={(_, newValue) => setTabValue(newValue)}>
                         <Tab icon={<PsychologyIcon />} label="AI PROVIDERS" />
-                        <Tab icon={<DownloadIcon />} label="Models" />
+                        <Tab icon={<DownloadIcon />} label="Data Sources" />
+                        <Tab icon={<SettingsIcon />} label="Integrations" />
                         <Tab icon={<MicIcon />} label="Voice" />
                         <Tab icon={<SearchIcon />} label="Search" />
                         <Tab icon={<PersonIcon />} label="Profile" />
@@ -1021,6 +1122,254 @@ const ModernSettingsPanel: React.FC = () => {
                                             valueLabelDisplay="auto"
                                         />
                                     </Box>
+                                </CardContent>
+                            </Card>
+
+                            {/* Text-to-Speech Settings */}
+                            <Card sx={{ mb: 3 }}>
+                                <CardContent>
+                                    <Typography variant="subtitle1" gutterBottom fontWeight={600}>
+                                        Text-to-Speech
+                                    </Typography>
+
+                                    <FormControl fullWidth sx={{ mb: 2 }}>
+                                        <InputLabel>TTS Provider</InputLabel>
+                                        <Select
+                                            value={voiceSettings.ttsProvider || 'auto'}
+                                            onChange={(e) => {
+                                                trackOriginalSettings();
+                                                setVoiceSettings(prev => ({ ...prev, ttsProvider: e.target.value }));
+                                                setHasUnsavedChanges(true);
+                                            }}
+                                        >
+                                            <MenuItem value="auto">🎯 Auto (Best Available)</MenuItem>
+                                            <MenuItem value="kokoro">🚀 Kokoro-82M (Fast, Local)</MenuItem>
+                                            <MenuItem value="xenova">⚡ Xenova Transformers (Lightweight)</MenuItem>
+                                            <MenuItem value="elevenlabs">ElevenLabs (Cloud, Premium)</MenuItem>
+                                            <MenuItem value="system">System TTS (Fallback)</MenuItem>
+                                        </Select>
+                                    </FormControl>
+
+                                    {/* Streaming Settings - show for compatible providers */}
+                                    {['auto', 'kokoro', 'xenova', 'system'].includes(voiceSettings.ttsProvider) && (
+                                        <Card sx={{ mb: 2, backgroundColor: alpha(theme.palette.primary.main, 0.05) }}>
+                                            <CardContent>
+                                                <Typography variant="subtitle2" gutterBottom fontWeight={600}>
+                                                    🎯 Streaming Settings (Faster TTS)
+                                                </Typography>
+                                                
+                                                <FormControl component="fieldset" sx={{ mb: 2 }}>
+                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                                        <Typography>Enable Streaming:</Typography>
+                                                        <Select
+                                                            size="small"
+                                                            value={voiceSettings.enableStreaming ? 'enabled' : 'disabled'}
+                                                            onChange={(e) => {
+                                                                trackOriginalSettings();
+                                                                setVoiceSettings(prev => ({ 
+                                                                    ...prev, 
+                                                                    enableStreaming: e.target.value === 'enabled' 
+                                                                }));
+                                                                setHasUnsavedChanges(true);
+                                                            }}
+                                                            sx={{ minWidth: 120 }}
+                                                        >
+                                                            <MenuItem value="enabled">✅ Enabled</MenuItem>
+                                                            <MenuItem value="disabled">❌ Disabled</MenuItem>
+                                                        </Select>
+                                                    </Box>
+                                                </FormControl>
+
+                                                {voiceSettings.enableStreaming && (
+                                                    <Box sx={{ mb: 2 }}>
+                                                        <Typography gutterBottom>
+                                                            Sentence Buffer Size: {voiceSettings.sentenceBufferSize} sentences
+                                                        </Typography>
+                                                        <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                                                            Number of sentences to generate ahead for smooth playback
+                                                        </Typography>
+                                                        <Slider
+                                                            value={voiceSettings.sentenceBufferSize}
+                                                            onChange={(_, value) => {
+                                                                trackOriginalSettings();
+                                                                setVoiceSettings(prev => ({ ...prev, sentenceBufferSize: value as number }));
+                                                                setHasUnsavedChanges(true);
+                                                            }}
+                                                            min={1}
+                                                            max={5}
+                                                            step={1}
+                                                            marks={[
+                                                                { value: 1, label: '1' },
+                                                                { value: 2, label: '2' },
+                                                                { value: 3, label: '3' },
+                                                                { value: 4, label: '4' },
+                                                                { value: 5, label: '5' }
+                                                            ]}
+                                                            valueLabelDisplay="auto"
+                                                        />
+                                                    </Box>
+                                                )}
+
+                                                <Alert severity="info" sx={{ fontSize: '0.875rem' }}>
+                                                    <strong>💡 Streaming Benefits:</strong><br />
+                                                    • Start hearing audio immediately after first sentence<br />
+                                                    • Reduces perceived latency by up to 70%<br />
+                                                    • Parallel processing for better performance
+                                                </Alert>
+                                            </CardContent>
+                                        </Card>
+                                    )}
+
+                                    {/* ElevenLabs specific settings */}
+                                    {voiceSettings.ttsProvider === 'elevenlabs' && (
+                                        <>
+                                            <TextField
+                                                fullWidth
+                                                label={`ElevenLabs API Key ${voiceSettings.elevenlabsApiKey && voiceSettings.elevenlabsApiKey !== '' ? '✓' : '✗'}`}
+                                                type="password"
+                                                value={voiceSettings.elevenlabsApiKey || ''}
+                                                onChange={(e) => {
+                                                    trackOriginalSettings();
+                                                    setVoiceSettings(prev => ({ ...prev, elevenlabsApiKey: e.target.value }));
+                                                    setHasUnsavedChanges(true);
+                                                }}
+                                                sx={{ mb: 2 }}
+                                                helperText="Get your API key at elevenlabs.io"
+                                                color={voiceSettings.elevenlabsApiKey && voiceSettings.elevenlabsApiKey !== '' ? 'success' : 'primary'}
+                                            />
+
+                                            <FormControl fullWidth sx={{ mb: 2 }}>
+                                                <InputLabel>Voice</InputLabel>
+                                                <Select
+                                                    value={voiceSettings.elevenlabsVoiceId || 'pNInz6obpgDQGcFmaJgB'}
+                                                    onChange={(e) => {
+                                                        trackOriginalSettings();
+                                                        setVoiceSettings(prev => ({ ...prev, elevenlabsVoiceId: e.target.value }));
+                                                        setHasUnsavedChanges(true);
+                                                    }}
+                                                >
+                                                    <MenuItem value="pNInz6obpgDQGcFmaJgB">Adam</MenuItem>
+                                                    <MenuItem value="EXAVITQu4vr4xnSDxMaL">Bella</MenuItem>
+                                                    <MenuItem value="VR6AewLTigWG4xSOukaG">Arnold</MenuItem>
+                                                    <MenuItem value="MF3mGyEYCl7XYWbV9V6O">Elli</MenuItem>
+                                                    <MenuItem value="TxGEqnHWrfWFTfGW9XjX">Josh</MenuItem>
+                                                    <MenuItem value="rNiSJNq4A8BZP6YJZgCp">Nicole</MenuItem>
+                                                    <MenuItem value="onwK4e9ZLuTAKqWW03F9">Daniel</MenuItem>
+                                                </Select>
+                                            </FormControl>
+
+                                            <Box sx={{ mb: 2 }}>
+                                                <Typography gutterBottom>
+                                                    Voice Stability: {voiceSettings.elevenlabsStability || 0.5}
+                                                </Typography>
+                                                <Slider
+                                                    value={voiceSettings.elevenlabsStability || 0.5}
+                                                    onChange={(_, value) => {
+                                                        trackOriginalSettings();
+                                                        setVoiceSettings(prev => ({ ...prev, elevenlabsStability: value as number }));
+                                                        setHasUnsavedChanges(true);
+                                                    }}
+                                                    min={0}
+                                                    max={1}
+                                                    step={0.1}
+                                                    marks
+                                                    valueLabelDisplay="auto"
+                                                />
+                                            </Box>
+
+                                            <Box sx={{ mb: 2 }}>
+                                                <Typography gutterBottom>
+                                                    Similarity Boost: {voiceSettings.elevenlabsSimilarityBoost || 0.5}
+                                                </Typography>
+                                                <Slider
+                                                    value={voiceSettings.elevenlabsSimilarityBoost || 0.5}
+                                                    onChange={(_, value) => {
+                                                        trackOriginalSettings();
+                                                        setVoiceSettings(prev => ({ ...prev, elevenlabsSimilarityBoost: value as number }));
+                                                        setHasUnsavedChanges(true);
+                                                    }}
+                                                    min={0}
+                                                    max={1}
+                                                    step={0.1}
+                                                    marks
+                                                    valueLabelDisplay="auto"
+                                                />
+                                            </Box>
+                                        </>
+                                    )}
+
+                                    {/* Kokoro specific settings */}
+                                    {voiceSettings.ttsProvider === 'kokoro' && (
+                                        <Card sx={{ mb: 2, backgroundColor: alpha(theme.palette.success.main, 0.05) }}>
+                                            <CardContent>
+                                                <Typography variant="subtitle2" gutterBottom fontWeight={600}>
+                                                    🚀 Kokoro-82M Settings
+                                                </Typography>
+                                                
+                                                <FormControl fullWidth sx={{ mb: 2 }}>
+                                                    <InputLabel>Voice</InputLabel>
+                                                    <Select
+                                                        value={voiceSettings.kokoroVoice || 'default'}
+                                                        onChange={(e) => {
+                                                            trackOriginalSettings();
+                                                            setVoiceSettings(prev => ({ ...prev, kokoroVoice: e.target.value }));
+                                                            setHasUnsavedChanges(true);
+                                                        }}
+                                                    >
+                                                        <MenuItem value="default">Default Voice</MenuItem>
+                                                        <MenuItem value="female_1">Female Voice 1</MenuItem>
+                                                        <MenuItem value="female_2">Female Voice 2</MenuItem>
+                                                        <MenuItem value="male_1">Male Voice 1</MenuItem>
+                                                        <MenuItem value="male_2">Male Voice 2</MenuItem>
+                                                    </Select>
+                                                </FormControl>
+
+                                                <Alert severity="success" sx={{ fontSize: '0.875rem' }}>
+                                                    <strong>🎯 Kokoro-82M Benefits:</strong><br />
+                                                    • 40x smaller than Orpheus (82M vs 3B parameters)<br />
+                                                    • Much faster inference and lower memory usage<br />
+                                                    • High-quality speech synthesis from HexGrad<br />
+                                                    • Perfect for real-time applications
+                                                </Alert>
+                                            </CardContent>
+                                        </Card>
+                                    )}
+
+                                    {/* Xenova specific settings */}
+                                    {voiceSettings.ttsProvider === 'xenova' && (
+                                        <Card sx={{ mb: 2, backgroundColor: alpha(theme.palette.info.main, 0.05) }}>
+                                            <CardContent>
+                                                <Typography variant="subtitle2" gutterBottom fontWeight={600}>
+                                                    ⚡ Xenova Transformers Settings
+                                                </Typography>
+                                                
+                                                <FormControl fullWidth sx={{ mb: 2 }}>
+                                                    <InputLabel>Model</InputLabel>
+                                                    <Select
+                                                        value={voiceSettings.xenovaModel || 'Xenova/speecht5_tts'}
+                                                        onChange={(e) => {
+                                                            trackOriginalSettings();
+                                                            setVoiceSettings(prev => ({ ...prev, xenovaModel: e.target.value }));
+                                                            setHasUnsavedChanges(true);
+                                                        }}
+                                                    >
+                                                        <MenuItem value="Xenova/speecht5_tts">SpeechT5 TTS (Recommended)</MenuItem>
+                                                        <MenuItem value="Xenova/mms-tts-eng">MMS English TTS</MenuItem>
+                                                        <MenuItem value="Xenova/bark">Bark (Multilingual)</MenuItem>
+                                                        <MenuItem value="Xenova/fastspeech2">FastSpeech2 (Fast)</MenuItem>
+                                                    </Select>
+                                                </FormControl>
+
+                                                <Alert severity="info" sx={{ fontSize: '0.875rem' }}>
+                                                    <strong>⚡ Xenova Benefits:</strong><br />
+                                                    • Browser-optimized transformer models<br />
+                                                    • Completely offline processing<br />
+                                                    • Lightweight and efficient<br />
+                                                    • Multiple model options for different use cases
+                                                </Alert>
+                                            </CardContent>
+                                        </Card>
+                                    )}
                                 </CardContent>
                             </Card>
                         </Box>

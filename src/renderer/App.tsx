@@ -29,7 +29,9 @@ import { ipcRenderer } from 'electron';
 import ChatList from './components/ChatList';
 import {
     IconButton,
-    CssBaseline
+    CssBaseline,
+    Snackbar,
+    Alert
 } from '@mui/material';
 import {
     Mic as MicIcon,
@@ -66,6 +68,7 @@ const App: React.FC = () => {
     const [isTransitioning, setIsTransitioning] = useState(false);
     const [isTTSPlaying, setIsTTSPlaying] = useState(false);
     const [currentTTSMessage, setCurrentTTSMessage] = useState<string | null>(null);
+    const [notification, setNotification] = useState<{ open: boolean; message: string; severity: 'error' | 'warning' | 'info' | 'success' }>({ open: false, message: '', severity: 'info' });
     const [isInputExpanded, setIsInputExpanded] = useState(false);
     const [activeHashtags, setActiveHashtags] = useState<string[]>([]);
     const audioContext = useRef<AudioContext | null>(null);
@@ -833,14 +836,29 @@ const App: React.FC = () => {
 
             if (!result.success) {
                 console.error('TTS playback failed:', result.error);
-                // Optionally show error to user
+                // Show error notification to user
+                setNotification({
+                    open: true,
+                    message: `TTS Error: ${result.error}`,
+                    severity: 'error'
+                });
             }
         } catch (error) {
             console.error('Error playing message:', error);
+            // Show error notification to user
+            setNotification({
+                open: true,
+                message: `TTS Error: ${error.message || 'Unknown error occurred'}`,
+                severity: 'error'
+            });
         } finally {
             setIsTTSPlaying(false);
             setCurrentTTSMessage(null);
         }
+    };
+
+    const handleCloseNotification = () => {
+        setNotification(prev => ({ ...prev, open: false }));
     };
 
     const handleStopTTS = async () => {
@@ -1526,6 +1544,23 @@ const App: React.FC = () => {
                         <ModernDatabasePanel />
                     </div>
                 </div>
+
+                {/* Global notification snackbar */}
+                <Snackbar
+                    open={notification.open}
+                    autoHideDuration={6000}
+                    onClose={handleCloseNotification}
+                    anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+                >
+                    <Alert
+                        onClose={handleCloseNotification}
+                        severity={notification.severity}
+                        variant="filled"
+                        sx={{ width: '100%' }}
+                    >
+                        {notification.message}
+                    </Alert>
+                </Snackbar>
             </div>
         </ThemeProvider>
     );

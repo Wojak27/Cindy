@@ -19,7 +19,7 @@ interface Settings {
         voiceSpeed: number;
         voicePitch: number;
         sttProvider: 'online' | 'offline' | 'auto';
-        ttsProvider: 'online' | 'offline' | 'auto';
+        ttsProvider: 'kokoro' | 'xenova' | 'elevenlabs' | 'system' | 'auto';
     };
 
     // LLM settings

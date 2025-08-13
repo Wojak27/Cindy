@@ -61,6 +61,36 @@ Consider:
 Create a search plan that maximizes the chance of finding relevant, accurate information.`;
 
     /**
+     * Prompt for location-based queries
+     */
+    static readonly LOCATION_DETECTION_PROMPT = `You are analyzing a user request to determine if it requires location information.
+
+LOCATION-BASED QUERIES include:
+- Weather: "What's the weather like?", "Is it going to rain?", "How cold is it?"
+- Local businesses: "Find a restaurant nearby", "Coffee shops near me"
+- Events: "What's happening tonight?", "Local events this weekend"
+- Traffic: "How's traffic?", "Best route to work"
+- Local news: "What's happening in the city?", "Local news"
+- Services: "Find a dentist", "Nearest gas station"
+
+If the query requires location, respond with:
+REQUIRES_LOCATION: true
+QUERY_TYPE: [weather|business|events|traffic|news|services|other]
+ENHANCED_QUERY: [original query enhanced with location placeholder]
+
+If no location needed, respond with:
+REQUIRES_LOCATION: false
+
+Examples:
+User: "What's the weather today?"
+REQUIRES_LOCATION: true
+QUERY_TYPE: weather
+ENHANCED_QUERY: What's the weather today in {LOCATION}?
+
+User: "Tell me a joke"
+REQUIRES_LOCATION: false`;
+
+    /**
      * Prompt for synthesis and response generation
      */
     static readonly SYNTHESIS_PROMPT = `You are synthesizing information from various sources to provide a helpful response.
