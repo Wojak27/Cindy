@@ -760,35 +760,10 @@ const App: React.FC = () => {
             }
         };
 
-        // Handle user message emitted from backend - now just a safety check since we add immediately
+        // Handle user message emitted from backend - no longer used since frontend adds immediately
         const handleUserMessage = (_: any, data: { message: any }) => {
-            if (data.message.conversationId === currentConversationId) {
-                // Check if this message already exists (it should, since we add it immediately now)
-                const messageExists = messages.some((msg: any) => 
-                    msg.role === 'user' && 
-                    msg.content === data.message.content && 
-                    msg.conversationId === data.message.conversationId &&
-                    Math.abs(msg.timestamp - data.message.timestamp) < 5000 // Within 5 seconds
-                );
-                
-                if (!messageExists) {
-                    // Fallback: add the message if somehow it wasn't added immediately
-                    console.warn('User message not found in UI, adding from backend');
-                    dispatch({ type: 'ADD_MESSAGE', payload: data.message });
-                    
-                    // Create assistant placeholder
-                    const assistantMessageId = `assistant-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-                    const assistantMessage = {
-                        id: assistantMessageId,
-                        role: 'assistant',
-                        content: '',
-                        timestamp: Date.now() + 1,
-                        isStreaming: true,
-                        conversationId: data.message.conversationId
-                    };
-                    dispatch({ type: 'ADD_MESSAGE', payload: assistantMessage });
-                }
-            }
+            // Backend no longer emits user messages - frontend handles them immediately
+            console.log('Backend user-message event received (should not happen):', data.message);
         };
 
         ipcRenderer.on('stream-chunk', handleStreamChunk);

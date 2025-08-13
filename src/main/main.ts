@@ -2105,7 +2105,7 @@ app.on('ready', async () => {
     ipcMain.handle('process-message', async (event, message: string, conversationId: string): Promise<string> => {
         console.log('Main process - process-message IPC called with:', message);
 
-        // Save and emit user message IMMEDIATELY at start to prevent disappearing/duplicating
+        // Save user message to backend storage (frontend already shows it immediately)
         if (chatStorageService) {
             try {
                 const userMessage = {
@@ -2115,18 +2115,8 @@ app.on('ready', async () => {
                     timestamp: Date.now()
                 };
                 await chatStorageService.saveMessage(userMessage);
-                console.log('🔧 DEBUG: User message saved immediately at start');
-
-                // Emit user message to frontend immediately
-                event.sender.send('user-message', {
-                    message: {
-                        id: `user-${userMessage.timestamp}`,
-                        role: 'user',
-                        content: message,
-                        timestamp: userMessage.timestamp,
-                        conversationId
-                    }
-                });
+                console.log('🔧 DEBUG: User message saved to backend storage');
+                // NOTE: No longer emitting to frontend - frontend adds message immediately for better UX
             } catch (saveError) {
                 console.error('🚨 DEBUG: Failed to persist user message at start:', saveError);
             }
