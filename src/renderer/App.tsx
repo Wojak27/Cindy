@@ -1260,29 +1260,51 @@ const App: React.FC = () => {
                                             <div className="message-content">
                                                 {msg.role === 'assistant' && (
                                                     <>
-                                                        {/* Render thinking blocks before assistant content */}
-                                                        {associatedBlocks.map((block: any) => (
-                                                            <ThinkingBlock
-                                                                key={block.id}
-                                                                id={block.id}
-                                                                content={block.content}
-                                                                startTime={block.startTime}
-                                                                endTime={block.endTime}
-                                                                duration={block.duration}
-                                                                defaultOpen={false}
-                                                                isIncomplete={block.isIncomplete || false}
-                                                                isStreaming={block.isStreaming || false}
-                                                            />
-                                                        ))}
-
-                                                        {/* Render tool calls after thinking blocks */}
-                                                        {associatedToolCalls.map((toolCall: any) => (
-                                                            <ToolBlock
-                                                                key={toolCall.id}
-                                                                toolCall={toolCall}
-                                                                defaultOpen={false}
-                                                            />
-                                                        ))}
+                                                        {/* Render thinking blocks and tool calls in chronological order */}
+                                                        {(() => {
+                                                            // Combine thinking blocks and tool calls, then sort chronologically
+                                                            const allItems = [
+                                                                ...associatedBlocks.map((block: any) => ({
+                                                                    ...block,
+                                                                    type: 'thinking',
+                                                                    timestamp: block.startTime || block.timestamp || 0
+                                                                })),
+                                                                ...associatedToolCalls.map((toolCall: any) => ({
+                                                                    ...toolCall,
+                                                                    type: 'tool',
+                                                                    timestamp: toolCall.startTime || toolCall.timestamp || 0
+                                                                }))
+                                                            ];
+                                                            
+                                                            // Sort by timestamp for proper chronological order
+                                                            allItems.sort((a, b) => a.timestamp - b.timestamp);
+                                                            
+                                                            return allItems.map((item: any) => {
+                                                                if (item.type === 'thinking') {
+                                                                    return (
+                                                                        <ThinkingBlock
+                                                                            key={item.id}
+                                                                            id={item.id}
+                                                                            content={item.content}
+                                                                            startTime={item.startTime}
+                                                                            endTime={item.endTime}
+                                                                            duration={item.duration}
+                                                                            defaultOpen={false}
+                                                                            isIncomplete={item.isIncomplete || false}
+                                                                            isStreaming={item.isStreaming || false}
+                                                                        />
+                                                                    );
+                                                                } else {
+                                                                    return (
+                                                                        <ToolBlock
+                                                                            key={item.id}
+                                                                            toolCall={item}
+                                                                            defaultOpen={false}
+                                                                        />
+                                                                    );
+                                                                }
+                                                            });
+                                                        })()}
                                                     </>
                                                 )}
 
