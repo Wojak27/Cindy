@@ -41,4 +41,11 @@ module.exports = {
         __dirname: false,
         __filename: false,
     },
+    externals: {
+        // Externalize orpheus-speech and its dependencies to prevent webpack bundling issues
+        'orpheus-speech': 'commonjs orpheus-speech',
+        '@huggingface/transformers': 'commonjs @huggingface/transformers',
+        // Also externalize other native modules if needed
+        'electron': 'commonjs electron'
+    }
 };

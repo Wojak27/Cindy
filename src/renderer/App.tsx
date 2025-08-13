@@ -12,6 +12,7 @@ import HashtagManager from './components/HashtagManager';
 // SoundReactiveCircle was imported but not used in the component
 // The component now uses SoundReactiveBlob instead
 import SoundReactiveBlob from './components/SoundReactiveBlob';
+import useDocumentDetection from './hooks/useDocumentDetection';
 import ModernSettingsPanel from './components/ModernSettingsPanel';
 import ModernDatabasePanel from './components/ModernDatabasePanel';
 import ChatDocumentPanel from './components/ChatDocumentPanel';
@@ -70,6 +71,7 @@ const App: React.FC = () => {
     const audioContext = useRef<AudioContext | null>(null);
     const sounds = useRef<Record<string, AudioBuffer>>({});
     const streamController = useRef<AbortController | null>(null);
+    const { detectAndShowDocuments } = useDocumentDetection();
     const settingsSidebarRef = useRef<HTMLDivElement>(null);
     const databaseSidebarRef = useRef<HTMLDivElement>(null);
     const chatMessagesRef = useRef<HTMLDivElement>(null);
@@ -231,8 +233,14 @@ const App: React.FC = () => {
         }
     }, []);
 
-
-
+    // Auto-scroll to bottom when new messages are added
+    useEffect(() => {
+        if (chatMessagesRef.current && messages.length > 0) {
+            const scrollContainer = chatMessagesRef.current;
+            // Scroll to bottom smoothly
+            scrollContainer.scrollTop = scrollContainer.scrollHeight;
+        }
+    }, [messages.length]);
 
     // Initialize audio context for recording activation sound only
     useEffect(() => {
@@ -460,26 +468,17 @@ const App: React.FC = () => {
                 }
             }
 
-            // User message will be saved by backend during processing
-            // Don't add to frontend store here to prevent duplicates
+            // Clear input immediately for better UX
+            const messageToProcess = messageContent;  // Use the content with hashtags
             setInputValue('');
             setActiveHashtags([]); // Clear hashtags after sending
 
-            // Create assistant message placeholder for streaming
-            const assistantMessageId = `assistant-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-            const assistantMessage = {
-                id: assistantMessageId,
-                role: 'assistant',
-                content: '',
-                timestamp: Date.now(),
-                isStreaming: true,
-                conversationId: convID
-            };
-            dispatch({ type: 'ADD_MESSAGE', payload: assistantMessage });
+            // User message will be saved by backend during processing
+            // Don't add to frontend store here to prevent duplicates
+            
+            // NOTE: Assistant message placeholder will be created after user message is received
+            // to maintain proper chronological order
             dispatch({ type: 'START_THINKING' });
-
-            // Clear input immediately for better UX
-            const messageToProcess = inputValue;
 
             // Create new AbortController for this request
             streamController.current = new AbortController();
@@ -489,14 +488,20 @@ const App: React.FC = () => {
                 await ipcRenderer.invoke('process-message', messageToProcess, convID);
             } catch (error) {
                 console.error('Error processing message:', error);
-                // Mark the assistant message as failed
-                dispatch({
-                    type: 'MARK_MESSAGE_FAILED',
-                    payload: {
-                        messageId: assistantMessage.id,
-                        error: error instanceof Error ? error.message : 'Unknown error occurred'
-                    }
-                });
+                // Find and mark the last assistant message as failed
+                const lastAssistantMsg = messages.filter((m: any) => 
+                    m.role === 'assistant' && m.conversationId === convID
+                ).pop();
+                
+                if (lastAssistantMsg) {
+                    dispatch({
+                        type: 'MARK_MESSAGE_FAILED',
+                        payload: {
+                            messageId: lastAssistantMsg.id,
+                            error: error instanceof Error ? error.message : 'Unknown error occurred'
+                        }
+                    });
+                }
                 dispatch({ type: 'STOP_THINKING' });
             }
             if (convID !== currentConversationId) {
@@ -671,7 +676,7 @@ const App: React.FC = () => {
                     dispatch({ type: 'UPDATE_THINKING_BLOCK', payload: block });
                 });
 
-                // Process the final message content for code blocks
+                // Process the final message content for code blocks and document detection
                 const lastMessage = messages[messages.length - 1];
                 if (lastMessage && lastMessage.role === 'assistant' && lastMessage.content) {
                     const processed = ContentProcessor.processMessageContent(
@@ -689,6 +694,20 @@ const App: React.FC = () => {
                                 hasCodeBlocks: processed.hasCodeBlocks
                             }
                         });
+                    }
+
+                    // Detect and auto-show documents mentioned in the AI response
+                    try {
+                        console.log('🔍 DEBUG: Detecting documents in completed AI response');
+                        detectAndShowDocuments(lastMessage.content).then(detectedDocs => {
+                            if (detectedDocs.length > 0) {
+                                console.log('🔍 DEBUG: Auto-detected', detectedDocs.length, 'documents from AI response');
+                            }
+                        }).catch(error => {
+                            console.warn('🔍 DEBUG: Document detection failed:', error);
+                        });
+                    } catch (error) {
+                        console.warn('🔍 DEBUG: Document detection error:', error);
                     }
                 }
 
@@ -728,7 +747,21 @@ const App: React.FC = () => {
         // Handle user message emitted from backend (to prevent duplicates)
         const handleUserMessage = (_: any, data: { message: any }) => {
             if (data.message.conversationId === currentConversationId) {
+                // Add the user message first
                 dispatch({ type: 'ADD_MESSAGE', payload: data.message });
+                
+                // Now create assistant message placeholder for streaming
+                // This ensures proper chronological order
+                const assistantMessageId = `assistant-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                const assistantMessage = {
+                    id: assistantMessageId,
+                    role: 'assistant',
+                    content: '',
+                    timestamp: Date.now() + 1, // Ensure it's after user message
+                    isStreaming: true,
+                    conversationId: data.message.conversationId
+                };
+                dispatch({ type: 'ADD_MESSAGE', payload: assistantMessage });
             }
         };
 
@@ -1034,7 +1067,7 @@ const App: React.FC = () => {
                                     flex: 1, 
                                     overflowY: 'auto', 
                                     display: 'flex', 
-                                    flexDirection: 'column-reverse' 
+                                    flexDirection: 'column'
                                 }}
                             >
                                 {/* Show sound reactive circle when no messages and no current input */}
@@ -1146,7 +1179,7 @@ const App: React.FC = () => {
                                         </div>
                                     </div>
                                 )}
-                                {[...messages].reverse().map((msg: any, index: number) => {
+                                {[...messages].sort((a, b) => a.timestamp - b.timestamp).map((msg: any, index: number) => {
                                     const messageClass = `message ${msg.role} ${msg.isStreaming ? 'streaming' : ''} ${isSpeaking && msg.role === 'assistant' ? 'speaking' : ''} ''}`;
                                     console.log('Rendering message:', msg)
                                     // Get thinking blocks associated with this specific message

@@ -309,9 +309,10 @@ body:not([data-theme="dark"]) .message * {
 /* Chat container */
 .chat-container {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     flex: 1;
     height: calc(100vh - 60px);
+    transition: all 0.3s ease;
     background: var(--background);
     overflow: hidden;
     max-width: 100%;
@@ -551,6 +552,7 @@ html:not([data-theme="dark"]) .message-text {
         opacity: 0;
         transform: translateY(30px);
     }
+
     100% {
         opacity: 1;
         transform: translateY(0);
@@ -562,6 +564,7 @@ html:not([data-theme="dark"]) .message-text {
         transform: scale(0.7);
         opacity: 0.8;
     }
+
     100% {
         transform: scale(1);
         opacity: 1;

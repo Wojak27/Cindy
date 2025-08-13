@@ -10,6 +10,17 @@ export interface ChatMessage {
     timestamp: number;
 }
 
+export interface ThinkingBlock {
+    id: string;
+    conversationId: string;
+    messageId?: string;
+    content: string;
+    startTime: number;
+    endTime?: number;
+    duration?: string;
+    timestamp: number;
+}
+
 export class ChatStorageService {
     private db: any | null = null; // eslint-disable-line @typescript-eslint/no-explicit-any
     private DB_PATH: string;
@@ -50,8 +61,23 @@ export class ChatStorageService {
             content TEXT NOT NULL,
             timestamp INTEGER NOT NULL
           );
+          
+          CREATE TABLE IF NOT EXISTS thinking_blocks (
+            id TEXT PRIMARY KEY,
+            conversationId TEXT NOT NULL,
+            messageId TEXT,
+            content TEXT NOT NULL,
+            startTime INTEGER NOT NULL,
+            endTime INTEGER,
+            duration TEXT,
+            timestamp INTEGER NOT NULL
+          );
+          
           CREATE INDEX IF NOT EXISTS idx_conversation ON messages(conversationId);
           CREATE INDEX IF NOT EXISTS idx_timestamp ON messages(timestamp);
+          CREATE INDEX IF NOT EXISTS idx_thinking_conversation ON thinking_blocks(conversationId);
+          CREATE INDEX IF NOT EXISTS idx_thinking_message ON thinking_blocks(messageId);
+          CREATE INDEX IF NOT EXISTS idx_thinking_timestamp ON thinking_blocks(timestamp);
         `);
             console.log('🔧 DEBUG: ChatStorageService.initialize() - Tables and indexes created successfully');
 
@@ -257,15 +283,77 @@ export class ChatStorageService {
      * Note: For now, returns empty array since thinking blocks are not yet stored in the database
      * This is a placeholder for future implementation
      */
-    async getThinkingBlocks(conversationId: string): Promise<any[]> {
+    async saveThinkingBlock(thinkingBlock: ThinkingBlock): Promise<void> {
+        console.log('🔧 DEBUG: ChatStorageService.saveThinkingBlock() called for:', thinkingBlock.id);
+        
+        if (!this.db) {
+            console.error('🚨 DEBUG: ChatStorageService.saveThinkingBlock() - Database not initialized');
+            return;
+        }
+
+        try {
+            await this.db.run(
+                `INSERT OR REPLACE INTO thinking_blocks 
+                 (id, conversationId, messageId, content, startTime, endTime, duration, timestamp) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    thinkingBlock.id,
+                    thinkingBlock.conversationId,
+                    thinkingBlock.messageId || null,
+                    thinkingBlock.content,
+                    thinkingBlock.startTime,
+                    thinkingBlock.endTime || null,
+                    thinkingBlock.duration || null,
+                    thinkingBlock.timestamp
+                ]
+            );
+            console.log('🔧 DEBUG: ChatStorageService.saveThinkingBlock() - Thinking block saved successfully');
+        } catch (error) {
+            console.error('🚨 DEBUG: ChatStorageService.saveThinkingBlock() - Failed to save thinking block:', error);
+        }
+    }
+
+    async getThinkingBlocks(conversationId: string): Promise<ThinkingBlock[]> {
         console.log('🔧 DEBUG: ChatStorageService.getThinkingBlocks() called for conversation:', conversationId);
 
-        // TODO: Implement thinking blocks storage in database
-        // For now, return empty array as thinking blocks are not stored in the database
-        // They are managed in Redux store during the session
+        if (!this.db) {
+            console.error('🚨 DEBUG: ChatStorageService.getThinkingBlocks() - Database not initialized');
+            return [];
+        }
 
-        console.log('🔧 DEBUG: Thinking blocks not implemented in storage yet, returning empty array');
-        return [];
+        try {
+            const blocks = await this.db.all(
+                `SELECT * FROM thinking_blocks 
+                 WHERE conversationId = ? 
+                 ORDER BY timestamp ASC`,
+                [conversationId]
+            );
+            
+            console.log('🔧 DEBUG: ChatStorageService.getThinkingBlocks() - Retrieved', blocks.length, 'thinking blocks');
+            return blocks;
+        } catch (error) {
+            console.error('🚨 DEBUG: ChatStorageService.getThinkingBlocks() - Failed to retrieve thinking blocks:', error);
+            return [];
+        }
+    }
+
+    async deleteThinkingBlocks(conversationId: string): Promise<void> {
+        console.log('🔧 DEBUG: ChatStorageService.deleteThinkingBlocks() called for conversation:', conversationId);
+
+        if (!this.db) {
+            console.error('🚨 DEBUG: ChatStorageService.deleteThinkingBlocks() - Database not initialized');
+            return;
+        }
+
+        try {
+            await this.db.run(
+                `DELETE FROM thinking_blocks WHERE conversationId = ?`,
+                [conversationId]
+            );
+            console.log('🔧 DEBUG: ChatStorageService.deleteThinkingBlocks() - Thinking blocks deleted successfully');
+        } catch (error) {
+            console.error('🚨 DEBUG: ChatStorageService.deleteThinkingBlocks() - Failed to delete thinking blocks:', error);
+        }
     }
 
 }

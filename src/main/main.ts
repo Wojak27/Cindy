@@ -1,5 +1,6 @@
 import { app, BrowserWindow, Menu, nativeImage, NativeImage, ipcMain, desktopCapturer } from 'electron';
 import * as path from 'path';
+import * as os from 'os';
 import { CindyMenu } from './menu';
 import { SettingsService, Settings } from './services/SettingsService';
 import { TrayService } from './services/TrayService';
@@ -341,7 +342,9 @@ const setupDatabaseIPC = () => {
         'validate-path',
         'show-directory-dialog',
         'create-vector-store',
-        'vector-store:get-indexed-items'
+        'vector-store:get-indexed-items',
+        'resolve-document-path',
+        'detect-and-resolve-documents'
     ];
 
     handlersToRemove.forEach(handler => {
@@ -489,7 +492,7 @@ const setupDatabaseIPC = () => {
             }
 
             const vectorStore = new DuckDBVectorStore(vectorStoreConfig);
-            
+
             // Assign to global variable so IPC handlers can access it
             duckDBVectorStore = vectorStore;
 
@@ -613,11 +616,11 @@ const setupDatabaseIPC = () => {
                 const dbPath = path.join(databasePath, '.vector_store', 'duckdb_vectors.db');
                 if (fs.existsSync(dbPath)) {
                     console.log('[IPC] Found existing vector database, initializing...');
-                    
+
                     // Get settings for provider configuration
                     const llmSettings: any = await settingsService?.get('llm') || {};
                     const provider = llmSettings.provider || 'ollama';
-                    
+
                     // Configure vector store based on provider
                     const vectorStoreConfig: any = {
                         databasePath: dbPath,
@@ -646,7 +649,7 @@ const setupDatabaseIPC = () => {
                     }
                 }
             }
-            
+
             // Use DuckDB vector store if available
             if (duckDBVectorStore) {
                 console.log('[IPC] Fetching indexed files from DuckDB...');
@@ -674,6 +677,178 @@ const setupDatabaseIPC = () => {
         }
     });
 
+    // Document resolution for auto-detection from AI responses
+    ipcMain.handle('resolve-document-path', async (event, documentPath: string) => {
+        console.log('[IPC] Resolving document path:', documentPath);
+        try {
+            // Check if it's already an absolute path
+            if (path.isAbsolute(documentPath)) {
+                if (fs.existsSync(documentPath)) {
+                    const stats = fs.statSync(documentPath);
+                    return {
+                        success: true,
+                        document: {
+                            path: documentPath,
+                            name: path.basename(documentPath),
+                            size: stats.size,
+                            mtime: stats.mtime.toISOString(),
+                            chunks: 1
+                        }
+                    };
+                }
+                return { success: false, error: 'File not found at absolute path' };
+            }
+
+            // For relative paths, search in indexed documents
+            if (duckDBVectorStore) {
+                const indexedFiles = await duckDBVectorStore.getIndexedFiles();
+                const matchingFile = indexedFiles.find(file =>
+                    file.path.includes(documentPath) ||
+                    path.basename(file.path) === documentPath ||
+                    path.basename(file.path) === path.basename(documentPath)
+                );
+
+                if (matchingFile) {
+                    console.log('[IPC] Found document in index:', matchingFile.path);
+                    return {
+                        success: true,
+                        document: {
+                            path: matchingFile.path,
+                            name: path.basename(matchingFile.path),
+                            size: matchingFile.size || 0,
+                            mtime: matchingFile.mtime || new Date().toISOString(),
+                            chunks: matchingFile.chunks || 1
+                        }
+                    };
+                }
+            }
+
+            // Search in common locations (user documents, downloads, etc.)
+            const commonPaths = [
+                path.join(os.homedir(), 'Documents'),
+                path.join(os.homedir(), 'Downloads'),
+                path.join(os.homedir(), 'Desktop'),
+                process.cwd()
+            ];
+
+            for (const basePath of commonPaths) {
+                const fullPath = path.join(basePath, documentPath);
+                if (fs.existsSync(fullPath)) {
+                    const stats = fs.statSync(fullPath);
+                    console.log('[IPC] Found document at:', fullPath);
+                    return {
+                        success: true,
+                        document: {
+                            path: fullPath,
+                            name: path.basename(fullPath),
+                            size: stats.size,
+                            mtime: stats.mtime.toISOString(),
+                            chunks: 1
+                        }
+                    };
+                }
+            }
+
+            return { success: false, error: 'Document not found in any known location' };
+        } catch (error) {
+            console.error('[IPC] Error resolving document path:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        }
+    });
+
+    // Auto-detect and resolve documents from AI response text
+    ipcMain.handle('detect-and-resolve-documents', async (event, responseText: string) => {
+        console.log('[IPC] Detecting documents in AI response');
+        try {
+            // Simple document detection patterns (main process implementation)
+            const documentPatterns = [
+                // File paths with extensions
+                /(?:file|document|path)?\s*["`']([^"`']+\.(?:pdf|doc|docx|txt|md|json|csv|xlsx|py|js|ts|html|css))["`']/gi,
+                // Markdown-style file references
+                /\[([^\]]+\.(?:pdf|doc|docx|txt|md|json|csv|xlsx|py|js|ts|html|css))\]/gi,
+                // File names mentioned in text
+                /(?:In|From|File|Document|Found in|Based on|According to)\s+["`']?([^"`'\s]+\.(?:pdf|doc|docx|txt|md|json|csv|xlsx|py|js|ts|html|css))["`']?/gi,
+                // Simple file mentions
+                /\b([a-zA-Z0-9_\-./]+\.(?:pdf|doc|docx|txt|md|json|csv|xlsx|py|js|ts|html|css))\b/gi
+            ];
+
+            const detectedPaths = new Set<string>();
+
+            for (const pattern of documentPatterns) {
+                let match;
+                pattern.lastIndex = 0; // Reset regex state
+
+                while ((match = pattern.exec(responseText)) !== null) {
+                    const filePath = match[1];
+                    if (filePath && !detectedPaths.has(filePath)) {
+                        detectedPaths.add(filePath);
+                    }
+                }
+            }
+
+            console.log('[IPC] Detected', detectedPaths.size, 'potential documents');
+
+            const resolvedDocuments = [];
+
+            // Try to resolve each detected document
+            for (const detectedPath of detectedPaths) {
+                try {
+                    // Manually resolve using the same logic as resolve-document-path
+                    let resolvedDocument = null;
+
+                    // Check if it's already an absolute path
+                    if (path.isAbsolute(detectedPath)) {
+                        if (fs.existsSync(detectedPath)) {
+                            const stats = fs.statSync(detectedPath);
+                            resolvedDocument = {
+                                path: detectedPath,
+                                name: path.basename(detectedPath),
+                                size: stats.size,
+                                mtime: stats.mtime.toISOString(),
+                                chunks: 1
+                            };
+                        }
+                    } else {
+                        // Search in indexed documents
+                        if (duckDBVectorStore) {
+                            const indexedFiles = await duckDBVectorStore.getIndexedFiles();
+                            const matchingFile = indexedFiles.find(file =>
+                                file.path.includes(detectedPath) ||
+                                path.basename(file.path) === detectedPath ||
+                                path.basename(file.path) === path.basename(detectedPath)
+                            );
+
+                            if (matchingFile) {
+                                resolvedDocument = {
+                                    path: matchingFile.path,
+                                    name: path.basename(matchingFile.path),
+                                    size: matchingFile.size || 0,
+                                    mtime: matchingFile.mtime || new Date().toISOString(),
+                                    chunks: matchingFile.chunks || 1
+                                };
+                            }
+                        }
+                    }
+
+                    if (resolvedDocument) {
+                        resolvedDocuments.push({
+                            ...resolvedDocument,
+                            confidence: 0.8 // Default confidence for detected documents
+                        });
+                    }
+                } catch (resolveError) {
+                    console.warn('[IPC] Failed to resolve detected document:', detectedPath, resolveError);
+                }
+            }
+
+            console.log('[IPC] Successfully resolved', resolvedDocuments.length, 'documents');
+            return { success: true, documents: resolvedDocuments };
+        } catch (error) {
+            console.error('[IPC] Error detecting/resolving documents:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        }
+    });
+
     // File reading for document viewer
     ipcMain.handle('read-file-buffer', async (event, filePath) => {
         console.log('[IPC] Reading file buffer for:', filePath);
@@ -685,7 +860,7 @@ const setupDatabaseIPC = () => {
 
             // Security check - only allow reading files that are indexed
             let isAllowed = false;
-            
+
             // Check if file is in indexed files (DuckDB)
             if (duckDBVectorStore) {
                 try {
@@ -718,7 +893,7 @@ const setupDatabaseIPC = () => {
             const buffer = fs.readFileSync(filePath);
             const base64 = buffer.toString('base64');
             const stats = fs.statSync(filePath);
-            
+
             return {
                 success: true,
                 data: base64,
@@ -1208,15 +1383,8 @@ app.on('ready', async () => {
     // Initialize TextToSpeechService (lazy initialization - will be initialized on first use)
     if (!textToSpeechService) {
         try {
-            const ttsOptions = {
-                modelName: 'microsoft/speecht5_tts',
-                speed: 1.0,
-                volume: 1.0,
-                pitch: 1.0,
-                dtype: 'fp32',
-                device: 'cpu'
-            };
-            textToSpeechService = new TextToSpeechService(ttsOptions);
+            // Use default constructor options which include the correct Orpheus model
+            textToSpeechService = new TextToSpeechService();
             // Don't initialize now - will initialize lazily on first use to avoid memory issues
             console.log('🔧 DEBUG: TextToSpeechService created (will initialize lazily on first use)');
         } catch (error) {
@@ -1363,10 +1531,10 @@ app.on('ready', async () => {
                 }
 
                 vectorStore = new DuckDBVectorStore(vectorStoreConfig);
-                
+
                 // Assign to global variable so IPC handlers can access it
                 duckDBVectorStore = vectorStore;
-                
+
                 await vectorStore.initialize();
 
                 // Set up progress event forwarding
@@ -1376,7 +1544,7 @@ app.on('ready', async () => {
                         mainWindow.webContents.send('vector-store:indexing-progress', data);
                     }
                 });
-                
+
                 vectorStore.on('indexingCompleted', (data) => {
                     console.log('[IPC] Full indexing completed event:', data);
                     if (mainWindow) {
@@ -1632,7 +1800,7 @@ app.on('ready', async () => {
         console.log('🔧 DEBUG: Current duckDBVectorStore status:', !!duckDBVectorStore);
         console.log('🔧 DEBUG: Current duckDBVectorStore type:', duckDBVectorStore?.constructor?.name);
         console.log('🔧 DEBUG: Current duckDBVectorStore has initialize method:', typeof duckDBVectorStore?.initialize === 'function');
-        
+
         try {
             // Track whether this is a reinitialization
             let wasReinitialization = false;
@@ -1712,18 +1880,18 @@ app.on('ready', async () => {
             if (!duckDBVectorStore) {
                 try {
                     console.log('🔧 DEBUG: Initializing DuckDB vector store for tool registration...');
-                    
+
                     // Get database path from settings, with fallback to default
                     const settingsData = await settingsService?.getAll();
                     let databasePath = settingsData?.database?.path;
-                    
+
                     // If no database path configured, use default app data directory
                     if (!databasePath) {
                         const { app } = require('electron');
                         databasePath = path.join(app.getPath('userData'), 'default-database');
                         console.log('🔧 DEBUG: No database path configured, using default:', databasePath);
                     }
-                    
+
                     // Get current LLM settings to determine embedding provider
                     const llmSettings = settingsData?.llm || { provider: 'ollama' };
                     const provider = llmSettings.provider || 'ollama';
@@ -1887,29 +2055,29 @@ app.on('ready', async () => {
             console.log('🔧 DEBUG: Getting existing LLM settings to preserve configurations');
             const existingLlmSettings = await settingsService.get('llm');
             console.log('🔧 DEBUG: Existing LLM settings:', Object.keys(existingLlmSettings || {}));
-            
+
             // Merge configurations more safely using dynamic approach
             const updatedConfig: any = {
                 ...existingLlmSettings,
                 ...providerConfig,
             };
-            
+
             // Preserve individual provider configurations by merging them
             const providerKeys = ['openai', 'anthropic', 'openrouter', 'groq', 'google', 'cohere', 'azure', 'huggingface', 'ollama'];
             providerKeys.forEach(key => {
                 if (existingLlmSettings && (existingLlmSettings as any)[key]) {
-                    updatedConfig[key] = { 
-                        ...(existingLlmSettings as any)[key], 
-                        ...(providerConfig && (providerConfig as any)[key]) 
+                    updatedConfig[key] = {
+                        ...(existingLlmSettings as any)[key],
+                        ...(providerConfig && (providerConfig as any)[key])
                     };
                 } else if (providerConfig && (providerConfig as any)[key]) {
                     updatedConfig[key] = (providerConfig as any)[key];
                 }
             });
-            
+
             console.log('🔧 DEBUG: Updating LLM settings with preserved configurations');
             console.log('🔧 DEBUG: Provider switching from', existingLlmSettings?.provider, 'to', providerConfig.provider);
-            
+
             await settingsService.set('llm', updatedConfig);
 
             // Force immediate LLM reinitialization with new settings
@@ -1936,7 +2104,7 @@ app.on('ready', async () => {
     // IPC handler for processing messages with streaming
     ipcMain.handle('process-message', async (event, message: string, conversationId: string): Promise<string> => {
         console.log('Main process - process-message IPC called with:', message);
-        
+
         // Save and emit user message IMMEDIATELY at start to prevent disappearing/duplicating
         if (chatStorageService) {
             try {
@@ -1948,9 +2116,9 @@ app.on('ready', async () => {
                 };
                 await chatStorageService.saveMessage(userMessage);
                 console.log('🔧 DEBUG: User message saved immediately at start');
-                
+
                 // Emit user message to frontend immediately
-                event.sender.send('user-message', { 
+                event.sender.send('user-message', {
                     message: {
                         id: `user-${userMessage.timestamp}`,
                         role: 'user',
@@ -1963,7 +2131,7 @@ app.on('ready', async () => {
                 console.error('🚨 DEBUG: Failed to persist user message at start:', saveError);
             }
         }
-        
+
         try {
             // Check current settings and update LLM provider if needed
             console.log('🔍 DEBUG: Checking provider switching conditions...');
@@ -2288,7 +2456,7 @@ app.on('ready', async () => {
                     // Use streaming processing from the agent
                     for await (const chunk of langChainCindyAgent.processStreaming(message, agentContext)) {
                         assistantContent += chunk;
-                        
+
                         // Parse tool calls from chunk and emit tool execution updates
                         const toolRegex = /<tool>(.*?)<\/tool>/gs;
                         let toolMatch;
@@ -2296,15 +2464,15 @@ app.on('ready', async () => {
                             try {
                                 const toolCallData = JSON.parse(toolMatch[1]);
                                 console.log('🔧 DEBUG: Emitting tool execution update:', toolCallData);
-                                event.sender.send('tool-execution-update', { 
-                                    toolCall: toolCallData, 
-                                    conversationId 
+                                event.sender.send('tool-execution-update', {
+                                    toolCall: toolCallData,
+                                    conversationId
                                 });
                             } catch (parseError) {
                                 console.error('🔧 DEBUG: Failed to parse tool call JSON:', parseError);
                             }
                         }
-                        
+
                         event.sender.send('stream-chunk', { chunk, conversationId });
                     }
 

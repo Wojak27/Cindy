@@ -32,12 +32,12 @@ export class TextToSpeechService extends EventEmitter {
     constructor(options: TTSOptions = {}) {
         super();
         this.options = {
-            modelName: 'Xenova/speecht5_tts', // Using Xenova's version which is more reliable
+            modelName: 'onnx-community/orpheus-3b-0.1-ft-ONNX', // Orpheus TTS model
             speed: 1.0,
             volume: 1.0,
             pitch: 1.0,
-            dtype: 'fp32',
-            device: 'cpu',
+            dtype: 'q4f16', // Quantized model for better performance
+            device: 'cpu', // Can be 'webgpu' for better performance if available
             ...options
         };
 
@@ -77,30 +77,167 @@ export class TextToSpeechService extends EventEmitter {
             const shouldTryOrpheus = await this.checkOrpheusAvailability();
             
             if (shouldTryOrpheus) {
-                console.log('[TextToSpeechService] Initializing Orpheus TTS model...');
-                console.log('[TextToSpeechService] This may take a while on first run as models are downloaded...');
-
-                // Dynamically import orpheus-speech to avoid webpack bundling issues
-                const { OrpheusModel } = await import('orpheus-speech');
-
-                // Initialize the Orpheus model using the async function
-                console.log(`[TextToSpeechService] Loading model: ${this.options.modelName}`);
-                this.model = await OrpheusModel({
-                    model_name: this.options.modelName || 'Xenova/speecht5_tts',
-                    dtype: this.options.dtype as any || 'fp32',
-                    device: this.options.device as any || 'cpu'
-                });
-
-                this.isInitialized = true;
-                console.log('[TextToSpeechService] ✅ Orpheus TTS model initialized successfully');
-                this.emit('initialized', { provider: 'orpheus' });
+                await this.initializeOrpheusModel();
             } else {
                 throw new Error('Orpheus-speech not available or network connectivity issues');
             }
         } catch (error) {
-            // Reduced logging - only show significant errors, not expected fallbacks
             // Fall back to system TTS
+            console.log('[TextToSpeechService] Falling back to system TTS...');
             await this.initializeSystemTTS();
+        }
+    }
+
+    private async initializeOrpheusModel(): Promise<void> {
+        console.log('[TextToSpeechService] Initializing Orpheus TTS model...');
+        console.log('[TextToSpeechService] Model cache directory:', this.modelCacheDir);
+        console.log('[TextToSpeechService] This may take a while on first run as models are downloaded...');
+
+        // Check for corrupted cache and clear if needed
+        await this.validateAndCleanCache();
+
+        // Dynamically import orpheus-speech to avoid webpack bundling issues
+        const { OrpheusModel } = await import('orpheus-speech');
+
+        const modelName = this.options.modelName || 'onnx-community/orpheus-3b-0.1-ft-ONNX';
+        console.log(`[TextToSpeechService] Loading model: ${modelName}`);
+        
+        const modelOptions = {
+            model_name: modelName,
+            dtype: this.options.dtype as any || 'q4f16',
+            device: this.options.device as any || 'cpu'
+        };
+        
+        console.log(`[TextToSpeechService] Model options:`, modelOptions);
+        
+        let retryCount = 0;
+        const maxRetries = 2;
+        
+        while (retryCount <= maxRetries) {
+            try {
+                this.model = await OrpheusModel(modelOptions);
+                this.isInitialized = true;
+                console.log('[TextToSpeechService] ✅ Orpheus TTS model initialized successfully');
+                this.emit('initialized', { provider: 'orpheus' });
+                return;
+            } catch (modelError) {
+                retryCount++;
+                console.error(`[TextToSpeechService] ❌ Failed to initialize Orpheus model (attempt ${retryCount}/${maxRetries + 1}):`, modelError.message);
+                
+                if (this.isCorruptedCacheError(modelError) && retryCount <= maxRetries) {
+                    console.log('[TextToSpeechService] 🧹 Detected corrupted cache, clearing and retrying...');
+                    await this.clearCorruptedCache();
+                    continue;
+                }
+                
+                // If this is the final attempt, throw the error
+                if (retryCount > maxRetries) {
+                    console.error('[TextToSpeechService] Model initialization error details:', {
+                        message: modelError.message,
+                        stack: modelError.stack
+                    });
+                    throw modelError;
+                }
+            }
+        }
+    }
+
+    private isCorruptedCacheError(error: any): boolean {
+        const errorMessage = error.message || '';
+        return errorMessage.includes('Protobuf parsing failed') ||
+               errorMessage.includes('Failed to parse model') ||
+               errorMessage.includes('Invalid model format') ||
+               errorMessage.includes('Unexpected end of JSON input');
+    }
+
+    private async validateAndCleanCache(): Promise<void> {
+        try {
+            // Check common cache locations for corrupted files
+            const cacheLocations = [
+                path.join(process.cwd(), 'node_modules', '@huggingface', 'transformers', '.cache'),
+                path.join(os.homedir(), '.cache', 'huggingface', 'transformers'),
+                this.modelCacheDir
+            ];
+
+            for (const cacheDir of cacheLocations) {
+                if (fs.existsSync(cacheDir)) {
+                    await this.validateCacheDirectory(cacheDir);
+                }
+            }
+        } catch (error) {
+            console.warn('[TextToSpeechService] Failed to validate cache:', error.message);
+        }
+    }
+
+    private async validateCacheDirectory(cacheDir: string): Promise<void> {
+        try {
+            const orpheusDirs = ['onnx-community/orpheus-3b-0.1-ft-ONNX', 'onnx-community/snac_24khz-ONNX'];
+            
+            for (const orpheusDir of orpheusDirs) {
+                const fullPath = path.join(cacheDir, orpheusDir);
+                if (fs.existsSync(fullPath)) {
+                    // Check if any ONNX files are corrupted (size 0 or very small)
+                    const files = this.findFiles(fullPath, '.onnx');
+                    for (const file of files) {
+                        const stats = fs.statSync(file);
+                        if (stats.size < 1000) { // Less than 1KB is likely corrupted
+                            console.log(`[TextToSpeechService] 🧹 Removing corrupted cache: ${file}`);
+                            fs.unlinkSync(file);
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn(`[TextToSpeechService] Failed to validate cache directory ${cacheDir}:`, error.message);
+        }
+    }
+
+    private findFiles(dir: string, extension: string): string[] {
+        const files: string[] = [];
+        try {
+            const entries = fs.readdirSync(dir, { withFileTypes: true });
+            for (const entry of entries) {
+                const fullPath = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                    files.push(...this.findFiles(fullPath, extension));
+                } else if (entry.name.endsWith(extension)) {
+                    files.push(fullPath);
+                }
+            }
+        } catch (error) {
+            // Directory might not exist or be accessible
+        }
+        return files;
+    }
+
+    private async clearCorruptedCache(): Promise<void> {
+        try {
+            // Clear Hugging Face transformers cache
+            const transformersCache = path.join(process.cwd(), 'node_modules', '@huggingface', 'transformers', '.cache');
+            if (fs.existsSync(transformersCache)) {
+                const orpheusDirs = [
+                    path.join(transformersCache, 'onnx-community', 'orpheus-3b-0.1-ft-ONNX'),
+                    path.join(transformersCache, 'onnx-community', 'snac_24khz-ONNX')
+                ];
+                
+                for (const dir of orpheusDirs) {
+                    if (fs.existsSync(dir)) {
+                        console.log(`[TextToSpeechService] 🧹 Clearing corrupted cache: ${dir}`);
+                        fs.rmSync(dir, { recursive: true, force: true });
+                    }
+                }
+            }
+            
+            // Clear user cache
+            if (fs.existsSync(this.modelCacheDir)) {
+                console.log(`[TextToSpeechService] 🧹 Clearing user model cache: ${this.modelCacheDir}`);
+                fs.rmSync(this.modelCacheDir, { recursive: true, force: true });
+                this.ensureModelCacheDir();
+            }
+            
+            console.log('[TextToSpeechService] ✅ Cache cleanup completed');
+        } catch (error) {
+            console.error('[TextToSpeechService] Failed to clear corrupted cache:', error);
         }
     }
 
@@ -109,26 +246,40 @@ export class TextToSpeechService extends EventEmitter {
             // Check if orpheus-speech package is available
             await import('orpheus-speech');
             
-            // For now, skip Orpheus entirely due to model download issues
-            // This can be re-enabled once the Hugging Face model issues are resolved
-            // Reduced logging to avoid console spam
-            return false;
+            // Check network connectivity for model downloads
+            const hasNetwork = await this.checkNetworkConnectivity();
+            if (!hasNetwork) {
+                console.warn('[TextToSpeechService] ⚠️ No network connectivity detected for model downloads');
+                return false;
+            }
             
-            // Uncomment below when Orpheus models are working reliably:
-            // const hasNetwork = await this.checkNetworkConnectivity();
-            // if (!hasNetwork) {
-            //     console.warn('[TextToSpeechService] ⚠️ No network connectivity detected');
-            //     return false;
-            // }
-            // return true;
+            console.log('[TextToSpeechService] ✅ Orpheus-speech package available and network connected');
+            return true;
         } catch (error) {
             console.warn('[TextToSpeechService] ⚠️ Orpheus-speech not available:', error.message);
             return false;
         }
     }
 
-    // Network connectivity check removed - no longer needed since Orpheus is disabled
-    // This method was used to check Hugging Face connectivity for model downloads
+    private async checkNetworkConnectivity(): Promise<boolean> {
+        try {
+            // Try to ping Hugging Face to check if model downloads will work
+            const https = require('https');
+            return new Promise((resolve) => {
+                const req = https.get('https://huggingface.co', { timeout: 5000 }, (res: any) => {
+                    resolve(res.statusCode === 200 || res.statusCode === 301 || res.statusCode === 302);
+                });
+                
+                req.on('error', () => resolve(false));
+                req.on('timeout', () => {
+                    req.destroy();
+                    resolve(false);
+                });
+            });
+        } catch (error) {
+            return false;
+        }
+    }
 
     private async initializeSystemTTS(): Promise<void> {
         try {
@@ -208,8 +359,34 @@ export class TextToSpeechService extends EventEmitter {
             } else {
                 // Use orpheus-speech
                 console.log('[TextToSpeechService] Using orpheus-speech model');
-                const audioData = await this.model.generate(text);
-                await this.saveAudioToFile(audioData, fileName);
+                
+                // Create audio stream with Orpheus
+                const voice = 'tara'; // Default voice, can be made configurable
+                const stream = this.model.generate_speech({ 
+                    prompt: text, 
+                    voice,
+                    temperature: 0.8,
+                    repetition_penalty: 1.1
+                });
+                
+                // Collect all audio chunks
+                const audioChunks = [];
+                for await (const chunk of stream) {
+                    if (chunk.audio) {
+                        audioChunks.push(chunk.audio);
+                    }
+                }
+                
+                // Get the final result and save
+                const result = stream.data;
+                if (result && result.save) {
+                    // Use built-in save method if available
+                    await result.save(fileName);
+                } else {
+                    // Fallback to manual save
+                    const combinedAudio = this.combineAudioChunks(audioChunks);
+                    await this.saveAudioToFile(combinedAudio, fileName);
+                }
             }
 
             const duration = Date.now() - startTime;
@@ -227,7 +404,8 @@ export class TextToSpeechService extends EventEmitter {
             const duration = Date.now() - startTime;
             console.error('[TextToSpeechService] Synthesis failed:', error);
 
-            this.emit('error', { text, error, duration });
+            // Don't emit error event to avoid unhandled error - just log and return result
+            // this.emit('error', { text, error, duration });
 
             return {
                 success: false,
@@ -235,6 +413,24 @@ export class TextToSpeechService extends EventEmitter {
                 duration
             };
         }
+    }
+
+    private combineAudioChunks(chunks: any[]): Float32Array {
+        // Calculate total length
+        let totalLength = 0;
+        for (const chunk of chunks) {
+            totalLength += chunk.length;
+        }
+        
+        // Combine all chunks
+        const combined = new Float32Array(totalLength);
+        let offset = 0;
+        for (const chunk of chunks) {
+            combined.set(chunk, offset);
+            offset += chunk.length;
+        }
+        
+        return combined;
     }
 
     private async saveAudioToFile(audioData: any, filePath: string): Promise<void> {
@@ -489,8 +685,8 @@ export class TextToSpeechService extends EventEmitter {
                 duration: 0
             };
 
-            // Emit controlled error instead of throwing
-            this.emit('error', { text, error, duration: 0 });
+            // Log error but don't emit unhandled error event
+            console.error('[TextToSpeechService] Synthesize and play failed:', error);
             return result;
         }
     }
@@ -528,7 +724,8 @@ export class TextToSpeechService extends EventEmitter {
 
                 player.on('close', (code: number | null) => {
                     this.currentPlaybackProcess = null; // Clear reference
-                    if (code === 0) {
+                    if (code === 0 || code === null) {
+                        // null exit code can occur when process is killed/stopped normally
                         console.log('[TextToSpeechService] Audio playback completed');
                         this.emit('played', filePath);
                         resolve();

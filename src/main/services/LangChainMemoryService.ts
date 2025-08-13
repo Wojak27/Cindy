@@ -157,13 +157,18 @@ export class LangChainMemoryService extends EventEmitter {
         console.log(`[LangChainMemoryService] Adding message to conversation ${message.conversationId}`);
         
         try {
-            // Store in chat storage first
-            await this.chatStorage.saveMessage({
-                conversationId: message.conversationId,
-                role: message.role as 'user' | 'assistant' | 'system',
-                content: message.content,
-                timestamp: message.timestamp.getTime()
-            });
+            // Only save assistant messages to storage
+            // User messages are already saved by the main process handler
+            if (message.role === 'assistant' || message.role === 'system') {
+                await this.chatStorage.saveMessage({
+                    conversationId: message.conversationId,
+                    role: message.role as 'user' | 'assistant' | 'system',
+                    content: message.content,
+                    timestamp: message.timestamp.getTime()
+                });
+            } else {
+                console.log(`[LangChainMemoryService] Skipping save for ${message.role} message (already saved by main process)`);
+            }
 
             // Get conversation context
             const context = await this.getConversationContext(message.conversationId);
