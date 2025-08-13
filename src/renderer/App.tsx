@@ -482,7 +482,7 @@ const App: React.FC = () => {
                 conversationId: convID
             };
             dispatch({ type: 'ADD_MESSAGE', payload: userMessage });
-            
+
             // Create assistant message placeholder immediately
             const assistantMessageId = `assistant-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             const assistantMessage = {
@@ -505,10 +505,10 @@ const App: React.FC = () => {
             } catch (error) {
                 console.error('Error processing message:', error);
                 // Find and mark the last assistant message as failed
-                const lastAssistantMsg = messages.filter((m: any) => 
+                const lastAssistantMsg = messages.filter((m: any) =>
                     m.role === 'assistant' && m.conversationId === convID
                 ).pop();
-                
+
                 if (lastAssistantMsg) {
                     dispatch({
                         type: 'MARK_MESSAGE_FAILED',
@@ -531,7 +531,7 @@ const App: React.FC = () => {
         try {
             const databasePath = settings?.database?.path;
             if (!databasePath) return;
-            
+
             const result = await ipcRenderer.invoke('vector-store:get-indexed-items', databasePath);
             if (result.success) {
                 setAvailableDocuments(result.items || []);
@@ -638,17 +638,17 @@ const App: React.FC = () => {
         const handleStreamComplete = (_: any, data: { conversationId: string }) => {
             if (data.conversationId === currentConversationId) {
                 // FINALIZE STREAMING MESSAGE: Set isStreaming to false for the last assistant message
-                const streamingMessage = messages.find((msg: any) => 
+                const streamingMessage = messages.find((msg: any) =>
                     msg.role === 'assistant' && msg.conversationId === currentConversationId && msg.isStreaming
                 );
-                
+
                 if (streamingMessage) {
-                    dispatch({ 
-                        type: 'FINALIZE_STREAMING_MESSAGE', 
-                        payload: { 
+                    dispatch({
+                        type: 'FINALIZE_STREAMING_MESSAGE',
+                        payload: {
                             messageId: streamingMessage.id,
                             conversationId: currentConversationId
-                        } 
+                        }
                     });
                     console.log('📝 FINALIZED MESSAGE: Set isStreaming to false for message:', streamingMessage.id);
                 }
@@ -918,9 +918,9 @@ const App: React.FC = () => {
                     transform: isTransitioning ? 'scale(0.7) translateY(20vh)' : 'scale(1) translateY(0)',
                     opacity: isTransitioning ? 0 : 1
                 }}>
-                    <div style={{ 
-                        position: "relative", 
-                        width: "280px", 
+                    <div style={{
+                        position: "relative",
+                        width: "280px",
                         height: "280px",
                         transition: 'all 0.8s cubic-bezier(0.4, 0, 0.2, 1)'
                     }}>
@@ -1046,13 +1046,13 @@ const App: React.FC = () => {
                         <ThemeToggle variant="icon" />
                     </div>
 
-                    <div className="chat-container" style={{ 
-                        display: 'flex', 
+                    <div className="chat-container" style={{
+                        display: 'flex',
                         height: '100%',
                         gap: showDocumentPanel ? '12px' : '0'
                     }}>
                         {/* Chat area - adjust width when document panel is open */}
-                        <div 
+                        <div
                             className="chat-messages-container"
                             style={{
                                 flex: showDocumentPanel ? '1 1 60%' : '1 1 100%',
@@ -1064,28 +1064,28 @@ const App: React.FC = () => {
                             <div
                                 ref={chatMessagesRef}
                                 className="chat-messages"
-                                style={{ 
-                                    flex: 1, 
-                                    overflowY: 'auto', 
-                                    display: 'flex', 
+                                style={{
+                                    flex: 1,
+                                    overflowY: 'auto',
+                                    display: 'flex',
                                     flexDirection: 'column'
                                 }}
                             >
                                 {/* Show sound reactive circle when no messages and no current input */}
                                 {messages.length === 0 && (
-                                    <div style={{ 
-                                        display: 'flex', 
-                                        justifyContent: 'center', 
-                                        flexDirection: "column", 
-                                        alignItems: 'center', 
-                                        height: '100%', 
+                                    <div style={{
+                                        display: 'flex',
+                                        justifyContent: 'center',
+                                        flexDirection: "column",
+                                        alignItems: 'center',
+                                        height: '100%',
                                         gap: '32px',
                                         animation: 'fadeInUp 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards'
                                     }}>
                                         <div>
-                                            <div style={{ 
-                                                position: "relative", 
-                                                width: "280px", 
+                                            <div style={{
+                                                position: "relative",
+                                                width: "280px",
                                                 height: "280px",
                                                 transform: 'scale(0.7)',
                                                 animation: 'blobEntrance 0.8s cubic-bezier(0.4, 0, 0.2, 1) 0.2s forwards'
@@ -1275,10 +1275,10 @@ const App: React.FC = () => {
                                                                     timestamp: toolCall.startTime || toolCall.timestamp || 0
                                                                 }))
                                                             ];
-                                                            
+
                                                             // Sort by timestamp for proper chronological order
                                                             allItems.sort((a, b) => a.timestamp - b.timestamp);
-                                                            
+
                                                             return allItems.map((item: any) => {
                                                                 if (item.type === 'thinking') {
                                                                     return (
@@ -1505,7 +1505,7 @@ const App: React.FC = () => {
                                 height: '100%',
                                 overflow: 'hidden',
                             }}>
-                                <ChatDocumentPanel 
+                                <ChatDocumentPanel
                                     document={currentDocument}
                                     onClose={() => dispatch(hideDocument())}
                                 />

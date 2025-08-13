@@ -347,14 +347,14 @@ export class LangChainToolExecutorService extends EventEmitter {
 
         // DuckDuckGo Search with retry logic (free, no API key required) - if available
         try {
-            const baseDuckDuckGoSearch = new DuckDuckGoSearch({
-                maxResults: 5,
-            });
-            
-            // Wrap with retry logic for rate limiting issues
-            const retryDuckDuckGoSearch = {
-                name: 'DuckDuckGoSearch',
-                description: 'Search the web for information using DuckDuckGo',
+            // Create a proper Tool class with retry logic for rate limiting issues
+            class RetryDuckDuckGoSearch extends DuckDuckGoSearch {
+                constructor() {
+                    super({ maxResults: 5 });
+                    this.name = 'DuckDuckGoSearchWithRetry';
+                    this.description = 'Search the web for information using DuckDuckGo with retry logic';
+                }
+                
                 async _call(query: string): Promise<string> {
                     const maxRetries = 3;
                     const baseDelay = 2000; // 2 seconds
@@ -362,7 +362,7 @@ export class LangChainToolExecutorService extends EventEmitter {
                     for (let attempt = 1; attempt <= maxRetries; attempt++) {
                         try {
                             console.log(`[DuckDuckGoSearch] Attempt ${attempt}/${maxRetries}: "${query}"`);
-                            const result = await baseDuckDuckGoSearch._call(query);
+                            const result = await super._call(query);
                             console.log(`[DuckDuckGoSearch] Success on attempt ${attempt}`);
                             return result;
                         } catch (error: any) {
@@ -389,7 +389,9 @@ export class LangChainToolExecutorService extends EventEmitter {
                     }
                     throw new Error('Unexpected error in retry logic');
                 }
-            };
+            }
+            
+            const retryDuckDuckGoSearch = new RetryDuckDuckGoSearch();
             
             this.registerTool({
                 name: 'web_search',

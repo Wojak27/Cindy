@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { PathValidator } from '../utils/PathValidator';
-import keytar from 'keytar';
+import * as keytar from 'keytar';
 
 interface Settings {
     // General settings
@@ -177,6 +177,35 @@ class SettingsService extends EventEmitter {
             await this.initialize();
         }
 
+        // For search settings, check if API keys exist in keychain and show placeholder
+        if (section === 'search') {
+            const searchSettings = { ...this.settings[section] } as Settings[T];
+            
+            try {
+                // Check for Brave API key in keychain
+                const braveApiKey = await keytar.getPassword(this.SERVICE_NAME, this.BRAVE_ACCOUNT_NAME);
+                if (braveApiKey) {
+                    (searchSettings as any).braveApiKey = '***';
+                }
+                
+                // Check for Tavily API key in keychain
+                const tavilyApiKey = await keytar.getPassword(this.SERVICE_NAME, this.TAVILY_ACCOUNT_NAME);
+                if (tavilyApiKey) {
+                    (searchSettings as any).tavilyApiKey = '***';
+                }
+                
+                // Check for SERP API key in keychain
+                const serpApiKey = await keytar.getPassword(this.SERVICE_NAME, this.SERP_ACCOUNT_NAME);
+                if (serpApiKey) {
+                    (searchSettings as any).serpApiKey = '***';
+                }
+            } catch (error) {
+                console.warn('[SettingsService] Failed to check API keys in keychain:', error);
+            }
+            
+            return searchSettings;
+        }
+
         return { ...this.settings[section] } as Settings[T];
     }
 
@@ -217,18 +246,18 @@ class SettingsService extends EventEmitter {
             const searchSettings = value as Partial<Settings['search']>;
             if (searchSettings.braveApiKey) {
                 await this.setBraveApiKey(searchSettings.braveApiKey);
-                // Don't store the actual key in settings
-                (this.settings.search as any).braveApiKey = '';
+                // Store a placeholder to indicate key exists (for UI feedback)
+                (this.settings.search as any).braveApiKey = '***';
             }
             if (searchSettings.tavilyApiKey) {
                 await this.setTavilyApiKey(searchSettings.tavilyApiKey);
-                // Don't store the actual key in settings
-                (this.settings.search as any).tavilyApiKey = '';
+                // Store a placeholder to indicate key exists (for UI feedback)
+                (this.settings.search as any).tavilyApiKey = '***';
             }
             if (searchSettings.serpApiKey) {
                 await this.setSerpApiKey(searchSettings.serpApiKey);
-                // Don't store the actual key in settings
-                (this.settings.search as any).serpApiKey = '';
+                // Store a placeholder to indicate key exists (for UI feedback)
+                (this.settings.search as any).serpApiKey = '***';
             }
         }
 

@@ -264,11 +264,11 @@ const ModernSettingsPanel: React.FC = () => {
             console.log(`🚀 Direct LLM provider switch: ${selectedProvider}`);
             const switchResult = await ipcRenderer.invoke('update-llm-provider', updatedSettings.llm);
             console.log('✅ Direct LLM provider switch result:', switchResult);
-            
+
             // Second: Update Redux store and persist all settings in background
             dispatch(updateSettings(updatedSettings));
             updateOriginalSettingsBaseline();
-            
+
             console.log('🎯 Settings save completed successfully');
         } catch (error) {
             console.error('❌ Failed to save settings:', error);
@@ -332,7 +332,7 @@ const ModernSettingsPanel: React.FC = () => {
         trackOriginalSettings();
         setSelectedProvider(providerId);
         setHasUnsavedChanges(true);
-        
+
         // Immediately switch provider for instant feedback
         try {
             console.log(`⚡ Immediate provider switch: ${providerId}`);
@@ -363,9 +363,21 @@ const ModernSettingsPanel: React.FC = () => {
     };
 
     // Handle search settings changes
-    const handleSearchSettingChange = (key: string, value: any) => {
+    const handleSearchSettingChange = (key: string, e: any) => {
+        e.preventDefault();
+        const value = e.target.value;
         trackOriginalSettings();
-        setSearchSettings(prev => ({ ...prev, [key]: value }));
+        const newSettings = { ...searchSettings, [key]: value };
+
+        // If removing an API key, check if the current provider depends on it
+        if ((key === 'braveApiKey' && (!value || value === '') && searchSettings.preferredProvider === 'brave') ||
+            (key === 'tavilyApiKey' && (!value || value === '') && searchSettings.preferredProvider === 'tavily') ||
+            (key === 'serpApiKey' && (!value || value === '') && searchSettings.preferredProvider === 'serp')) {
+            // Reset to auto when the selected provider's API key is removed
+            newSettings.preferredProvider = 'auto';
+        }
+
+        setSearchSettings(newSettings);
         setHasUnsavedChanges(true);
     };
 
@@ -840,7 +852,7 @@ const ModernSettingsPanel: React.FC = () => {
                                 Web Search & Browsers
                             </Typography>
                             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                                Configure search providers and API keys for enhanced web search capabilities.
+                                Configure search providers and API keys for enhanced web search capabilities. Only configured providers will appear in the dropdown.
                             </Typography>
 
                             <Card sx={{ mb: 3 }}>
@@ -853,13 +865,20 @@ const ModernSettingsPanel: React.FC = () => {
                                         <InputLabel>Preferred Provider</InputLabel>
                                         <Select
                                             value={searchSettings.preferredProvider}
-                                            onChange={(e) => handleSearchSettingChange('preferredProvider', e.target.value)}
+                                            onChange={(e) => handleSearchSettingChange('preferredProvider', e)}
                                         >
                                             <MenuItem value="auto">Auto (Try all available)</MenuItem>
                                             <MenuItem value="duckduckgo">DuckDuckGo (Free)</MenuItem>
-                                            <MenuItem value="brave">Brave Search</MenuItem>
-                                            <MenuItem value="tavily">Tavily AI</MenuItem>
-                                            <MenuItem value="serp">SerpAPI</MenuItem>
+                                            {/* Only show API-based providers if they have keys configured */}
+                                            {searchSettings.braveApiKey && searchSettings.braveApiKey !== '' && (
+                                                <MenuItem value="brave">Brave Search</MenuItem>
+                                            )}
+                                            {searchSettings.tavilyApiKey && searchSettings.tavilyApiKey !== '' && (
+                                                <MenuItem value="tavily">Tavily AI</MenuItem>
+                                            )}
+                                            {searchSettings.serpApiKey && searchSettings.serpApiKey !== '' && (
+                                                <MenuItem value="serp">SerpAPI</MenuItem>
+                                            )}
                                         </Select>
                                     </FormControl>
 
@@ -869,32 +888,35 @@ const ModernSettingsPanel: React.FC = () => {
 
                                     <TextField
                                         fullWidth
-                                        label="Brave Search API Key"
+                                        label={`Brave Search API Key ${searchSettings.braveApiKey && searchSettings.braveApiKey !== '' ? '✓' : '✗'}`}
                                         type="password"
                                         value={searchSettings.braveApiKey}
                                         onChange={(e) => handleSearchSettingChange('braveApiKey', e.target.value)}
                                         sx={{ mb: 2 }}
                                         helperText="Get your free API key at search.brave.com"
+                                        color={searchSettings.braveApiKey && searchSettings.braveApiKey !== '' ? 'success' : 'primary'}
                                     />
 
                                     <TextField
                                         fullWidth
-                                        label="Tavily AI API Key"
+                                        label={`Tavily AI API Key ${searchSettings.tavilyApiKey && searchSettings.tavilyApiKey !== '' ? '✓' : '✗'}`}
                                         type="password"
                                         value={searchSettings.tavilyApiKey}
                                         onChange={(e) => handleSearchSettingChange('tavilyApiKey', e.target.value)}
                                         sx={{ mb: 2 }}
                                         helperText="Get your API key at tavily.com"
+                                        color={searchSettings.tavilyApiKey && searchSettings.tavilyApiKey !== '' ? 'success' : 'primary'}
                                     />
 
                                     <TextField
                                         fullWidth
-                                        label="SerpAPI Key"
+                                        label={`SerpAPI Key ${searchSettings.serpApiKey && searchSettings.serpApiKey !== '' ? '✓' : '✗'}`}
                                         type="password"
                                         value={searchSettings.serpApiKey}
                                         onChange={(e) => handleSearchSettingChange('serpApiKey', e.target.value)}
                                         sx={{ mb: 2 }}
                                         helperText="Get your API key at serpapi.com"
+                                        color={searchSettings.serpApiKey && searchSettings.serpApiKey !== '' ? 'success' : 'primary'}
                                     />
 
                                     <Typography variant="subtitle2" gutterBottom fontWeight={600} sx={{ mt: 3 }}>

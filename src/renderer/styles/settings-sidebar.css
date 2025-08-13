@@ -74,7 +74,6 @@
 /* Ensure the main content doesn't overlap with the sidebar */
 .main-content {
     margin-right: 0;
-    transition: margin-right 0.3s ease-in-out;
 }
 
 .main-content.sidebar-open {

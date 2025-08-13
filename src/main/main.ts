@@ -1144,7 +1144,7 @@ const createWindow = async (): Promise<void> => {
             x: 100,    // Force position on screen
             y: 100,
             show: false, // Start hidden, show after loading
-            alwaysOnTop: true,  // Force to front
+            alwaysOnTop: false,  // Allow normal window behavior
             titleBarStyle: 'hidden', // Hide the title bar
             webPreferences: {
                 nodeIntegration: true,

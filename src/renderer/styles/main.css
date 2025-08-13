@@ -271,7 +271,6 @@ body:not([data-theme="dark"]) .message * {
     max-width: 100%;
     box-sizing: border-box;
     /* Allow shrinking below content size */
-    transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Window controls */
@@ -312,7 +311,6 @@ body:not([data-theme="dark"]) .message * {
     flex-direction: row;
     flex: 1;
     height: calc(100vh - 60px);
-    transition: all 0.3s ease;
     background: var(--background);
     overflow: hidden;
     max-width: 100%;

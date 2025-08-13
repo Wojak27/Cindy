@@ -1,6 +1,7 @@
 import { LLMProvider } from '../services/LLMProvider';
 import { LangChainMemoryService as MemoryService } from '../services/LangChainMemoryService';
 import { LangChainToolExecutorService as ToolExecutorService } from '../services/LangChainToolExecutorService';
+import { AgentPrompts } from '../prompts/AgentPrompts';
 
 interface AgentContext {
     conversationId: string;
@@ -130,7 +131,7 @@ Think step by step:
 Respond with your thinking process and a clear plan. Be concise but thorough.`;
 
         const thinkingResponse = await this.llmProvider.invoke([
-            { role: 'system' as const, content: 'You are an AI assistant that thinks carefully about how to help users. Focus on creating clear execution plans.' },
+            { role: 'system' as const, content: AgentPrompts.getSystemPrompt('thinking') },
             { role: 'user' as const, content: thinkingPrompt }
         ]);
 
@@ -263,35 +264,28 @@ Respond with your thinking process and a clear plan. Be concise but thorough.`;
             console.warn('[ThinkingCindyAgent] Failed to get conversation history:', error);
         }
 
-        // Build synthesis prompt
-        const toolResultsSummary = Object.entries(toolResults)
-            .map(([tool, result]) =>
-                `${tool}: ${result.success ? 'SUCCESS' : 'FAILED'}\n` +
-                `${result.success ? result.result || 'No output' : result.error || 'Unknown error'}`
-            )
-            .join('\n\n');
+        // Build enhanced synthesis prompt with tool results
+        const toolResultsForPrompt = Object.entries(toolResults).map(([tool, result]) => ({
+            name: tool,
+            success: result.success,
+            result: result.result,
+            error: result.error
+        }));
 
-        const synthesisPrompt = `You are Cindy, a helpful voice assistant. Based on the user's request and the tools I executed, provide a natural, conversational response.
-
-User's original request: "${cleanInput}"
+        const toolResultsPrompt = AgentPrompts.buildToolResultsPrompt(toolResultsForPrompt);
+        
+        const synthesisPrompt = `User's original request: "${cleanInput}"
 My thinking process: ${plan.reasoning}
 Tools executed: ${plan.steps.map(s => s.tool).join(', ') || 'none'}
 
-Tool results:
-${toolResultsSummary || 'No tools were executed'}
+${toolResultsPrompt}
 
 Conversation context: ${history.length > 0 ? `Previous ${history.length} messages for context` : 'No previous context'}
 
-Provide a helpful, natural response that:
-1. Addresses the user's request
-2. Incorporates relevant information from tool results
-3. Is conversational and friendly
-4. Mentions what you did (which tools you used) naturally if relevant
-
-Keep it concise but informative.`;
+Provide a helpful, natural response that addresses the user's request using only the information that was successfully retrieved.`;
 
         const response = await this.llmProvider.invoke([
-            { role: 'system' as const, content: this.getSystemPrompt() },
+            { role: 'system' as const, content: AgentPrompts.getSystemPrompt('synthesis') },
             { role: 'user' as const, content: synthesisPrompt }
         ]);
 
@@ -703,6 +697,7 @@ Keep it concise but informative.`;
                     file_path: writeMatch?.[2] || 'output.txt'
                 };
             case 'web_search':
+            case 'web_search_preferred':
                 // Ensure search query is meaningful (at least 3 characters)
                 const searchQuery = input.trim();
                 if (searchQuery.length < 3) {
@@ -776,7 +771,7 @@ Keep it concise but informative.`;
         try {
             const contextInfo = context?.conversationId ? ` (Conversation: ${context.conversationId})` : '';
             const fallbackResponse = await this.llmProvider.invoke([
-                { role: 'system' as const, content: 'You are a helpful assistant. The user asked something but there was a technical issue.' },
+                { role: 'system' as const, content: AgentPrompts.getSystemPrompt('error') },
                 { role: 'user' as const, content: `I asked: "${input}" but there was an error${contextInfo}. Can you help me anyway?` }
             ]);
 
@@ -787,9 +782,7 @@ Keep it concise but informative.`;
     }
 
     private getSystemPrompt(): string {
-        return `You are Cindy, an intelligent voice assistant. You are helpful, knowledgeable, and conversational. 
-        You have access to various tools and can think through problems step by step. 
-        Always be honest about what you can and cannot do.`;
+        return AgentPrompts.getSystemPrompt('main');
     }
 
     // Expose thinking steps for debugging/transparency

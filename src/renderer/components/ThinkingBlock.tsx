@@ -81,7 +81,7 @@ const ThinkingBlock: React.FC<ThinkingBlockProps> = ({
     ].filter(Boolean).join(' ');
 
     const thinkingIcon = '🧠';
-    const thinkingLabel = isStreaming ? 'Cindy is thinking...' : (isIncomplete ? 'Thinking' : 'Thought process');
+    const thinkingLabel = isStreaming ? 'Analyzing your request...' : (isIncomplete ? 'Thinking' : 'Thought process');
 
     return (
         <div className={blockClasses}>
