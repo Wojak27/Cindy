@@ -21,10 +21,32 @@ const messagesReducer = (state = initialState, action: any) => {
         messages: [...state.messages, action.payload]
       };
     case 'LOAD_MESSAGES':
-      // Batch load messages (for conversation history)
+      // Batch load messages (for conversation history) with deduplication
+      const newMessages = action.payload || [];
+      
+      // Remove duplicates based on message ID and content
+      const uniqueMessages = [];
+      const seenIds = new Set();
+      const seenContentHashes = new Set();
+      
+      for (const msg of newMessages) {
+        const contentHash = `${msg.role}-${msg.content}-${msg.conversationId}`;
+        
+        if (!seenIds.has(msg.id) && !seenContentHashes.has(contentHash)) {
+          seenIds.add(msg.id);
+          seenContentHashes.add(contentHash);
+          uniqueMessages.push(msg);
+        } else {
+          console.warn('Skipping duplicate message during load:', msg.id || contentHash);
+        }
+      }
+      
+      // Sort by timestamp to ensure proper chronological order
+      uniqueMessages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+      
       return {
         ...state,
-        messages: action.payload || []
+        messages: uniqueMessages
       };
     case 'CLEAR_MESSAGES':
       return {

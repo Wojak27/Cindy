@@ -473,11 +473,27 @@ const App: React.FC = () => {
             setInputValue('');
             setActiveHashtags([]); // Clear hashtags after sending
 
-            // User message will be saved by backend during processing
-            // Don't add to frontend store here to prevent duplicates
+            // IMMEDIATE UI UPDATE: Add user message to UI immediately for better UX
+            const userMessage = {
+                id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                role: 'user',
+                content: messageToProcess,
+                timestamp: Date.now(),
+                conversationId: convID
+            };
+            dispatch({ type: 'ADD_MESSAGE', payload: userMessage });
             
-            // NOTE: Assistant message placeholder will be created after user message is received
-            // to maintain proper chronological order
+            // Create assistant message placeholder immediately
+            const assistantMessageId = `assistant-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            const assistantMessage = {
+                id: assistantMessageId,
+                role: 'assistant',
+                content: '',
+                timestamp: Date.now() + 1, // Ensure it's after user message
+                isStreaming: true,
+                conversationId: convID
+            };
+            dispatch({ type: 'ADD_MESSAGE', payload: assistantMessage });
             dispatch({ type: 'START_THINKING' });
 
             // Create new AbortController for this request
@@ -744,24 +760,34 @@ const App: React.FC = () => {
             }
         };
 
-        // Handle user message emitted from backend (to prevent duplicates)
+        // Handle user message emitted from backend - now just a safety check since we add immediately
         const handleUserMessage = (_: any, data: { message: any }) => {
             if (data.message.conversationId === currentConversationId) {
-                // Add the user message first
-                dispatch({ type: 'ADD_MESSAGE', payload: data.message });
+                // Check if this message already exists (it should, since we add it immediately now)
+                const messageExists = messages.some((msg: any) => 
+                    msg.role === 'user' && 
+                    msg.content === data.message.content && 
+                    msg.conversationId === data.message.conversationId &&
+                    Math.abs(msg.timestamp - data.message.timestamp) < 5000 // Within 5 seconds
+                );
                 
-                // Now create assistant message placeholder for streaming
-                // This ensures proper chronological order
-                const assistantMessageId = `assistant-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                const assistantMessage = {
-                    id: assistantMessageId,
-                    role: 'assistant',
-                    content: '',
-                    timestamp: Date.now() + 1, // Ensure it's after user message
-                    isStreaming: true,
-                    conversationId: data.message.conversationId
-                };
-                dispatch({ type: 'ADD_MESSAGE', payload: assistantMessage });
+                if (!messageExists) {
+                    // Fallback: add the message if somehow it wasn't added immediately
+                    console.warn('User message not found in UI, adding from backend');
+                    dispatch({ type: 'ADD_MESSAGE', payload: data.message });
+                    
+                    // Create assistant placeholder
+                    const assistantMessageId = `assistant-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+                    const assistantMessage = {
+                        id: assistantMessageId,
+                        role: 'assistant',
+                        content: '',
+                        timestamp: Date.now() + 1,
+                        isStreaming: true,
+                        conversationId: data.message.conversationId
+                    };
+                    dispatch({ type: 'ADD_MESSAGE', payload: assistantMessage });
+                }
             }
         };
 

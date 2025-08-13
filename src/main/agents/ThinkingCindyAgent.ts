@@ -70,7 +70,7 @@ export class ThinkingCindyAgent {
     }
 
     /**
-     * Phase 1: Analyze input for hashtags and intent
+     * Analyze input for hashtags and intent
      */
     private analyzeInput(input: string): { cleanInput: string; forcedTools: string[]; hashtags: string[] } {
         const hashtags = (input.match(/#\w+/g) || []).map(tag => tag.toLowerCase());
@@ -89,7 +89,7 @@ export class ThinkingCindyAgent {
     }
 
     /**
-     * Phase 2: Think and create execution plan
+     * Think and create execution plan
      */
     private async createThinkingPlan(cleanInput: string, forcedTools: string[], context?: AgentContext): Promise<ThinkingPlan> {
         const availableTools = this.toolExecutor.getAvailableTools();
@@ -171,7 +171,7 @@ Respond with your thinking process and a clear plan. Be concise but thorough.`;
     }
 
     /**
-     * Phase 3: Execute tools according to plan
+     * Execute tools according to plan
      */
     private async executeTools(plan: ThinkingPlan, _context?: AgentContext): Promise<Record<string, any>> {
         const toolResults: Record<string, any> = {};
@@ -242,7 +242,7 @@ Respond with your thinking process and a clear plan. Be concise but thorough.`;
     }
 
     /**
-     * Phase 4: Synthesize final response with citations
+     * Synthesize final response with citations
      */
     private async synthesizeResponse(
         cleanInput: string,
@@ -398,8 +398,8 @@ Keep it concise but informative.`;
 
             this.thinkingSteps = []; // Reset thinking steps
 
-            // Phase 1: Analyze input
-            console.log('\n🔍 PHASE 1: ANALYZING INPUT');
+            // Analyze input
+            console.log('\n🔍 ANALYZING INPUT');
             console.log('─'.repeat(40));
             const { cleanInput, forcedTools, hashtags } = this.analyzeInput(input);
 
@@ -407,8 +407,8 @@ Keep it concise but informative.`;
             console.log(`🏷️  Hashtags found: [${hashtags.join(', ') || 'none'}]`);
             console.log(`🔧 Forced tools: [${forcedTools.join(', ') || 'none'}]`);
 
-            // Phase 2: Create thinking plan
-            console.log('\n💭 PHASE 2: CREATING EXECUTION PLAN');
+            // Create thinking plan
+            console.log('\n💭 CREATING EXECUTION PLAN');
             console.log('─'.repeat(40));
             const plan = await this.createThinkingPlan(cleanInput, forcedTools, context);
 
@@ -416,8 +416,8 @@ Keep it concise but informative.`;
             console.log(`🛠️  Tools to execute: [${plan.steps.map(s => s.tool).join(', ') || 'none'}]`);
             console.log(`📋 Execution steps: ${plan.steps.length}`);
 
-            // Phase 3: Execute tools
-            console.log('\n⚙️ PHASE 3: EXECUTING TOOLS');
+            // Execute tools
+            console.log('\n⚙️ EXECUTING TOOLS');
             console.log('─'.repeat(40));
             const toolResults = await this.executeTools(plan, context);
 
@@ -425,11 +425,11 @@ Keep it concise but informative.`;
             const totalTools = Object.keys(toolResults).length;
             console.log(`✅ Tool execution complete: ${successCount}/${totalTools} successful`);
 
-            // Phase 4: Generate response
+            // Generate response
             let finalResponse: string;
             if (plan.steps.length === 0 && plan.intent === 'simple greeting') {
                 // Direct response for simple greetings - no synthesis needed
-                console.log('\n💬 PHASE 4: DIRECT RESPONSE (SIMPLE GREETING)');
+                console.log('\n💬 DIRECT RESPONSE (SIMPLE GREETING)');
                 console.log('─'.repeat(40));
                 const directResponse = await this.llmProvider.invoke([
                     { role: 'system' as const, content: this.getSystemPrompt() },
@@ -438,7 +438,7 @@ Keep it concise but informative.`;
                 finalResponse = directResponse.content as string;
             } else {
                 // Complex response with synthesis
-                console.log('\n📝 PHASE 4: SYNTHESIZING RESPONSE');
+                console.log('\n📝 SYNTHESIZING RESPONSE');
                 console.log('─'.repeat(40));
                 finalResponse = await this.synthesizeResponse(cleanInput, plan, toolResults, context);
             }
@@ -476,35 +476,39 @@ Keep it concise but informative.`;
             // Start thinking block with timer
             const thinkingStartTime = Date.now();
             yield `<think id="thinking-${context?.conversationId || 'default'}-${thinkingStartTime}" start="${thinkingStartTime}">`;
-            yield "🧠 **Cindy is thinking...**\n\n";
-            yield `💭 **Analyzing:** "${input}"\n\n`;
+            yield "**Analyzing your request...**\n\n";
+            yield `Input: "${input}"\n\n`;
 
-            // Phase 1: Analyze input
-            console.log('\n🔍 [STREAMING] Phase 1: Analyzing input...');
+            // Analyze input
+            console.log('\n🔍 [STREAMING] Analyzing input...');
             const { cleanInput, forcedTools, hashtags } = this.analyzeInput(input);
 
-            yield `🔍 **Analysis Complete:**\n`;
-            yield `📝 Clean input: "${cleanInput}"\n`;
-            yield `🏷️  Hashtags: ${hashtags.length > 0 ? hashtags.join(', ') : 'none'}\n`;
-            yield `🔧 Forced tools: ${forcedTools.length > 0 ? forcedTools.join(', ') : 'none'}\n\n`;
+            yield `**Analysis:**\n`;
+            yield `• Clean input: "${cleanInput}"\n`;
+            if (hashtags.length > 0) yield `• Hashtags: ${hashtags.join(', ')}\n`;
+            if (forcedTools.length > 0) yield `• Forced tools: ${forcedTools.join(', ')}\n`;
+            yield `\n`;
 
-            // Phase 2: Create thinking plan  
-            console.log('\n💭 [STREAMING] Phase 2: Creating execution plan...');
-            yield "💭 **Planning approach...**\n";
+            // Create thinking plan  
+            console.log('\n💭 [STREAMING] Creating execution plan...');
+            yield "**Planning approach...**\n";
 
             const plan = await this.createThinkingPlan(cleanInput, forcedTools, context);
 
-            yield `🎯 **Intent:** ${plan.intent}\n`;
-            yield `🛠️  **Tools planned:** ${plan.steps.length > 0 ? plan.steps.map(s => `${s.tool}${s.forced ? ' (forced)' : ''}`).join(', ') : 'none'}\n\n`;
+            yield `**Intent:** ${plan.intent}\n`;
+            if (plan.steps.length > 0) {
+                yield `**Tools planned:** ${plan.steps.map(s => `${s.tool}${s.forced ? ' (forced)' : ''}`).join(', ')}\n`;
+            }
+            yield `\n`;
             
             // End thinking block before tool execution
             const thinkingEndTime = Date.now();
             yield `</think end="${thinkingEndTime}">`;
 
-            // Phase 3: Execute tools
+            // Execute tools
             if (plan.steps.length > 0) {
-                console.log('\n⚙️ [STREAMING] Phase 3: Executing tools...');
-                yield `⚙️ [STREAMING] Phase 3: Executing tools...\n`;
+                console.log('\n⚙️ [STREAMING] Executing tools...');
+                yield `**Executing tools...**\n`;
 
                 const toolResults: Record<string, any> = {};
 
@@ -575,21 +579,20 @@ Keep it concise but informative.`;
                     }
                 }
 
-                // Phase 4: Synthesize response with citations
-                console.log('\n📝 [STREAMING] Phase 4: Synthesizing response...');
-                yield "📝 [STREAMING] Phase 4: Synthesizing response...\n";
+                // Synthesize response with citations
+                console.log('\n📝 [STREAMING] Synthesizing response...');
+                yield "**Synthesizing response...**\n";
 
                 const finalResponse = await this.synthesizeResponse(cleanInput, plan, toolResults, context);
 
                 // Store conversation
                 await this.storeConversation(input, finalResponse, context);
 
-                yield "📝 **Final Response:**\n\n";
                 yield finalResponse;
             } else {
                 // No tools needed, direct response
                 console.log('\n💬 [STREAMING] Direct response (no tools needed)...');
-                yield "💬 **Responding directly (no tools needed)...**\n\n";
+                yield "**Responding directly...**\n\n";
 
                 const directResponse = await this.llmProvider.invoke([
                     { role: 'system' as const, content: this.getSystemPrompt() },

@@ -345,11 +345,52 @@ export class LangChainToolExecutorService extends EventEmitter {
             }
         }
 
-        // DuckDuckGo Search (free, no API key required) - if available
+        // DuckDuckGo Search with retry logic (free, no API key required) - if available
         try {
-            const duckDuckGoSearch = new DuckDuckGoSearch({
+            const baseDuckDuckGoSearch = new DuckDuckGoSearch({
                 maxResults: 5,
             });
+            
+            // Wrap with retry logic for rate limiting issues
+            const retryDuckDuckGoSearch = {
+                name: 'DuckDuckGoSearch',
+                description: 'Search the web for information using DuckDuckGo',
+                async _call(query: string): Promise<string> {
+                    const maxRetries = 3;
+                    const baseDelay = 2000; // 2 seconds
+                    
+                    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                        try {
+                            console.log(`[DuckDuckGoSearch] Attempt ${attempt}/${maxRetries}: "${query}"`);
+                            const result = await baseDuckDuckGoSearch._call(query);
+                            console.log(`[DuckDuckGoSearch] Success on attempt ${attempt}`);
+                            return result;
+                        } catch (error: any) {
+                            const isRateLimit = error.message?.includes('DDG detected an anomaly') || 
+                                             error.message?.includes('too quickly') ||
+                                             error.message?.includes('rate limit');
+                            
+                            console.warn(`[DuckDuckGoSearch] Attempt ${attempt} failed:`, error.message);
+                            
+                            if (isRateLimit && attempt < maxRetries) {
+                                const delay = baseDelay * attempt + Math.random() * 1000; // Add jitter
+                                console.log(`[DuckDuckGoSearch] Rate limited, waiting ${Math.round(delay)}ms before retry...`);
+                                await new Promise(resolve => setTimeout(resolve, delay));
+                                continue;
+                            }
+                            
+                            // Final attempt failed or non-rate-limit error
+                            if (attempt === maxRetries) {
+                                throw new Error(`Web search failed after ${maxRetries} attempts: ${error.message}`);
+                            } else {
+                                throw error;
+                            }
+                        }
+                    }
+                    throw new Error('Unexpected error in retry logic');
+                }
+            };
+            
             this.registerTool({
                 name: 'web_search',
                 description: 'Search the web for information, This is the default web search tool triggered by a #web hashtag',
@@ -360,9 +401,9 @@ export class LangChainToolExecutorService extends EventEmitter {
                     },
                     required: ['input']
                 },
-                tool: duckDuckGoSearch
+                tool: retryDuckDuckGoSearch
             });
-            console.log('[LangChainToolExecutorService] DuckDuckGo search tool registered');
+            console.log('[LangChainToolExecutorService] DuckDuckGo search tool registered with retry logic');
         } catch (error: any) {
             console.warn('[LangChainToolExecutorService] DuckDuckGo search configuration error:', error?.message);
         }
