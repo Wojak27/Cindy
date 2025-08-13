@@ -215,7 +215,6 @@ body:not([data-theme="dark"]) .message * {
     width: 60px;
     background: var(--surface);
     border-right: 1px solid var(--border);
-    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease;
     overflow: hidden;
     z-index: 100;
     position: relative;
@@ -224,6 +223,7 @@ body:not([data-theme="dark"]) .message * {
 .sidebar:hover,
 .sidebar.open {
     width: 280px;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease;
     box-shadow: var(--shadow-lg);
 }
 

@@ -40,6 +40,27 @@ import {
 } from '@mui/icons-material';
 // import DocViewer, { DocViewerRenderers } from '@cyntler/react-doc-viewer'; // Disabled due to Electron compatibility issues
 import { ipcRenderer } from 'electron';
+import { Document, Page, pdfjs } from 'react-pdf';
+import 'react-pdf/dist/Page/AnnotationLayer.css';
+import 'react-pdf/dist/Page/TextLayer.css';
+
+// Add Promise.withResolvers polyfill for Node.js 18 compatibility
+if (!(Promise as any).withResolvers) {
+    (Promise as any).withResolvers = function <T>() {
+        let resolve!: (value: T | PromiseLike<T>) => void;
+        let reject!: (reason?: any) => void;
+        const promise = new Promise<T>((res, rej) => {
+            resolve = res;
+            reject = rej;
+        });
+        return { promise, resolve, reject };
+    };
+}
+
+// Configure pdfjs worker for Electron
+// Disable worker for Electron compatibility - PDFs will load slower but work reliably
+pdfjs.GlobalWorkerOptions.workerSrc = '';
+console.log('PDF.js running without web worker for Electron compatibility');
 
 interface IndexedFile {
     path: string;
@@ -54,6 +75,170 @@ interface DocumentViewerProps {
 }
 
 type ViewMode = 'grid' | 'list';
+
+interface PDFViewerProps {
+    fileUri: string;
+    fileName: string;
+}
+
+const PDFViewer: React.FC<PDFViewerProps> = ({ fileUri, fileName }) => {
+    const [numPages, setNumPages] = useState<number>(0);
+    const [pageNumber, setPageNumber] = useState<number>(1);
+    const [scale, setScale] = useState<number>(1.0);
+    const [loading, setLoading] = useState<boolean>(true);
+    const [error, setError] = useState<string | null>(null);
+    const theme = useTheme();
+
+    const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
+        setNumPages(numPages);
+        setLoading(false);
+        setError(null);
+    };
+
+    const onDocumentLoadError = (error: Error) => {
+        setLoading(false);
+        setError(error.message);
+        console.error('PDF load error:', error);
+    };
+
+    const goToPrevPage = () => {
+        setPageNumber(page => Math.max(1, page - 1));
+    };
+
+    const goToNextPage = () => {
+        setPageNumber(page => Math.min(numPages, page + 1));
+    };
+
+    const zoomIn = () => {
+        setScale(scale => Math.min(3.0, scale + 0.2));
+    };
+
+    const zoomOut = () => {
+        setScale(scale => Math.max(0.5, scale - 0.2));
+    };
+
+    const resetZoom = () => {
+        setScale(1.0);
+    };
+
+    if (error) {
+        return (
+            <Box sx={{ 
+                display: 'flex', 
+                flexDirection: 'column',
+                justifyContent: 'center', 
+                alignItems: 'center', 
+                height: '100%',
+                gap: 2
+            }}>
+                <PdfIcon sx={{ fontSize: 64, color: 'error.main' }} />
+                <Typography variant="h6" color="error">
+                    Failed to load PDF
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                    {error}
+                </Typography>
+                <Button 
+                    variant="outlined" 
+                    onClick={() => {
+                        const link = document.createElement('a');
+                        link.href = fileUri;
+                        link.download = fileName;
+                        link.click();
+                    }}
+                >
+                    Download PDF
+                </Button>
+            </Box>
+        );
+    }
+
+    return (
+        <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+            {/* PDF Controls */}
+            <Box sx={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 1, 
+                p: 1, 
+                borderBottom: `1px solid ${theme.palette.divider}`,
+                backgroundColor: theme.palette.background.paper,
+                flexShrink: 0
+            }}>
+                <ButtonGroup size="small" variant="outlined">
+                    <Button onClick={goToPrevPage} disabled={pageNumber <= 1}>
+                        Previous
+                    </Button>
+                    <Button onClick={goToNextPage} disabled={pageNumber >= numPages}>
+                        Next
+                    </Button>
+                </ButtonGroup>
+                
+                <Typography variant="body2" sx={{ mx: 2 }}>
+                    Page {pageNumber} of {numPages}
+                </Typography>
+
+                <ButtonGroup size="small" variant="outlined">
+                    <Button onClick={zoomOut} disabled={scale <= 0.5}>
+                        Zoom Out
+                    </Button>
+                    <Button onClick={resetZoom}>
+                        {Math.round(scale * 100)}%
+                    </Button>
+                    <Button onClick={zoomIn} disabled={scale >= 3.0}>
+                        Zoom In
+                    </Button>
+                </ButtonGroup>
+
+                <Box sx={{ flexGrow: 1 }} />
+                
+                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                    {fileName}
+                </Typography>
+            </Box>
+
+            {/* PDF Content */}
+            <Box sx={{ 
+                flex: 1, 
+                overflow: 'auto', 
+                display: 'flex', 
+                justifyContent: 'center',
+                alignItems: 'flex-start',
+                p: 2,
+                backgroundColor: theme.palette.grey[100]
+            }}>
+                {loading && (
+                    <Box sx={{ 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        alignItems: 'center', 
+                        gap: 2,
+                        mt: 4
+                    }}>
+                        <CircularProgress />
+                        <Typography variant="body2" color="text.secondary">
+                            Loading PDF...
+                        </Typography>
+                    </Box>
+                )}
+                
+                <Document
+                    file={fileUri}
+                    onLoadSuccess={onDocumentLoadSuccess}
+                    onLoadError={onDocumentLoadError}
+                    loading=""
+                >
+                    <Page
+                        pageNumber={pageNumber}
+                        scale={scale}
+                        renderTextLayer={true}
+                        renderAnnotationLayer={true}
+                    />
+                </Document>
+            </Box>
+        </Box>
+    );
+};
 
 // Simple document viewer component for Electron compatibility
 const SimpleDocumentViewer: React.FC<{
@@ -81,19 +266,7 @@ const SimpleDocumentViewer: React.FC<{
     }
     
     if (mimeType === 'application/pdf') {
-        return (
-            <Box sx={{ height: '100%', width: '100%' }}>
-                <iframe
-                    src={fileUri}
-                    style={{
-                        width: '100%',
-                        height: '100%',
-                        border: 'none',
-                    }}
-                    title={fileName}
-                />
-            </Box>
-        );
+        return <PDFViewer fileUri={fileUri} fileName={fileName} />;
     }
     
     if (mimeType.startsWith('text/') || mimeType === 'application/json') {

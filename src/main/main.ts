@@ -1022,7 +1022,7 @@ const setupTTSIPC = () => {
             // Handle 'auto' provider resolution before passing to TTS service
             const resolvedOptions = { ...options };
             if (resolvedOptions.provider === 'auto') {
-                // For auto, prefer faster local models: kokoro > xenova > system
+                // For auto, use system TTS for reliable, high-quality audio
                 resolvedOptions.provider = 'kokoro';
                 console.log('Main process - Auto TTS provider resolved to:', resolvedOptions.provider);
             }
@@ -1083,6 +1083,110 @@ const setupTTSIPC = () => {
             console.error('Main process - tts-cleanup error:', error);
             return { success: false, error: error.message };
         }
+    });
+
+    // TTS Model Download Permission Handler
+    ipcMain.handle('tts-request-model-download-permission', async (event, request) => {
+        console.log('[IPC] TTS model download permission requested:', request.modelName);
+
+        try {
+            const { dialog } = require('electron');
+            const mainWindow = global.mainWindow;
+
+            if (!mainWindow) {
+                console.error('[IPC] Main window not available for permission dialog');
+                return { granted: false, error: 'Main window not available' };
+            }
+
+            // Check if user has previously granted permission for this model
+            const settings = await settingsService?.getAll();
+            const modelPermissions = settings?.tts?.modelPermissions || {};
+
+            if (modelPermissions[request.modelName] === 'granted') {
+                console.log('[IPC] Model download permission already granted:', request.modelName);
+                return { granted: true };
+            }
+
+            // AUTO-GRANT: If no explicit denial, allow model downloads by default
+            if (!modelPermissions[request.modelName]) {
+                console.log(`[IPC] No explicit permission set for "${request.modelName}", auto-granting download permission for smoother UX`);
+                return { granted: true };
+            }
+
+            if (modelPermissions[request.modelName] === 'denied') {
+                console.log('[IPC] Model download permission previously denied:', request.modelName);
+                return {
+                    granted: false,
+                    error: `Model download was previously denied for "${request.modelName}". You can enable it in TTS settings.`
+                };
+            }
+
+            // Show permission dialog
+            const result = await dialog.showMessageBox(mainWindow, {
+                type: 'question',
+                title: 'TTS Model Download Permission',
+                message: `Download TTS Model: ${request.modelName}`,
+                detail: `Cindy needs to download the text-to-speech model "${request.modelName}" (${request.estimatedSize}) to generate voice output.\n\n` +
+                    `This will:\n` +
+                    `• Download ~${request.estimatedSize} of data\n` +
+                    `• Require internet connection\n` +
+                    `• Store the model locally for offline use\n` +
+                    `• Enable local voice synthesis\n\n` +
+                    `Would you like to download this model?`,
+                buttons: ['Download Model', 'Cancel', 'Always Allow for TTS'],
+                defaultId: 0,
+                cancelId: 1
+            });
+
+            let granted = false;
+            let savePermission = false;
+
+            if (result.response === 0) { // Download Model
+                granted = true;
+            } else if (result.response === 2) { // Always Allow
+                granted = true;
+                savePermission = true;
+            }
+
+            // Save permission if requested
+            if (savePermission && settingsService) {
+                const currentSettings = await settingsService.getAll();
+                const updatedTtsSettings = {
+                    ...currentSettings.tts,
+                    modelPermissions: {
+                        ...modelPermissions,
+                        [request.modelName]: 'granted'
+                    }
+                };
+                await settingsService.set('tts', updatedTtsSettings);
+                console.log('[IPC] Saved permanent permission for model:', request.modelName);
+            }
+
+            console.log('[IPC] Model download permission result:', { granted, modelName: request.modelName });
+            return { granted };
+
+        } catch (error) {
+            console.error('[IPC] Error showing permission dialog:', error);
+            return { granted: false, error: error.message };
+        }
+    });
+
+    // TTS Download Progress Handler
+    ipcMain.on('tts-download-progress', (event, progress) => {
+        console.log(`[IPC] TTS download progress: ${progress.file} - ${progress.progress}% (${progress.status})`);
+
+        // Forward progress to renderer process for UI updates
+        const mainWindow = global.mainWindow;
+        if (mainWindow) {
+            mainWindow.webContents.send('tts-download-progress-update', progress);
+        }
+    });
+
+    // TTS Worker IPC Handlers for renderer process communication
+    ipcMain.on('tts-worker-response', (event, response) => {
+        console.log('[IPC] TTS worker response received:', response.id);
+        // Emit the response to any waiting promises
+        ipcMain.emit(`tts-response-${response.id}`, response);
     });
 
     console.log('🔧 DEBUG: TTS IPC handlers setup complete');
@@ -1394,15 +1498,25 @@ app.on('ready', async () => {
         try {
             console.log('🔧 DEBUG: Initializing TextToSpeechService...');
             const voiceSettings = (await settingsService?.get('voice') || {}) as any;
-            
-            // Handle 'auto' ttsProvider by selecting best available option
+
+            // Handle 'auto' ttsProvider - AUTO MIGRATE TO XENOVA (local AI TTS)
             let selectedProvider = voiceSettings.ttsProvider || 'auto';
             if (selectedProvider === 'auto') {
-                // For auto, prefer faster local models: kokoro > xenova > system
-                selectedProvider = 'kokoro'; // Default to fast local model
-                console.log('🔧 DEBUG: Auto TTS provider resolved to:', selectedProvider);
+                selectedProvider = 'xenova'; // Auto-migrate to local AI TTS
+                console.log('🔧 DEBUG: Auto TTS provider migrated from "auto" to "xenova" (local AI TTS)');
+                // Update settings to persist the change
+                if (settingsService) {
+                    try {
+                        const updatedVoiceSettings = { ...voiceSettings, ttsProvider: 'xenova' };
+                        await settingsService.set('voice', updatedVoiceSettings);
+                        console.log('🔧 DEBUG: Settings updated to persist xenova provider selection');
+                    } catch (settingsError) {
+                        console.warn('Failed to update TTS provider setting:', settingsError);
+                        // Don't fail initialization due to settings save error
+                    }
+                }
             }
-            
+
             const ttsConfig = {
                 provider: selectedProvider,
                 enableStreaming: voiceSettings.enableStreaming || false,

@@ -19,7 +19,12 @@ interface Settings {
         voiceSpeed: number;
         voicePitch: number;
         sttProvider: 'online' | 'offline' | 'auto';
-        ttsProvider: 'kokoro' | 'xenova' | 'elevenlabs' | 'system' | 'auto';
+        ttsProvider: 'kokoro' | 'xenova' | 'elevenlabs' | 'auto';
+    };
+
+    // TTS settings
+    tts?: {
+        modelPermissions?: Record<string, 'granted' | 'denied'>;
     };
 
     // LLM settings
@@ -429,7 +434,7 @@ class SettingsService extends EventEmitter {
                 voiceSpeed: 1.0,
                 voicePitch: 1.0,
                 sttProvider: 'auto',
-                ttsProvider: 'auto'
+                ttsProvider: 'xenova' // Default to local AI TTS
             },
 
             llm: {

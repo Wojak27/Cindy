@@ -1142,16 +1142,14 @@ const ModernSettingsPanel: React.FC = () => {
                                                 setHasUnsavedChanges(true);
                                             }}
                                         >
-                                            <MenuItem value="auto">🎯 Auto (Best Available)</MenuItem>
-                                            <MenuItem value="kokoro">🚀 Kokoro-82M (Fast, Local)</MenuItem>
-                                            <MenuItem value="xenova">⚡ Xenova Transformers (Lightweight)</MenuItem>
-                                            <MenuItem value="elevenlabs">ElevenLabs (Cloud, Premium)</MenuItem>
-                                            <MenuItem value="system">System TTS (Fallback)</MenuItem>
+                                            <MenuItem value="xenova">⚡ Xenova Transformers (Local AI)</MenuItem>
+                                            <MenuItem value="kokoro">🚀 Kokoro-82M (Local AI)</MenuItem>
+                                            <MenuItem value="elevenlabs">☁️ ElevenLabs (Cloud, Premium)</MenuItem>
                                         </Select>
                                     </FormControl>
 
                                     {/* Streaming Settings - show for compatible providers */}
-                                    {['auto', 'kokoro', 'xenova', 'system'].includes(voiceSettings.ttsProvider) && (
+                                    {['kokoro', 'xenova'].includes(voiceSettings.ttsProvider) && (
                                         <Card sx={{ mb: 2, backgroundColor: alpha(theme.palette.primary.main, 0.05) }}>
                                             <CardContent>
                                                 <Typography variant="subtitle2" gutterBottom fontWeight={600}>
@@ -1353,10 +1351,7 @@ const ModernSettingsPanel: React.FC = () => {
                                                             setHasUnsavedChanges(true);
                                                         }}
                                                     >
-                                                        <MenuItem value="Xenova/speecht5_tts">SpeechT5 TTS (Recommended)</MenuItem>
-                                                        <MenuItem value="Xenova/mms-tts-eng">MMS English TTS</MenuItem>
-                                                        <MenuItem value="Xenova/bark">Bark (Multilingual)</MenuItem>
-                                                        <MenuItem value="Xenova/fastspeech2">FastSpeech2 (Fast)</MenuItem>
+                                                        <MenuItem value="Xenova/speecht5_tts">SpeechT5 TTS (Default)</MenuItem>
                                                     </Select>
                                                 </FormControl>
 
