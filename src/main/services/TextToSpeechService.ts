@@ -1217,6 +1217,8 @@ export class TextToSpeechService extends EventEmitter {
                     const defaultEmbedding = new Float32Array(256); // placeholder 256-dim zero vector
                     console.log("[TextToSpeechService] Initializing Xenova model with default placeholder speaker_embeddings");
                     console.log("[DEBUG] Speaker embeddings debug info — Type:", Object.prototype.toString.call(defaultEmbedding), "Length:", defaultEmbedding.length, "Instance of Float32Array:", defaultEmbedding instanceof Float32Array);
+                    // Ensure default embedding is actually passed if not provided in options
+                    const speakerEmbeddings = (this.options as any).speaker_embeddings || defaultEmbedding;
                     const xenovaModelId = this.options.xenovaModel || 'Xenova/speecht5_tts'; // switched to fully public model
                     const localModelPath = path.join(process.cwd(), 'models', 'xenova-public');
 
@@ -1270,7 +1272,7 @@ export class TextToSpeechService extends EventEmitter {
                         'text-to-speech',
                         'Xenova/speecht5_tts',
                         {
-                            // Public model does not require speaker embeddings
+                            speaker_embeddings: new Float32Array(speakerEmbeddings) // Ensure proper Float32Array
                         }
                     );
                     this.modelAvailable = true;
@@ -1301,10 +1303,26 @@ export class TextToSpeechService extends EventEmitter {
                 };
                 const audioBuffer = decodeWav(buffer);
                 return { audioData: audioBuffer.audioData, sampleRate: audioBuffer.sampleRate };
+
+            default:
+                break;
         }
 
         if (provider === 'kokoro' || provider === 'xenova') {
-            const output = await this.model(text);
+            // Debug log actual speaker embeddings type before model call
+            let embToUse: any;
+            if (this.model && this.model.processor_config && this.model.processor_config.speaker_embeddings) {
+                embToUse = this.model.processor_config.speaker_embeddings;
+                console.log("[DEBUG] Speaker embeddings before TTS call — Type:", Object.prototype.toString.call(embToUse),
+                    "Is Float32Array:", embToUse instanceof Float32Array,
+                    "Length:", embToUse.length !== undefined ? embToUse.length : 'N/A');
+            } else {
+                embToUse = new Float32Array(512); // default if missing, match expected dimensions
+                console.log("[DEBUG] No speaker embeddings found in model.processor_config before TTS call — injecting default Float32Array(512)");
+            }
+
+            const output: any = await this.model(text, { speaker_embeddings: embToUse });
+
             // Expect model output has audio tensor/data
             let audioData: Float32Array;
             let sampleRate = 22050; // typical default, adjust if provided
