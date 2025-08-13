@@ -913,6 +913,30 @@ export class TextToSpeechService extends EventEmitter {
                 // Start processing this micro-chunk immediately
                 const processPromise = this.synthesizeMicroChunk(chunk, chunkAudioPath)
                     .then((synthTimeMs) => {
+                        // DEBUG: Log chunk start/end amplitudes to detect discontinuities
+                        try {
+                            const fsDbg = require('fs');
+                            const buf = fsDbg.readFileSync(chunkAudioPath);
+                            if (buf.length > 44) { // skip WAV header
+                                const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+                                const bitsPerSample = dv.getUint16(34, true);
+                                if (bitsPerSample === 16) {
+                                    const startSample = dv.getInt16(44, true) / 32768;
+                                    const endSample = dv.getInt16(buf.length - 2, true) / 32768;
+                                    console.log(`[DEBUG][MicroChunk ${currentChunkIndex}] StartAmp=${startSample.toFixed(4)}, EndAmp=${endSample.toFixed(4)}`);
+                                }
+                            }
+                        } catch (ampErr) {
+                            console.warn('[DEBUG] Failed to inspect chunk amplitude:', ampErr);
+                        }
+
+                        // DEBUG: Confirm if ProsodySmoother is used for this chunk
+                        if (this.prosodySmoother) {
+                            const usedCorrections = this.prosodySmoother.getCorrectionHistory?.() || [];
+                            console.log(`[DEBUG] Prosody corrections so far: ${usedCorrections.length}`);
+                        } else {
+                            console.log('[DEBUG] ProsodySmoother not initialized');
+                        }
                         // Record synthesis metrics
                         this.backpressureController?.recordSynthTime(synthTimeMs);
 
@@ -1028,6 +1052,28 @@ export class TextToSpeechService extends EventEmitter {
                     };
 
                     this.prosodySmoother.registerAudioSegment(audioSegment, chunk.context.sentenceId);
+
+                    // If previous segment can be corrected, apply crossfade smoothing
+                    const correctionsHistory = this.prosodySmoother.getCorrectionHistory?.() || [];
+                    const prevSegment = correctionsHistory.length > 0
+                        ? correctionsHistory[correctionsHistory.length - 1].correctedSegmentId
+                        : null;
+                    if (prevSegment && this.prosodySmoother.canCorrectSegment(prevSegment)) {
+                        try {
+                            const correctedAudio = this.prosodySmoother.requestProsodyCorrection(
+                                prevSegment,
+                                audioSegment.audioData,
+                                audioSegment.sampleRate,
+                                'seam_join'
+                            );
+                            if (correctedAudio) {
+                                console.log(`[TextToSpeechService] Applied prosody smoothing between chunks at join of ${prevSegment} -> ${audioSegment.id}`);
+                                await this.saveProcessedAudioToFile(correctedAudio, audioSegment.sampleRate, outputPath);
+                            }
+                        } catch (smoothErr) {
+                            console.warn('[TextToSpeechService] Prosody smoothing failed:', smoothErr);
+                        }
+                    }
                 }
             }
 
