@@ -46,6 +46,8 @@ interface AudioResult {
 
 
 export class TextToSpeechService extends EventEmitter {
+    // Track time between chunk readiness for diagnosing buffer underruns
+    private _lastChunkReadyTime?: number;
     private model: any = null;
     private isInitialized = false;
     private modelAvailable = false;
@@ -141,6 +143,9 @@ export class TextToSpeechService extends EventEmitter {
             // Initialize micro-chunker
             this.microChunker = new MicroChunker({
                 mode: 'micro',
+                // Increased defaults for smoother playback
+                chunkTokenBudget: 48,
+                timeBudgetMs: 750,
                 ...this.options.microStreamingConfig
             });
 
@@ -380,12 +385,12 @@ export class TextToSpeechService extends EventEmitter {
 
     private encodeWAV(samples: Float32Array | number[], sampleRate: number): ArrayBuffer {
         const length = samples.length;
-        // Use 24-bit PCM (3 bytes per sample) instead of 16-bit to reduce quantization noise
-        const bytesPerSample = 3;
+        // Force 16-bit PCM (2 bytes per sample) — removed all 24-bit logic
+        const bytesPerSample = 2;
         const buffer = new ArrayBuffer(44 + length * bytesPerSample);
         const view = new DataView(buffer);
 
-        // WAV header for 24-bit PCM
+        // WAV header for 16-bit PCM
         const writeString = (offset: number, string: string) => {
             for (let i = 0; i < string.length; i++) {
                 view.setUint8(offset + i, string.charCodeAt(i));
@@ -401,8 +406,8 @@ export class TextToSpeechService extends EventEmitter {
         view.setUint16(22, 1, true);                    // Mono
         view.setUint32(24, sampleRate, true);           // Sample rate
         view.setUint32(28, sampleRate * bytesPerSample, true);  // Byte rate
-        view.setUint16(32, bytesPerSample, true);       // Block align (3 bytes)
-        view.setUint16(34, 24, true);                   // 24 bits per sample
+        view.setUint16(32, bytesPerSample, true);       // Block align (2 bytes for 16-bit mono)
+        view.setUint16(34, 16, true);                   // 16 bits per sample
         writeString(36, 'data');
         view.setUint32(40, length * bytesPerSample, true);
 
@@ -421,16 +426,14 @@ export class TextToSpeechService extends EventEmitter {
         console.log(`[TextToSpeechService] 24-bit PCM encoding - Peak: ${peak.toFixed(4)}, Scale: ${scale.toFixed(4)}`);
 
         // Convert to 24-bit PCM with higher precision
-        const maxValue = 0x7FFFFF; // 24-bit max value (2^23 - 1)
+        const maxValue = 0x7FFF; // 16-bit max value (2^15 - 1)
         for (let i = 0; i < length; i++) {
             const sample = samples[i] * scale;
             const intSample = Math.round(Math.max(-1, Math.min(1, sample)) * maxValue);
 
-            // Write 24-bit sample (little-endian)
-            const byteOffset = offset + i * 3;
-            view.setUint8(byteOffset, intSample & 0xFF);           // Low byte
-            view.setUint8(byteOffset + 1, (intSample >> 8) & 0xFF);  // Mid byte
-            view.setUint8(byteOffset + 2, (intSample >> 16) & 0xFF); // High byte
+            // Write 16-bit sample (little-endian)
+            const byteOffset = offset + i * 2;
+            view.setInt16(byteOffset, intSample, true);
         }
 
         return buffer;
@@ -618,8 +621,29 @@ export class TextToSpeechService extends EventEmitter {
         try {
             console.log(`[TextToSpeechService] Processing audio: ${audioData.length} samples at ${sampleRate}Hz`);
 
-            // Use our optimized encoding pipeline
-            const wavBuffer = this.encodeWAV(audioData, sampleRate);
+            // If sample rate is not 16000Hz, resample before encoding
+            let processedData = audioData;
+            let targetRate = sampleRate;
+            if (sampleRate !== 16000) {
+                console.log(`[TextToSpeechService] Resampling from ${sampleRate}Hz to 16000Hz for playback compatibility`);
+                const ratio = 16000 / sampleRate;
+                const newLength = Math.round(audioData.length * ratio);
+                const resampled = new Float32Array(newLength);
+                for (let i = 0; i < newLength; i++) {
+                    const srcIndex = i / ratio;
+                    const srcFloor = Math.floor(srcIndex);
+                    const srcCeil = Math.min(srcFloor + 1, audioData.length - 1);
+                    const t = srcIndex - srcFloor;
+                    resampled[i] = audioData[srcFloor] * (1 - t) + audioData[srcCeil] * t;
+                }
+                processedData = resampled;
+                targetRate = 16000;
+                console.log(`[TextToSpeechService] Resample complete: ${processedData.length} samples at ${targetRate}Hz`);
+            }
+
+            // Use our optimized encoding pipeline — ensure header matches actual encoded rate
+            const wavBuffer = this.encodeWAV(processedData, targetRate);
+            console.log(`[TextToSpeechService] Encoding WAV with header sample rate: ${targetRate}Hz`);
             const fs = require('fs');
             fs.writeFileSync(outputPath, Buffer.from(wavBuffer));
 
@@ -913,6 +937,15 @@ export class TextToSpeechService extends EventEmitter {
                 // Start processing this micro-chunk immediately
                 const processPromise = this.synthesizeMicroChunk(chunk, chunkAudioPath)
                     .then((synthTimeMs) => {
+                        // EXTRA DEBUG: Measure gap since last chunk playback to detect buffer underruns
+                        if (!this._lastChunkReadyTime) {
+                            this._lastChunkReadyTime = Date.now();
+                        } else {
+                            const gap = Date.now() - this._lastChunkReadyTime;
+                            console.log(`[DEBUG][MicroStreaming] Gap since last chunk ready: ${gap}ms`);
+                            this._lastChunkReadyTime = Date.now();
+                        }
+
                         // DEBUG: Log chunk start/end amplitudes to detect discontinuities
                         try {
                             const fsDbg = require('fs');
@@ -934,6 +967,9 @@ export class TextToSpeechService extends EventEmitter {
                         if (this.prosodySmoother) {
                             const usedCorrections = this.prosodySmoother.getCorrectionHistory?.() || [];
                             console.log(`[DEBUG] Prosody corrections so far: ${usedCorrections.length}`);
+                            if (usedCorrections.length === 0) {
+                                console.warn("[DEBUG] ProsodySmoother is active but no corrections applied yet — may indicate readAudioFile() stub is returning null");
+                            }
                         } else {
                             console.log('[DEBUG] ProsodySmoother not initialized');
                         }
@@ -1092,7 +1128,43 @@ export class TextToSpeechService extends EventEmitter {
         try {
             // This is a simplified implementation - in production you'd want a proper WAV decoder
             // For now, return null to skip prosody smoothing until proper audio reading is implemented
-            return null;
+
+            // --- Implement actual WAV decoding for prosody smoothing ---
+            const buffer = fs.readFileSync(filePath);
+            if (buffer.length <= 44) {
+                console.warn(`[TextToSpeechService] Audio file too short or missing data: ${filePath}`);
+                return null;
+            }
+            const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+
+            const audioFormat = view.getUint16(20, true);
+            if (audioFormat !== 1) { // 1 = PCM
+                console.warn(`[TextToSpeechService] Unsupported WAV format: ${audioFormat}`);
+                return null;
+            }
+
+            const numChannels = view.getUint16(22, true);
+            const sampleRate = view.getUint32(24, true);
+            const bitsPerSample = view.getUint16(34, true);
+            if (bitsPerSample !== 16) {
+                console.warn(`[TextToSpeechService] Only 16-bit PCM supported for prosody smoothing, got ${bitsPerSample}`);
+                return null;
+            }
+
+            const startOffset = 44; // Skip WAV header
+            const samples = new Float32Array((buffer.length - startOffset) / 2 / numChannels);
+            let sampleIndex = 0;
+            for (let i = startOffset; i < buffer.length; i += 2 * numChannels) {
+                // Mix down to mono if needed
+                let sample = 0;
+                for (let ch = 0; ch < numChannels; ch++) {
+                    sample += view.getInt16(i + ch * 2, true);
+                }
+                sample /= numChannels;
+                samples[sampleIndex++] = sample / 32768;
+            }
+
+            return { audioData: samples, sampleRate };
         } catch (error) {
             console.warn('[TextToSpeechService] Failed to read audio file for prosody processing:', error);
             return null;
@@ -1252,7 +1324,10 @@ export class TextToSpeechService extends EventEmitter {
 
                     const defaultEmbedding = new Float32Array(256); // placeholder 256-dim zero vector
                     console.log("[TextToSpeechService] Initializing Kokoro model with default placeholder speaker_embeddings, length:", defaultEmbedding.length, "Type:", typeof defaultEmbedding);
-                    this.model = await pipeline('text-to-speech', 'hexgrad/Kokoro-82M', { speaker_embeddings: defaultEmbedding });
+                    this.model = await pipeline('text-to-speech', 'hexgrad/Kokoro-82M', {
+                        speaker_embeddings: defaultEmbedding,
+                        vocoder: 'Xenova/universal-vocoder'
+                    });
                     this.modelAvailable = true;
                 }
                 break;
@@ -1318,7 +1393,8 @@ export class TextToSpeechService extends EventEmitter {
                         'text-to-speech',
                         'Xenova/speecht5_tts',
                         {
-                            speaker_embeddings: new Float32Array(speakerEmbeddings) // Ensure proper Float32Array
+                            speaker_embeddings: new Float32Array(speakerEmbeddings), // Ensure proper Float32Array
+                            vocoder: 'Xenova/universal-vocoder'
                         }
                     );
                     this.modelAvailable = true;
