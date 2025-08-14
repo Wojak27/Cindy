@@ -105,7 +105,7 @@ const ModernSettingsPanel: React.FC = () => {
         elevenlabsStability: settings?.voice?.elevenlabsStability || 0.5,
         elevenlabsSimilarityBoost: settings?.voice?.elevenlabsSimilarityBoost || 0.5,
         // Kokoro settings
-        kokoroVoice: settings?.voice?.kokoroVoice || 'default',
+        kokoroVoice: settings?.voice?.kokoroVoice || 'af_sky',
         // Xenova settings
         xenovaModel: settings?.voice?.xenovaModel || 'Xenova/speecht5_tts',
     });
@@ -1307,18 +1307,27 @@ const ModernSettingsPanel: React.FC = () => {
                                                 <FormControl fullWidth sx={{ mb: 2 }}>
                                                     <InputLabel>Voice</InputLabel>
                                                     <Select
-                                                        value={voiceSettings.kokoroVoice || 'default'}
+                                                        value={voiceSettings.kokoroVoice || 'af_sky'}
                                                         onChange={(e) => {
                                                             trackOriginalSettings();
                                                             setVoiceSettings(prev => ({ ...prev, kokoroVoice: e.target.value }));
                                                             setHasUnsavedChanges(true);
                                                         }}
                                                     >
-                                                        <MenuItem value="default">Default Voice</MenuItem>
-                                                        <MenuItem value="female_1">Female Voice 1</MenuItem>
-                                                        <MenuItem value="female_2">Female Voice 2</MenuItem>
-                                                        <MenuItem value="male_1">Male Voice 1</MenuItem>
-                                                        <MenuItem value="male_2">Male Voice 2</MenuItem>
+                                                        {/* American English - Female */}
+                                                        <MenuItem value="af_bella">🇺🇸 Bella (Female, A- grade)</MenuItem>
+                                                        <MenuItem value="af_nicole">🇺🇸 Nicole (Female, B- grade)</MenuItem>
+                                                        <MenuItem value="af_sky">🇺🇸 Sky (Female, default)</MenuItem>
+                                                        <MenuItem value="af_sarah">🇺🇸 Sarah (Female)</MenuItem>
+                                                        {/* American English - Male */}
+                                                        <MenuItem value="am_michael">🇺🇸 Michael (Male)</MenuItem>
+                                                        <MenuItem value="am_adam">🇺🇸 Adam (Male)</MenuItem>
+                                                        {/* British English - Female */}
+                                                        <MenuItem value="bf_emma">🇬🇧 Emma (Female, B- grade)</MenuItem>
+                                                        <MenuItem value="bf_isabella">🇬🇧 Isabella (Female)</MenuItem>
+                                                        {/* British English - Male */}
+                                                        <MenuItem value="bm_george">🇬🇧 George (Male)</MenuItem>
+                                                        <MenuItem value="bm_lewis">🇬🇧 Lewis (Male)</MenuItem>
                                                     </Select>
                                                 </FormControl>
 

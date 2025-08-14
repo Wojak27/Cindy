@@ -207,15 +207,15 @@ export class TextToSpeechService extends EventEmitter {
 
 
     private async initializeKokoroModel(): Promise<void> {
-        console.log('[TextToSpeechService] Initializing SpeechT5 TTS (Kokoro provider)...');
+        console.log('[TextToSpeechService] Initializing Kokoro TTS...');
         try {
             // Defer actual loading until synthesis time to avoid startup issues
-            console.log('[TextToSpeechService] Deferring @xenova/transformers loading to synthesis time (Kokoro)');
+            console.log('[TextToSpeechService] Deferring Kokoro.js loading to synthesis time');
             this.useSystemTTS = false;
             this.isInitialized = true;
             this.modelAvailable = true; // Mark as available, actual check happens during synthesis
             this.emit('initialized', { provider: 'kokoro', fallback: false });
-            console.log('[TextToSpeechService] ✅ SpeechT5 TTS (Kokoro provider) initialized (deferred loading)');
+            console.log('[TextToSpeechService] ✅ Kokoro TTS initialized (deferred loading)');
         } catch (error) {
             console.error('[TextToSpeechService] ❌ Failed to initialize Kokoro:', error);
             throw error;
@@ -571,18 +571,18 @@ export class TextToSpeechService extends EventEmitter {
      */
     private async synthesizeWithKokoro(text: string, outputPath: string): Promise<void> {
         try {
-            console.log('[TextToSpeechService] Using renderer process for Kokoro TTS generation');
+            console.log('[TextToSpeechService] Using Kokoro.js for TTS generation');
 
-            // Generate TTS directly on server-side
+            // Generate TTS using the shared method
             const { audioData, sampleRate } = await this.generateTTSDirectly(text, 'kokoro');
 
-            console.log('[TextToSpeechService] Received audio data from renderer process');
+            console.log('[TextToSpeechService] Received audio data from Kokoro model');
             console.log(`[TextToSpeechService] Audio stats - Length: ${audioData.length}, SampleRate: ${sampleRate}Hz`);
 
             // Process and save the audio using our optimized pipeline
             await this.saveProcessedAudioToFile(audioData, sampleRate, outputPath);
 
-            console.log('[TextToSpeechService] Kokoro TTS synthesis completed via renderer process');
+            console.log('[TextToSpeechService] Kokoro TTS synthesis completed');
 
         } catch (error) {
             console.error('[TextToSpeechService] Kokoro TTS synthesis failed:', error);
@@ -1320,15 +1320,15 @@ export class TextToSpeechService extends EventEmitter {
             case 'kokoro':
                 // Ensure model initialized lazily
                 if (!this.model) {
-                    const { pipeline } = await (new Function("modulePath", "return import(modulePath)"))('@xenova/transformers');
-
-                    const defaultEmbedding = new Float32Array(256); // placeholder 256-dim zero vector
-                    console.log("[TextToSpeechService] Initializing Kokoro model with default placeholder speaker_embeddings, length:", defaultEmbedding.length, "Type:", typeof defaultEmbedding);
-                    this.model = await pipeline('text-to-speech', 'hexgrad/Kokoro-82M', {
-                        speaker_embeddings: defaultEmbedding,
-                        vocoder: 'Xenova/universal-vocoder'
-                    });
+                    // @ts-ignore - kokoro-js is an ESM module
+                    const { KokoroTTS } = await import('kokoro-js');
+                    console.log("[TextToSpeechService] Initializing Kokoro-82M model...");
+                    this.model = await KokoroTTS.from_pretrained(
+                        "onnx-community/Kokoro-82M-ONNX",
+                        { dtype: "q8" } // Use q8 quantization for balance of quality and size
+                    );
                     this.modelAvailable = true;
+                    console.log("[TextToSpeechService] Kokoro model loaded successfully");
                 }
                 break;
             case 'xenova':
@@ -1430,7 +1430,26 @@ export class TextToSpeechService extends EventEmitter {
                 break;
         }
 
-        if (provider === 'kokoro' || provider === 'xenova') {
+        if (provider === 'kokoro') {
+            // Use Kokoro.js to generate audio
+            const voice = this.options.kokoroVoice || "af_sky";
+            console.log(`[TextToSpeechService] Generating Kokoro speech with voice: ${voice}`);
+            
+            const audio = await this.model.generate(text, { voice });
+            
+            // Get the audio data as Float32Array
+            // Kokoro.js returns an audio object with wav data
+            const audioBuffer = audio.wav;
+            const audioData = new Float32Array(audioBuffer.length / 2);
+            const dataView = new DataView(audioBuffer.buffer);
+            
+            // Convert Int16 PCM to Float32
+            for (let i = 0; i < audioData.length; i++) {
+                audioData[i] = dataView.getInt16(i * 2, true) / 32768.0;
+            }
+            
+            return { audioData, sampleRate: 24000 }; // Kokoro uses 24kHz
+        } else if (provider === 'xenova') {
             // Debug log actual speaker embeddings type before model call
             let embToUse: any;
             if (this.model && this.model.processor_config && this.model.processor_config.speaker_embeddings) {
@@ -1704,7 +1723,44 @@ export class TextToSpeechService extends EventEmitter {
 
     async getAvailableVoices(): Promise<string[]> {
         try {
-            if (!this.model) {
+            // Return provider-specific voices
+            if (this.options.provider === 'kokoro') {
+                // All Kokoro.js voices from the model
+                return [
+                    // American English - Female
+                    'af_heart',
+                    'af_alloy', 
+                    'af_aoede',
+                    'af_bella',
+                    'af_jessica',
+                    'af_kore',
+                    'af_nicole',
+                    'af_nova',
+                    'af_river',
+                    'af_sarah',
+                    'af_sky',
+                    // American English - Male
+                    'am_adam',
+                    'am_echo',
+                    'am_eric',
+                    'am_fenrir',
+                    'am_liam',
+                    'am_michael',
+                    'am_onyx',
+                    'am_puck',
+                    'am_santa',
+                    // British English - Female
+                    'bf_alice',
+                    'bf_emma',
+                    'bf_isabella',
+                    'bf_lily',
+                    // British English - Male
+                    'bm_daniel',
+                    'bm_fable',
+                    'bm_george',
+                    'bm_lewis'
+                ];
+            } else if (!this.model) {
                 return [];
             }
 
