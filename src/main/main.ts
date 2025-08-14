@@ -1498,9 +1498,12 @@ app.on('ready', async () => {
         try {
             console.log('🔧 DEBUG: Initializing TextToSpeechService...');
             const voiceSettings = (await settingsService?.get('voice') || {}) as any;
+            console.log('🔧 DEBUG: Loaded voice settings:', JSON.stringify(voiceSettings, null, 2));
 
-            // Handle 'auto' ttsProvider - AUTO MIGRATE TO XENOVA (local AI TTS)
+            // Handle 'auto' ttsProvider - AUTO MIGRATE TO XENOVA (local AI TTS) 
             let selectedProvider = voiceSettings.ttsProvider || 'auto';
+            console.log('🔧 DEBUG: Initial TTS provider from settings:', selectedProvider);
+            
             if (selectedProvider === 'auto') {
                 selectedProvider = 'xenova'; // Auto-migrate to local AI TTS
                 console.log('🔧 DEBUG: Auto TTS provider migrated from "auto" to "xenova" (local AI TTS)');
@@ -1516,6 +1519,8 @@ app.on('ready', async () => {
                     }
                 }
             }
+            
+            console.log('🔧 DEBUG: Final TTS provider for initialization:', selectedProvider);
 
             const ttsConfig = {
                 provider: selectedProvider,

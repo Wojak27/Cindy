@@ -1326,7 +1326,7 @@ export class TextToSpeechService extends EventEmitter {
                     console.log("[TextToSpeechService] Initializing Kokoro-82M model...");
                     this.model = await KokoroTTS.from_pretrained(
                         "onnx-community/Kokoro-82M-v1.0-ONNX",
-                        { dtype: "q8", device: "cpu" } // Use q8 quantization for balance of quality and size
+                        { dtype: "q8", device: "cpu" } // Use fp32 for compatibility
                     );
                     this.modelAvailable = true;
                     console.log("[TextToSpeechService] Kokoro model loaded successfully");
@@ -1439,17 +1439,13 @@ export class TextToSpeechService extends EventEmitter {
             const audio = await this.model.generate(text, { voice });
 
             // Get the audio data as Float32Array
-            // Kokoro.js returns an audio object with wav data
-            const audioBuffer = audio.audio;
-            const audioData = new Float32Array(audioBuffer.length / 2);
-            const dataView = new DataView(audioBuffer.buffer);
+            // Kokoro.js returns an audio object with audio property containing Float32Array
+            const audioData = audio.audio;
+            const sampleRate = audio.sampling_rate || 24000;
 
-            // Convert Int16 PCM to Float32
-            for (let i = 0; i < audioData.length; i++) {
-                audioData[i] = dataView.getInt16(i * 2, true) / 32768.0;
-            }
+            console.log(`[TextToSpeechService] Kokoro generated audio: ${audioData.length} samples at ${sampleRate}Hz`);
 
-            return { audioData, sampleRate: 24000 }; // Kokoro uses 24kHz
+            return { audioData, sampleRate };
         } else if (provider === 'xenova') {
             // Debug log actual speaker embeddings type before model call
             let embToUse: any;
