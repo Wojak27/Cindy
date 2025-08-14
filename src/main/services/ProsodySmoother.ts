@@ -217,11 +217,11 @@ export class ProsodySmoother extends EventEmitter {
         const cutoffTime = Date.now() - (this.config.retimeThresholdMs * 2);
         const toDelete: string[] = [];
 
-        for (const [id, segment] of this.audioSegments) {
+        Array.from(this.audioSegments.entries()).forEach(([id, segment]) => {
             if (segment.startTimeMs < cutoffTime) {
                 toDelete.push(id);
             }
-        }
+        });
 
         for (const id of toDelete) {
             this.audioSegments.delete(id);

@@ -71,7 +71,7 @@ export class TextToSpeechService extends EventEmitter {
             speed: 1.0,
             volume: 1.0,
             pitch: 1.0,
-            // Streaming defaults
+            // Streaming defaults - will be overridden by Kokoro initialization
             enableStreaming: false,
             streamingMode: 'sentence',
             enableProsodySmoothing: false,
@@ -214,8 +214,32 @@ export class TextToSpeechService extends EventEmitter {
             this.useSystemTTS = false;
             this.isInitialized = true;
             this.modelAvailable = true; // Mark as available, actual check happens during synthesis
-            this.emit('initialized', { provider: 'kokoro', fallback: false });
-            console.log('[TextToSpeechService] ✅ Kokoro TTS initialized (deferred loading)');
+            
+            // Configure Kokoro for micro-streaming by default
+            this.options.streamingMode = 'micro';
+            this.options.enableStreaming = true;
+            this.options.enableProsodySmoothing = true;
+            
+            // Configure micro-streaming for low latency according to work order specs
+            this.options.microStreamingConfig = {
+                mode: 'micro',
+                chunkTokenBudget: 32,        // Smaller chunks for lower latency
+                timeBudgetMs: 400,           // Target ≤400ms first audio
+                lookaheadTokens: 8,          // Short lookahead for punctuation awareness
+                crossfadeMs: 25,             // Minimal crossfade for prosody smoothing
+                forceFlushTimeoutMs: 500     // Force flush if chunk takes too long
+            };
+            
+            // Configure prosody smoothing for seamless audio
+            this.options.prosodyConfig = {
+                crossfadeMs: 25,             // Match micro-streaming crossfade
+                maxRetimesPerSentence: 2,    // Allow more retimes for quality
+                retimeThresholdMs: 120       // Low threshold for quick corrections
+            };
+            
+            console.log('[TextToSpeechService] ✅ Kokoro configured for micro-streaming with low latency');
+            this.emit('initialized', { provider: 'kokoro', fallback: false, streamingMode: 'micro' });
+            console.log('[TextToSpeechService] ✅ Kokoro TTS initialized with micro-streaming enabled');
         } catch (error) {
             console.error('[TextToSpeechService] ❌ Failed to initialize Kokoro:', error);
             throw error;
