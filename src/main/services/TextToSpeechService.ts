@@ -319,6 +319,7 @@ export class TextToSpeechService extends EventEmitter {
             }
 
             console.log(`[TextToSpeechService] Synthesizing text: "${text.substring(0, 50)}..."`);
+            console.log(`[TextToSpeechService] Current provider: ${this.options.provider}`);
 
             // Generate unique filename if not provided
             const fileName = outputPath || path.join(
@@ -1324,8 +1325,8 @@ export class TextToSpeechService extends EventEmitter {
                     const { KokoroTTS } = await import('kokoro-js');
                     console.log("[TextToSpeechService] Initializing Kokoro-82M model...");
                     this.model = await KokoroTTS.from_pretrained(
-                        "onnx-community/Kokoro-82M-ONNX",
-                        { dtype: "q8" } // Use q8 quantization for balance of quality and size
+                        "onnx-community/Kokoro-82M-v1.0-ONNX",
+                        { dtype: "q8", device: "cpu" } // Use q8 quantization for balance of quality and size
                     );
                     this.modelAvailable = true;
                     console.log("[TextToSpeechService] Kokoro model loaded successfully");
@@ -1434,20 +1435,20 @@ export class TextToSpeechService extends EventEmitter {
             // Use Kokoro.js to generate audio
             const voice = this.options.kokoroVoice || "af_sky";
             console.log(`[TextToSpeechService] Generating Kokoro speech with voice: ${voice}`);
-            
+
             const audio = await this.model.generate(text, { voice });
-            
+
             // Get the audio data as Float32Array
             // Kokoro.js returns an audio object with wav data
-            const audioBuffer = audio.wav;
+            const audioBuffer = audio.audio;
             const audioData = new Float32Array(audioBuffer.length / 2);
             const dataView = new DataView(audioBuffer.buffer);
-            
+
             // Convert Int16 PCM to Float32
             for (let i = 0; i < audioData.length; i++) {
                 audioData[i] = dataView.getInt16(i * 2, true) / 32768.0;
             }
-            
+
             return { audioData, sampleRate: 24000 }; // Kokoro uses 24kHz
         } else if (provider === 'xenova') {
             // Debug log actual speaker embeddings type before model call
@@ -1729,7 +1730,7 @@ export class TextToSpeechService extends EventEmitter {
                 return [
                     // American English - Female
                     'af_heart',
-                    'af_alloy', 
+                    'af_alloy',
                     'af_aoede',
                     'af_bella',
                     'af_jessica',
