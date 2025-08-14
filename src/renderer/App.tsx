@@ -559,12 +559,20 @@ const App: React.FC = () => {
         };
     }, []);
 
+    // Create a ref to store current conversation ID for IPC handlers
+    const currentConversationIdRef = useRef(currentConversationId);
+    
+    // Update ref when conversation ID changes
+    useEffect(() => {
+        currentConversationIdRef.current = currentConversationId;
+    }, [currentConversationId]);
+
     // Listen for streaming events from main process
     useEffect(() => {
         const handleStreamChunk = (_: any, data: { chunk: string, conversationId: string }) => {
-            if (data.conversationId === currentConversationId) {
+            if (data.conversationId === currentConversationIdRef.current) {
                 // Process the chunk for thinking tokens
-                const processedThinking = thinkingTokenHandler.processChunk(data.chunk, currentConversationId);
+                const processedThinking = thinkingTokenHandler.processChunk(data.chunk, currentConversationIdRef.current);
 
                 // Add any extracted thinking blocks to Redux with proper association
                 processedThinking.thinkingBlocks.forEach(block => {
@@ -590,7 +598,7 @@ const App: React.FC = () => {
                         const enhancedIncompleteBlock = {
                             ...incompleteBlock,
                             messageId: `assistant-${Date.now()}`,
-                            conversationId: currentConversationId,
+                            conversationId: currentConversationIdRef.current,
                             isIncomplete: true, // Flag to indicate this is still being processed
                             isStreaming: true   // Flag for UI animation/styling
                         };
@@ -636,25 +644,39 @@ const App: React.FC = () => {
         };
 
         const handleStreamComplete = (_: any, data: { conversationId: string }) => {
-            if (data.conversationId === currentConversationId) {
+            console.log('🔧 DEBUG: Frontend received stream-complete event for conversation:', data.conversationId);
+            console.log('🔧 DEBUG: Current conversation ID:', currentConversationIdRef.current);
+            console.log('🔧 DEBUG: Conversation IDs match:', data.conversationId === currentConversationIdRef.current);
+
+            if (data.conversationId === currentConversationIdRef.current) {
                 // FINALIZE STREAMING MESSAGE: Set isStreaming to false for the last assistant message
                 const streamingMessage = messages.find((msg: any) =>
-                    msg.role === 'assistant' && msg.conversationId === currentConversationId && msg.isStreaming
+                    msg.role === 'assistant' && msg.conversationId === currentConversationIdRef.current && msg.isStreaming
                 );
 
+                console.log('🔧 DEBUG: Found streaming message to finalize:', streamingMessage?.id);
+
                 if (streamingMessage) {
+                    console.log('🔧 DEBUG: Dispatching FINALIZE_STREAMING_MESSAGE for message:', streamingMessage.id);
                     dispatch({
                         type: 'FINALIZE_STREAMING_MESSAGE',
                         payload: {
                             messageId: streamingMessage.id,
-                            conversationId: currentConversationId
+                            conversationId: currentConversationIdRef.current
                         }
                     });
                     console.log('📝 FINALIZED MESSAGE: Set isStreaming to false for message:', streamingMessage.id);
+                } else {
+                    console.log('🔧 DEBUG: No streaming message found to finalize. Current messages:',
+                        messages.filter(msg => msg.role === 'assistant' && msg.conversationId === currentConversationIdRef.current).map(msg => ({
+                            id: msg.id,
+                            isStreaming: msg.isStreaming
+                        }))
+                    );
                 }
 
                 // FINALIZE INCOMPLETE THINKING BLOCKS: Convert any remaining incomplete blocks to completed ones
-                const remainingIncompleteBlocks = thinkingTokenHandler.getIncompleteThinkingBlocks(currentConversationId);
+                const remainingIncompleteBlocks = thinkingTokenHandler.getIncompleteThinkingBlocks(currentConversationIdRef.current);
                 remainingIncompleteBlocks.forEach(incompleteBlock => {
                     // Find the existing incomplete block in Redux
                     const existingIncompleteBlock = thinkingBlocks.find((block: any) =>
@@ -732,7 +754,7 @@ const App: React.FC = () => {
         };
 
         const handleStreamError = (_: any, data: { error: string, conversationId: string }) => {
-            if (data.conversationId === currentConversationId) {
+            if (data.conversationId === currentConversationIdRef.current) {
                 dispatch(streamError(data.error));
                 dispatch({ type: 'STOP_THINKING' });
 
@@ -754,7 +776,7 @@ const App: React.FC = () => {
         };
 
         const handleToolExecutionUpdate = (_: any, data: { toolCall: any, conversationId: string }) => {
-            if (data.conversationId === currentConversationId) {
+            if (data.conversationId === currentConversationIdRef.current) {
                 // Update existing tool call or add new one
                 dispatch({ type: 'UPDATE_TOOL_CALL', payload: data.toolCall });
             }
@@ -769,6 +791,15 @@ const App: React.FC = () => {
         ipcRenderer.on('stream-chunk', handleStreamChunk);
         ipcRenderer.on('stream-complete', handleStreamComplete);
         ipcRenderer.on('stream-error', handleStreamError);
+        
+        // Test IPC channel registration
+        console.log('🔧 DEBUG: IPC listeners registered, testing stream-complete channel...');
+        
+        // Add a test listener to see if events are being received at all
+        const testStreamCompleteListener = (_: any, data: any) => {
+            console.log('🔧 DEBUG: TEST LISTENER received stream-complete event:', data);
+        };
+        ipcRenderer.on('stream-complete', testStreamCompleteListener);
         ipcRenderer.on('tool-execution-update', handleToolExecutionUpdate);
         ipcRenderer.on('user-message', handleUserMessage);
 
@@ -776,6 +807,7 @@ const App: React.FC = () => {
         return () => {
             ipcRenderer.off('stream-chunk', handleStreamChunk);
             ipcRenderer.off('stream-complete', handleStreamComplete);
+            ipcRenderer.off('stream-complete', testStreamCompleteListener);
             ipcRenderer.off('stream-error', handleStreamError);
             ipcRenderer.off('tool-execution-update', handleToolExecutionUpdate);
             ipcRenderer.off('user-message', handleUserMessage);
@@ -783,7 +815,7 @@ const App: React.FC = () => {
                 streamController.current.abort();
             }
         };
-    }, [currentConversationId, dispatch]);
+    }, [dispatch]); // Removed currentConversationId dependency to prevent listener re-registration
 
     // Handle input change with auto-resize
     const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -1354,7 +1386,6 @@ const App: React.FC = () => {
                                                             msg.content || (msg.isStreaming ? '...' : '')
                                                         )
                                                     )}
-                                                    {msg.isStreaming && <span className="streaming-cursor">▋</span>}
                                                     {msg.retryCount > 0 && !msg.failed && !msg.isStreaming && (
                                                         <div className="retry-indicator">
                                                             <small>Retry attempt #{msg.retryCount}</small>

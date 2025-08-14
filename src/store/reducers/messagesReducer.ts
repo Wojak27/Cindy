@@ -133,13 +133,18 @@ const messagesReducer = (state = initialState, action: any) => {
       return state;
 
     case 'FINALIZE_STREAMING_MESSAGE':
+      console.log('🔧 DEBUG: Processing FINALIZE_STREAMING_MESSAGE action for messageId:', action.payload.messageId);
+      const updatedMessages = state.messages.map(message => {
+        if (message.id === action.payload.messageId && message.conversationId === action.payload.conversationId) {
+          console.log('🔧 DEBUG: Setting isStreaming to false for message:', message.id);
+          return { ...message, isStreaming: false };
+        }
+        return message;
+      });
+      console.log('🔧 DEBUG: Messages after finalization:', updatedMessages.filter(m => m.role === 'assistant').map(m => ({ id: m.id, isStreaming: m.isStreaming })));
       return {
         ...state,
-        messages: state.messages.map(message => 
-          message.id === action.payload.messageId && message.conversationId === action.payload.conversationId
-            ? { ...message, isStreaming: false }
-            : message
-        )
+        messages: updatedMessages
       };
     case 'COMPLETE_ASSISTANT_MESSAGE':
       const completeIdx = state.messages.length - 1;

@@ -2551,6 +2551,7 @@ app.on('ready', async () => {
                     }
                 }
 
+                console.log('🔧 DEBUG: Sending stream-complete event (error path) for conversation:', conversationId);
                 event.sender.send('stream-complete', { conversationId });
                 return errorMessage;
             }
@@ -2610,6 +2611,7 @@ app.on('ready', async () => {
                         event.sender.send('stream-chunk', { chunk, conversationId });
                     }
 
+                    console.log('🔧 DEBUG: Sending stream-complete event for conversation:', conversationId);
                     event.sender.send('stream-complete', { conversationId });
                     return assistantContent;
 
@@ -2678,6 +2680,7 @@ app.on('ready', async () => {
                 }
             }
 
+            console.log('🔧 DEBUG: Sending stream-complete event (fallback path) for conversation:', conversationId);
             event.sender.send('stream-complete', { conversationId });
             return assistantContent; // Return the full response
 
