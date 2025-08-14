@@ -1500,22 +1500,22 @@ app.on('ready', async () => {
             const voiceSettings = (await settingsService?.get('voice') || {}) as any;
             console.log('🔧 DEBUG: Loaded voice settings:', JSON.stringify(voiceSettings, null, 2));
 
-            // Handle 'auto' ttsProvider - AUTO MIGRATE TO XENOVA (local AI TTS) 
+            // Handle 'auto' ttsProvider - AUTO MIGRATE TO KOKORO (local AI TTS) 
             let selectedProvider = voiceSettings.ttsProvider || 'auto';
             console.log('🔧 DEBUG: Initial TTS provider from settings:', selectedProvider);
 
-            if (selectedProvider === 'auto') {
-                selectedProvider = 'xenova'; // Auto-migrate to local AI TTS
-                console.log('🔧 DEBUG: Auto TTS provider migrated from "auto" to "xenova" (local AI TTS)');
+            // Validate provider - only kokoro is supported
+            if (selectedProvider !== 'kokoro') {
+                console.warn(`🔧 WARNING: Unsupported TTS provider "${selectedProvider}", auto-migrating to kokoro`);
+                selectedProvider = 'kokoro';
                 // Update settings to persist the change
                 if (settingsService) {
                     try {
-                        const updatedVoiceSettings = { ...voiceSettings };
+                        const updatedVoiceSettings = { ...voiceSettings, ttsProvider: 'kokoro' };
                         await settingsService.set('voice', updatedVoiceSettings);
-                        console.log('🔧 DEBUG: Settings updated to persist xenova provider selection');
+                        console.log('🔧 DEBUG: Settings updated to kokoro provider');
                     } catch (settingsError) {
                         console.warn('Failed to update TTS provider setting:', settingsError);
-                        // Don't fail initialization due to settings save error
                     }
                 }
             }
@@ -1523,18 +1523,10 @@ app.on('ready', async () => {
             console.log('🔧 DEBUG: Final TTS provider for initialization:', selectedProvider);
 
             const ttsConfig = {
-                provider: selectedProvider,
-                enableStreaming: voiceSettings.enableStreaming || false,
-                sentenceBufferSize: voiceSettings.sentenceBufferSize || 2,
-                // ElevenLabs options
-                apiKey: voiceSettings.elevenlabsApiKey,
-                voiceId: voiceSettings.elevenlabsVoiceId || 'pNInz6obpgDQGcFmaJgB',
-                stability: voiceSettings.elevenlabsStability || 0.5,
-                similarityBoost: voiceSettings.elevenlabsSimilarityBoost || 0.5,
+                provider: selectedProvider as 'kokoro',
+                enableStreaming: voiceSettings.enableStreaming !== false, // Default to true for micro-streaming
                 // Kokoro options
-                kokoroVoice: voiceSettings.kokoroVoice || 'default',
-                // Xenova options
-                xenovaModel: voiceSettings.xenovaModel || 'Xenova/speecht5_tts',
+                kokoroVoice: voiceSettings.kokoroVoice || 'af_sky',
             };
             textToSpeechService = new TextToSpeechService(ttsConfig);
             // Don't initialize now - will initialize lazily on first use to avoid memory issues

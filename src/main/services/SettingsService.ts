@@ -19,7 +19,7 @@ interface Settings {
         voiceSpeed: number;
         voicePitch: number;
         sttProvider: 'online' | 'offline' | 'auto';
-        ttsProvider: 'kokoro' | 'xenova' | 'elevenlabs' | 'auto';
+        ttsProvider: 'kokoro';
     };
 
     // TTS settings
@@ -185,20 +185,20 @@ class SettingsService extends EventEmitter {
         // For search settings, check if API keys exist in keychain and show placeholder
         if (section === 'search') {
             const searchSettings = { ...this.settings[section] } as Settings[T];
-            
+
             try {
                 // Check for Brave API key in keychain
                 const braveApiKey = await keytar.getPassword(this.SERVICE_NAME, this.BRAVE_ACCOUNT_NAME);
                 if (braveApiKey) {
                     (searchSettings as any).braveApiKey = '***';
                 }
-                
+
                 // Check for Tavily API key in keychain
                 const tavilyApiKey = await keytar.getPassword(this.SERVICE_NAME, this.TAVILY_ACCOUNT_NAME);
                 if (tavilyApiKey) {
                     (searchSettings as any).tavilyApiKey = '***';
                 }
-                
+
                 // Check for SERP API key in keychain
                 const serpApiKey = await keytar.getPassword(this.SERVICE_NAME, this.SERP_ACCOUNT_NAME);
                 if (serpApiKey) {
@@ -207,7 +207,7 @@ class SettingsService extends EventEmitter {
             } catch (error) {
                 console.warn('[SettingsService] Failed to check API keys in keychain:', error);
             }
-            
+
             return searchSettings;
         }
 
@@ -233,7 +233,7 @@ class SettingsService extends EventEmitter {
                     (this.settings.llm.openai as any).apiKey = '***';
                 }
             }
-            
+
             // Handle other provider API keys (store them in settings for now)
             // These could be moved to keychain in the future for better security
             const providers = ['anthropic', 'openrouter', 'groq', 'google', 'cohere', 'azure', 'huggingface'] as const;
@@ -362,7 +362,7 @@ class SettingsService extends EventEmitter {
             if (apiKey) {
                 return apiKey;
             }
-            
+
             // Fallback: check settings (for backward compatibility or if keychain fails)
             const searchSettings = await this.get('search');
             return searchSettings?.braveApiKey || '';
@@ -383,7 +383,7 @@ class SettingsService extends EventEmitter {
             if (apiKey) {
                 return apiKey;
             }
-            
+
             // Fallback: check settings (for backward compatibility or if keychain fails)
             const searchSettings = await this.get('search');
             return searchSettings?.tavilyApiKey || '';
@@ -404,7 +404,7 @@ class SettingsService extends EventEmitter {
             if (apiKey) {
                 return apiKey;
             }
-            
+
             // Fallback: check settings (for backward compatibility or if keychain fails)
             const searchSettings = await this.get('search');
             return searchSettings?.serpApiKey || '';
@@ -434,7 +434,7 @@ class SettingsService extends EventEmitter {
                 voiceSpeed: 1.0,
                 voicePitch: 1.0,
                 sttProvider: 'auto',
-                ttsProvider: 'xenova' // Default to local AI TTS
+                ttsProvider: 'kokoro' // Default to local AI TTS
             },
 
             llm: {

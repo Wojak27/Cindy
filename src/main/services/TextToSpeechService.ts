@@ -7,26 +7,17 @@ import { BackpressureController, BackpressureAdjustments } from './BackpressureC
 import { ProsodySmoother, AudioSegment, CrossfadeConfig, ProsodyCorrection } from './ProsodySmoother';
 
 interface TTSOptions {
-    provider?: 'kokoro' | 'xenova' | 'elevenlabs' | 'system';
+    provider?: 'kokoro';
     speed?: number;
     volume?: number;
     pitch?: number;
-    // Streaming options
-    enableStreaming?: boolean;
-    sentenceBufferSize?: number;
-    // Micro-streaming options
-    streamingMode?: 'sentence' | 'micro';
+    // Streaming options (micro-streaming only, with debug option to disable)
+    enableStreaming?: boolean; // For debugging - can disable streaming
     microStreamingConfig?: Partial<MicroChunkConfig>;
     enableProsodySmoothing?: boolean;
     prosodyConfig?: Partial<CrossfadeConfig>;
-    // ElevenLabs specific options
-    apiKey?: string;
-    voiceId?: string;
-    stability?: number;
-    similarityBoost?: number;
-    // Kokoro/Xenova options
+    // Kokoro options
     kokoroVoice?: string;
-    xenovaModel?: string;
 }
 
 interface AudioResult {
@@ -51,11 +42,9 @@ export class TextToSpeechService extends EventEmitter {
     private model: any = null;
     private isInitialized = false;
     private modelAvailable = false;
-    private useSystemTTS = false;
     private options: TTSOptions;
     private tempDir: string;
     private currentPlaybackProcess: any = null; // Track current audio playback process
-    private hasLoggedSystemTTS = false; // Flag to prevent repeated logging
 
     // Micro-streaming components
     private microChunker: MicroChunker | null = null;
@@ -67,18 +56,14 @@ export class TextToSpeechService extends EventEmitter {
     constructor(options: TTSOptions = {}) {
         super();
         this.options = {
-            provider: 'system', // Default to system TTS (smallest, fastest)
+            provider: 'kokoro', // Kokoro-only TTS service
             speed: 1.0,
             volume: 1.0,
             pitch: 1.0,
-            // Streaming defaults - will be overridden by Kokoro initialization
-            enableStreaming: false,
-            streamingMode: 'sentence',
-            enableProsodySmoothing: false,
-            // ElevenLabs defaults
-            voiceId: 'pNInz6obpgDQGcFmaJgB', // Default voice (Adam)
-            stability: 0.5,
-            similarityBoost: 0.5,
+            // Streaming defaults - micro-streaming enabled by default
+            enableStreaming: true,
+            enableProsodySmoothing: true,
+            kokoroVoice: 'af_sky', // Default Kokoro voice
             ...options
         };
         console.log('[TextToSpeechService] Initialized with provider:', this.options.provider);
@@ -104,31 +89,20 @@ export class TextToSpeechService extends EventEmitter {
     async initialize(): Promise<void> {
         if (this.isInitialized) return;
 
-        console.log(`[TextToSpeechService] Initializing with provider: ${this.options.provider}`);
+        console.log(`[TextToSpeechService] Initializing Kokoro TTS...`);
 
         try {
-            switch (this.options.provider) {
-                case 'kokoro':
-                    await this.initializeKokoroModel();
-                    break;
-                case 'xenova':
-                    await this.initializeXenovaModel();
-                    break;
-                case 'elevenlabs':
-                    await this.initializeElevenLabsService();
-                    break;
-                case 'system':
-                default:
-                    await this.initializeSystemTTS();
-                    break;
+            if (this.options.provider !== 'kokoro') {
+                throw new Error(`Unsupported TTS provider: ${this.options.provider}. Only Kokoro is supported.`);
             }
 
-            // Initialize micro-streaming if enabled
+            await this.initializeKokoroModel();
+
+            // Initialize micro-streaming components
             this.initializeMicroStreaming();
 
         } catch (error) {
-            console.error(`[TextToSpeechService] Failed to initialize ${this.options.provider} provider:`, error.message);
-            // No fallback - fail if provider-specific initialization fails
+            console.error(`[TextToSpeechService] Failed to initialize Kokoro TTS:`, error.message);
             throw error;
         }
     }
@@ -137,15 +111,17 @@ export class TextToSpeechService extends EventEmitter {
      * Initialize micro-streaming components
      */
     private initializeMicroStreaming(): void {
-        if (this.options.streamingMode === 'micro') {
+        if (this.options.enableStreaming) {
             console.log('[TextToSpeechService] Initializing micro-streaming components...');
 
-            // Initialize micro-chunker
+            // Initialize micro-chunker with configured settings
             this.microChunker = new MicroChunker({
                 mode: 'micro',
-                // Increased defaults for smoother playback
-                chunkTokenBudget: 48,
-                timeBudgetMs: 750,
+                chunkTokenBudget: 32,        // Optimized for low latency
+                timeBudgetMs: 400,           // Target ≤400ms first audio
+                lookaheadTokens: 8,          // Short lookahead
+                crossfadeMs: 25,             // Quick crossfades
+                forceFlushTimeoutMs: 500,    // Force flush timeout
                 ...this.options.microStreamingConfig
             });
 
@@ -161,6 +137,8 @@ export class TextToSpeechService extends EventEmitter {
             this.setupMicroStreamingEvents();
 
             console.log('[TextToSpeechService] ✅ Micro-streaming components initialized');
+        } else {
+            console.log('[TextToSpeechService] Streaming disabled - using direct synthesis only');
         }
     }
 
@@ -211,119 +189,38 @@ export class TextToSpeechService extends EventEmitter {
         try {
             // Defer actual loading until synthesis time to avoid startup issues
             console.log('[TextToSpeechService] Deferring Kokoro.js loading to synthesis time');
-            this.useSystemTTS = false;
             this.isInitialized = true;
             this.modelAvailable = true; // Mark as available, actual check happens during synthesis
             
-            // Configure Kokoro for micro-streaming by default
-            this.options.streamingMode = 'micro';
-            this.options.enableStreaming = true;
-            this.options.enableProsodySmoothing = true;
-            
-            // Configure micro-streaming for low latency according to work order specs
-            this.options.microStreamingConfig = {
-                mode: 'micro',
-                chunkTokenBudget: 32,        // Smaller chunks for lower latency
-                timeBudgetMs: 400,           // Target ≤400ms first audio
-                lookaheadTokens: 8,          // Short lookahead for punctuation awareness
-                crossfadeMs: 25,             // Minimal crossfade for prosody smoothing
-                forceFlushTimeoutMs: 500     // Force flush if chunk takes too long
-            };
+            // Configure optimized settings for micro-streaming
+            if (!this.options.microStreamingConfig) {
+                this.options.microStreamingConfig = {
+                    mode: 'micro',
+                    chunkTokenBudget: 32,        // Smaller chunks for lower latency
+                    timeBudgetMs: 400,           // Target ≤400ms first audio
+                    lookaheadTokens: 8,          // Short lookahead for punctuation awareness
+                    crossfadeMs: 25,             // Minimal crossfade for prosody smoothing
+                    forceFlushTimeoutMs: 500     // Force flush if chunk takes too long
+                };
+            }
             
             // Configure prosody smoothing for seamless audio
-            this.options.prosodyConfig = {
-                crossfadeMs: 25,             // Match micro-streaming crossfade
-                maxRetimesPerSentence: 2,    // Allow more retimes for quality
-                retimeThresholdMs: 120       // Low threshold for quick corrections
-            };
+            if (!this.options.prosodyConfig) {
+                this.options.prosodyConfig = {
+                    crossfadeMs: 25,             // Match micro-streaming crossfade
+                    maxRetimesPerSentence: 2,    // Allow more retimes for quality
+                    retimeThresholdMs: 120       // Low threshold for quick corrections
+                };
+            }
             
-            console.log('[TextToSpeechService] ✅ Kokoro configured for micro-streaming with low latency');
-            this.emit('initialized', { provider: 'kokoro', fallback: false, streamingMode: 'micro' });
-            console.log('[TextToSpeechService] ✅ Kokoro TTS initialized with micro-streaming enabled');
+            console.log('[TextToSpeechService] ✅ Kokoro TTS initialized');
+            this.emit('initialized', { provider: 'kokoro', streamingEnabled: this.options.enableStreaming });
         } catch (error) {
             console.error('[TextToSpeechService] ❌ Failed to initialize Kokoro:', error);
             throw error;
         }
     }
 
-    private async initializeXenovaModel(): Promise<void> {
-        console.log('[TextToSpeechService] Initializing Xenova Transformers...');
-        try {
-            // Defer actual loading until synthesis time to avoid startup issues
-            console.log('[TextToSpeechService] Deferring @xenova/transformers loading to synthesis time');
-            this.useSystemTTS = false;
-            this.isInitialized = true;
-            this.modelAvailable = true; // Mark as available, actual check happens during synthesis
-            this.emit('initialized', { provider: 'xenova', fallback: false });
-            console.log('[TextToSpeechService] ✅ Xenova Transformers initialized (deferred loading)');
-        } catch (error) {
-            console.error('[TextToSpeechService] ❌ Failed to initialize Xenova:', error);
-            throw error;
-        }
-    }
-
-    private async initializeElevenLabsService(): Promise<void> {
-        console.log('[TextToSpeechService] Initializing ElevenLabs TTS...');
-        try {
-            // Check if API key is provided
-            if (!this.options.apiKey) {
-                throw new Error('ElevenLabs API key not configured');
-            }
-            // No actual initialization needed - just validate API key is present
-            this.isInitialized = true;
-            this.emit('initialized', { provider: 'elevenlabs' });
-            console.log('[TextToSpeechService] ✅ ElevenLabs TTS ready for use');
-        } catch (error) {
-            console.error('[TextToSpeechService] ❌ Failed to initialize ElevenLabs:', error);
-            throw error;
-        }
-    }
-
-    private async initializeSystemTTS(): Promise<void> {
-        try {
-            // Test if system TTS is available
-            await this.testSystemTTS();
-
-            this.useSystemTTS = true;
-            this.isInitialized = true;
-
-            // Only log once per session to avoid spam
-            if (!this.hasLoggedSystemTTS) {
-                console.log(`[TextToSpeechService] ✅ System TTS ready (${process.platform})`);
-                this.hasLoggedSystemTTS = true;
-            }
-
-            this.emit('initialized', { provider: 'system', fallback: true });
-        } catch (error) {
-            console.error('[TextToSpeechService] ❌ System TTS failed:', error);
-            this.isInitialized = false;
-            throw new Error('System TTS unavailable');
-        }
-    }
-
-    private async testSystemTTS(): Promise<void> {
-        // Simple test - just check if the command exists
-        try {
-            switch (process.platform) {
-                case 'darwin': // macOS
-                    // macOS always has 'say' command
-                    console.log('[TextToSpeechService] macOS detected, say command available');
-                    break;
-                case 'win32': // Windows
-                    // Windows should have PowerShell
-                    console.log('[TextToSpeechService] Windows detected, PowerShell TTS available');
-                    break;
-                case 'linux': // Linux
-                    // We'll assume espeak can be installed or skip if not available
-                    console.log('[TextToSpeechService] Linux detected, espeak TTS support');
-                    break;
-                default:
-                    throw new Error(`System TTS not supported on platform: ${process.platform}`);
-            }
-        } catch (error) {
-            throw error;
-        }
-    }
 
     async synthesize(text: string, outputPath?: string): Promise<AudioResult> {
         const startTime = Date.now();
@@ -333,9 +230,9 @@ export class TextToSpeechService extends EventEmitter {
                 throw new Error('TTS service not initialized');
             }
 
-            // Check if model is available
-            if (!this.model && !this.useSystemTTS && !this.modelAvailable) {
-                throw new Error('Selected TTS model is not available. Please check your settings or download the required models.');
+            // Check if Kokoro model is available
+            if (!this.modelAvailable) {
+                throw new Error('Kokoro TTS model is not available. Please check your internet connection.');
             }
 
             if (!text || typeof text !== 'string' || text.trim().length === 0) {
@@ -351,34 +248,9 @@ export class TextToSpeechService extends EventEmitter {
                 `tts_${Date.now()}_${Math.random().toString(36).substring(2, 11)}.wav`
             );
 
-            // Route to appropriate TTS provider
-            // No automatic fallback - fail if model not available
-            switch (this.options.provider) {
-                case 'elevenlabs':
-                    console.log('[TextToSpeechService] Using ElevenLabs TTS');
-                    await this.synthesizeWithElevenLabs(text, fileName);
-                    break;
-                case 'kokoro':
-                    console.log('[TextToSpeechService] Using SpeechT5 TTS (Kokoro provider)');
-                    if (!this.modelAvailable) {
-                        throw new Error('SpeechT5 TTS model is not available. Please ensure the model files are downloaded.');
-                    }
-                    await this.synthesizeWithKokoro(text, fileName);
-                    break;
-                case 'xenova':
-                    console.log('[TextToSpeechService] Using Xenova Transformers TTS');
-                    if (!this.modelAvailable) {
-                        throw new Error('Xenova Transformers is not available. This could be due to:\n• Network connection issues preventing model download\n• Missing @xenova/transformers package\n• Browser/Node.js compatibility issues\n\nTry using a different TTS provider or check your internet connection.');
-                    }
-                    await this.synthesizeWithXenova(text, fileName);
-                    break;
-                case 'system':
-                    console.log('[TextToSpeechService] Using system TTS');
-                    await this.synthesizeWithSystemTTS(text, fileName);
-                    break;
-                default:
-                    throw new Error(`Unknown TTS provider: ${this.options.provider}`);
-            }
+            // Use Kokoro TTS (only supported provider)
+            console.log('[TextToSpeechService] Using Kokoro TTS');
+            await this.synthesizeWithKokoro(text, fileName);
 
             const duration = Date.now() - startTime;
 
@@ -465,131 +337,6 @@ export class TextToSpeechService extends EventEmitter {
     }
 
 
-    private async synthesizeWithSystemTTS(text: string, outputPath: string): Promise<void> {
-        return new Promise((resolve, reject) => {
-            try {
-                // Sanitize text for shell safety
-                const sanitizedText = text.replace(/["`$\\]/g, '\\$&');
-
-                if (process.platform === 'darwin') {
-                    // macOS - Use say command with AIFF output, then convert to WAV
-                    this.synthesizeMacOSTTS(sanitizedText, outputPath)
-                        .then(resolve)
-                        .catch(reject);
-                } else if (process.platform === 'win32') {
-                    // Windows - Use PowerShell with SAPI
-                    this.synthesizeWindowsTTS(sanitizedText, outputPath)
-                        .then(resolve)
-                        .catch(reject);
-                } else if (process.platform === 'linux') {
-                    // Linux - Use espeak
-                    this.synthesizeLinuxTTS(sanitizedText, outputPath)
-                        .then(resolve)
-                        .catch(reject);
-                } else {
-                    reject(new Error(`System TTS not supported on platform: ${process.platform}`));
-                }
-
-            } catch (error) {
-                reject(error);
-            }
-        });
-    }
-
-    private async synthesizeMacOSTTS(text: string, outputPath: string): Promise<void> {
-        return new Promise((resolve, reject) => {
-            const { spawn } = require('child_process');
-
-            // Create AIFF file first (say command default format)
-            const tempAiffPath = outputPath.replace(/\.[^.]+$/, '.aiff');
-
-            console.log(`[TextToSpeechService] macOS TTS: say -o "${tempAiffPath}"`);
-            const say = spawn('say', ['-o', tempAiffPath, text], { stdio: 'pipe' });
-
-            say.on('close', async (code: number | null) => {
-                if (code === 0) {
-                    try {
-                        // If we need WAV format, convert AIFF to WAV
-                        if (outputPath.endsWith('.wav') && tempAiffPath !== outputPath) {
-                            await this.convertAiffToWav(tempAiffPath, outputPath);
-                            // Clean up temp AIFF file
-                            fs.unlinkSync(tempAiffPath);
-                        }
-                        console.log('[TextToSpeechService] macOS TTS synthesis completed');
-                        resolve();
-                    } catch (conversionError) {
-                        console.warn('[TextToSpeechService] AIFF to WAV conversion failed, using AIFF');
-                        // If conversion fails, rename AIFF to requested output
-                        if (fs.existsSync(tempAiffPath)) {
-                            fs.renameSync(tempAiffPath, outputPath);
-                        }
-                        resolve();
-                    }
-                } else {
-                    reject(new Error(`macOS say command exited with code ${code}`));
-                }
-            });
-
-            say.on('error', (error: Error) => {
-                console.error('[TextToSpeechService] macOS TTS error:', error);
-                reject(error);
-            });
-        });
-    }
-
-    private async synthesizeWindowsTTS(text: string, outputPath: string): Promise<void> {
-        return new Promise((resolve, reject) => {
-            const { spawn } = require('child_process');
-
-            const psScript = `
-                Add-Type -AssemblyName System.Speech
-                $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer
-                $synth.SetOutputToWaveFile('${outputPath}')
-                $synth.Speak('${text.replace(/'/g, "''")}')
-                $synth.Dispose()
-            `;
-
-            console.log(`[TextToSpeechService] Windows TTS: PowerShell SAPI`);
-            const ps = spawn('powershell', ['-Command', psScript], { stdio: 'pipe' });
-
-            ps.on('close', (code: number | null) => {
-                if (code === 0) {
-                    console.log('[TextToSpeechService] Windows TTS synthesis completed');
-                    resolve();
-                } else {
-                    reject(new Error(`Windows PowerShell TTS exited with code ${code}`));
-                }
-            });
-
-            ps.on('error', (error: Error) => {
-                console.error('[TextToSpeechService] Windows TTS error:', error);
-                reject(error);
-            });
-        });
-    }
-
-    private async synthesizeLinuxTTS(text: string, outputPath: string): Promise<void> {
-        return new Promise((resolve, reject) => {
-            const { spawn } = require('child_process');
-
-            console.log(`[TextToSpeechService] Linux TTS: espeak -w "${outputPath}"`);
-            const espeak = spawn('espeak', ['-w', outputPath, text], { stdio: 'pipe' });
-
-            espeak.on('close', (code: number | null) => {
-                if (code === 0) {
-                    console.log('[TextToSpeechService] Linux TTS synthesis completed');
-                    resolve();
-                } else {
-                    reject(new Error(`Linux espeak exited with code ${code}`));
-                }
-            });
-
-            espeak.on('error', (error: Error) => {
-                console.error('[TextToSpeechService] Linux TTS error:', error);
-                reject(error);
-            });
-        });
-    }
 
     /**
      * Synthesize speech using Kokoro-82M model (hexgrad/Kokoro-82M)
@@ -615,29 +362,6 @@ export class TextToSpeechService extends EventEmitter {
         }
     }
 
-    /**
-     * Synthesize speech using Xenova Transformers via renderer process
-     */
-    private async synthesizeWithXenova(text: string, outputPath: string): Promise<void> {
-        try {
-            console.log('[TextToSpeechService] Starting Xenova TTS synthesis via renderer process...');
-
-            // Generate TTS directly on server-side
-            const { audioData, sampleRate } = await this.generateTTSDirectly(text, 'xenova');
-
-            console.log('[TextToSpeechService] Received audio data from renderer process');
-            console.log(`[TextToSpeechService] Audio stats - Length: ${audioData.length}, SampleRate: ${sampleRate}Hz`);
-
-            // Process and save the audio using our optimized pipeline
-            await this.saveProcessedAudioToFile(audioData, sampleRate, outputPath);
-
-            console.log('[TextToSpeechService] Xenova TTS synthesis completed via renderer process');
-
-        } catch (error) {
-            console.error('[TextToSpeechService] Xenova TTS synthesis failed:', error);
-            throw new Error(`Xenova TTS failed: ${error.message}`);
-        }
-    }
 
     /**
      * Helper method to save processed audio to file
@@ -679,161 +403,12 @@ export class TextToSpeechService extends EventEmitter {
         }
     }
 
-    /**
-     * Synthesize speech using ElevenLabs API
-     */
-    private async synthesizeWithElevenLabs(text: string, outputPath: string): Promise<void> {
-        if (!this.options.apiKey) {
-            throw new Error('ElevenLabs API key not configured');
-        }
 
-        const url = `https://api.elevenlabs.io/v1/text-to-speech/${this.options.voiceId}`;
-
-        const requestBody = {
-            text: text,
-            model_id: "eleven_monolingual_v1",
-            voice_settings: {
-                stability: this.options.stability || 0.5,
-                similarity_boost: this.options.similarityBoost || 0.5
-            }
-        };
-
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Accept': 'audio/mpeg',
-                'Content-Type': 'application/json',
-                'xi-api-key': this.options.apiKey
-            },
-            body: JSON.stringify(requestBody)
-        });
-
-        if (!response.ok) {
-            throw new Error(`ElevenLabs API error: ${response.status} ${response.statusText}`);
-        }
-
-        const audioBuffer = await response.arrayBuffer();
-
-        // Save MP3 temporarily then convert to WAV
-        const tempMp3Path = outputPath.replace('.wav', '.mp3');
-        fs.writeFileSync(tempMp3Path, Buffer.from(audioBuffer));
-
-        // Convert MP3 to WAV using ffmpeg
-        await this.convertMp3ToWav(tempMp3Path, outputPath);
-
-        // Clean up temporary MP3 file
-        try {
-            fs.unlinkSync(tempMp3Path);
-        } catch (error) {
-            console.warn('[TextToSpeechService] Failed to clean up temporary MP3 file:', error);
-        }
-    }
-
-    private async convertMp3ToWav(mp3Path: string, wavPath: string): Promise<void> {
-        return new Promise((resolve, reject) => {
-            try {
-                const { spawn } = require('child_process');
-                const ffmpeg = spawn('ffmpeg', ['-i', mp3Path, '-y', wavPath], { stdio: 'pipe' });
-
-                ffmpeg.on('close', (code: number | null) => {
-                    if (code === 0) {
-                        console.log('[TextToSpeechService] MP3 to WAV conversion completed');
-                        resolve();
-                    } else {
-                        reject(new Error(`ffmpeg exited with code ${code}`));
-                    }
-                });
-
-                ffmpeg.on('error', (error: Error) => {
-                    console.error('[TextToSpeechService] ffmpeg conversion error:', error);
-                    reject(error);
-                });
-            } catch (error) {
-                reject(error);
-            }
-        });
-    }
-
-    private async convertAiffToWav(aiffPath: string, wavPath: string): Promise<void> {
-        return new Promise((resolve, reject) => {
-            try {
-                // Try using ffmpeg if available
-                const { spawn } = require('child_process');
-                const ffmpeg = spawn('ffmpeg', ['-i', aiffPath, '-y', wavPath], { stdio: 'pipe' });
-
-                ffmpeg.on('close', (code: number | null) => {
-                    if (code === 0) {
-                        resolve();
-                    } else {
-                        reject(new Error(`ffmpeg conversion failed with code ${code}`));
-                    }
-                });
-
-                ffmpeg.on('error', () => {
-                    // If ffmpeg is not available, try afconvert (macOS built-in)
-                    const afconvert = spawn('afconvert', ['-f', 'WAVE', '-d', 'LEI16', aiffPath, wavPath], { stdio: 'pipe' });
-
-                    afconvert.on('close', (afCode: number | null) => {
-                        if (afCode === 0) {
-                            resolve();
-                        } else {
-                            reject(new Error(`afconvert failed with code ${afCode}`));
-                        }
-                    });
-
-                    afconvert.on('error', (afError: Error) => {
-                        reject(afError);
-                    });
-                });
-
-            } catch (error) {
-                reject(error);
-            }
-        });
-    }
 
     /**
-     * Split text into sentences for streaming synthesis
-     */
-    private splitIntoSentences(text: string): string[] {
-        // Basic sentence splitting - can be improved with more sophisticated NLP
-        const sentences = text
-            .split(/[.!?]+/)
-            .map(s => s.trim())
-            .filter(s => s.length > 0)
-            .map(s => s + (text.match(/[.!?]/) ? text.match(/[.!?]/)[0] : '.'));
-
-        // If no sentence boundaries found, split by length (max ~100 chars per chunk)
-        if (sentences.length === 1 && sentences[0].length > 100) {
-            const chunks = [];
-            const words = sentences[0].split(' ');
-            let currentChunk = '';
-
-            for (const word of words) {
-                if (currentChunk.length + word.length > 100) {
-                    chunks.push(currentChunk.trim());
-                    currentChunk = word;
-                } else {
-                    currentChunk += (currentChunk ? ' ' : '') + word;
-                }
-            }
-
-            if (currentChunk) {
-                chunks.push(currentChunk.trim());
-            }
-
-            return chunks;
-        }
-
-        return sentences;
-    }
-
-    /**
-     * Synthesize and stream audio sentence by sentence or micro-chunk by micro-chunk
+     * Synthesize and stream audio using micro-chunking (only supported streaming mode)
      */
     async synthesizeStreaming(text: string, onAudioReady?: (audioPath: string, chunkIndex: number) => void): Promise<AudioResult> {
-        const startTime = Date.now();
-
         try {
             if (!this.isInitialized) {
                 await this.initialize();
@@ -844,79 +419,16 @@ export class TextToSpeechService extends EventEmitter {
                 return await this.synthesize(text);
             }
 
-            // Route to micro-streaming if enabled
-            if (this.options.streamingMode === 'micro' && this.microChunker) {
-                return await this.synthesizeMicroStreaming(text, onAudioReady);
-            }
-
-            // Original sentence-based streaming
-            console.log(`[TextToSpeechService] Starting sentence-based streaming synthesis for: "${text.substring(0, 50)}..."`);
-
-            // Split text into sentences
-            const sentences = this.splitIntoSentences(text);
-            console.log(`[TextToSpeechService] Split into ${sentences.length} sentences for streaming`);
-
-            const audioPaths: string[] = [];
-            const sentenceBufferSize = this.options.sentenceBufferSize || 2;
-
-            // Process sentences in parallel (buffer ahead)
-            const processPromises: Promise<void>[] = [];
-
-            for (let i = 0; i < sentences.length; i++) {
-                const sentence = sentences[i];
-                const sentenceIndex = i;
-
-                // Create unique filename for this sentence
-                const sentenceAudioPath = path.join(
-                    this.tempDir,
-                    `tts_stream_${Date.now()}_${sentenceIndex}_${Math.random().toString(36).substring(2, 11)}.wav`
-                );
-
-                audioPaths.push(sentenceAudioPath);
-
-                // Start processing this sentence
-                const processPromise = this.synthesizeSentence(sentence, sentenceAudioPath)
-                    .then(() => {
-                        console.log(`[TextToSpeechService] Sentence ${sentenceIndex + 1}/${sentences.length} ready`);
-                        if (onAudioReady) {
-                            onAudioReady(sentenceAudioPath, sentenceIndex);
-                        }
-                    })
-                    .catch(error => {
-                        console.error(`[TextToSpeechService] Sentence ${sentenceIndex + 1} failed:`, error);
-                    });
-
-                processPromises.push(processPromise);
-
-                // If we have enough sentences buffering, wait for some to complete
-                if (processPromises.length >= sentenceBufferSize) {
-                    await Promise.race(processPromises);
-                }
-            }
-
-            // Wait for all sentences to complete
-            await Promise.all(processPromises);
-
-            const duration = Date.now() - startTime;
-            console.log(`[TextToSpeechService] Sentence streaming synthesis completed in ${duration}ms`);
-
-            return {
-                success: true,
-                audioPath: audioPaths[0], // Return first sentence path as main path
-                duration,
-                isStreaming: true,
-                sentenceCount: sentences.length
-            };
+            // Use micro-streaming (only supported streaming mode)
+            return await this.synthesizeMicroStreaming(text, onAudioReady);
 
         } catch (error) {
-            const duration = Date.now() - startTime;
             console.error('[TextToSpeechService] Streaming synthesis failed:', error);
-
             return {
                 success: false,
                 error: error.message,
-                duration,
-                isStreaming: true
+                duration: 0,
+                isMicroStreaming: true
             };
         }
     }
@@ -1079,22 +591,8 @@ export class TextToSpeechService extends EventEmitter {
         const synthStartTime = Date.now();
 
         try {
-            // Route to the appropriate synthesis method based on provider
-            switch (this.options.provider) {
-                case 'elevenlabs':
-                    await this.synthesizeWithElevenLabs(chunk.text, outputPath);
-                    break;
-                case 'kokoro':
-                    await this.synthesizeWithKokoro(chunk.text, outputPath);
-                    break;
-                case 'xenova':
-                    await this.synthesizeWithXenova(chunk.text, outputPath);
-                    break;
-                case 'system':
-                default:
-                    await this.synthesizeWithSystemTTS(chunk.text, outputPath);
-                    break;
-            }
+            // Use Kokoro TTS (only supported provider)
+            await this.synthesizeWithKokoro(chunk.text, outputPath);
 
             const synthTimeMs = Date.now() - synthStartTime;
 
@@ -1196,27 +694,6 @@ export class TextToSpeechService extends EventEmitter {
         }
     }
 
-    /**
-     * Synthesize a single sentence (used by streaming)
-     */
-    private async synthesizeSentence(sentence: string, outputPath: string): Promise<void> {
-        // Route to the appropriate synthesis method based on provider
-        switch (this.options.provider) {
-            case 'elevenlabs':
-                await this.synthesizeWithElevenLabs(sentence, outputPath);
-                break;
-            case 'kokoro':
-                await this.synthesizeWithKokoro(sentence, outputPath);
-                break;
-            case 'xenova':
-                await this.synthesizeWithXenova(sentence, outputPath);
-                break;
-            case 'system':
-            default:
-                await this.synthesizeWithSystemTTS(sentence, outputPath);
-                break;
-        }
-    }
 
     /**
      * Synthesize and play with streaming - play each sentence as it becomes ready
@@ -1329,177 +806,46 @@ export class TextToSpeechService extends EventEmitter {
         }
     }
 
-    // --- BEGIN DEDUPLICATED MOCK IMPLEMENTATIONS ---
     /**
-     * Generate TTS directly on server-side (mock implementation for now)
-     * In production, replace with actual call to a Node.js-compatible TTS model.
+     * Generate TTS using Kokoro model
      */
-    // ✅ Deduplicated - keeping only this generateTTSDirectly, remove all other definitions from file
     private async generateTTSDirectly(
         text: string,
-        provider: 'xenova' | 'kokoro' | 'elevenlabs'
+        provider: 'kokoro'
     ): Promise<{ audioData: Float32Array; sampleRate: number }> {
-        console.log(`[TextToSpeechService] Generating real TTS for provider=${provider}`);
+        console.log(`[TextToSpeechService] Generating Kokoro TTS...`);
 
-        switch (provider) {
-            case 'kokoro':
-                // Ensure model initialized lazily
-                if (!this.model) {
-                    // @ts-ignore - kokoro-js is an ESM module
-                    const { KokoroTTS } = await import('kokoro-js');
-                    console.log("[TextToSpeechService] Initializing Kokoro-82M model...");
-                    this.model = await KokoroTTS.from_pretrained(
-                        "onnx-community/Kokoro-82M-v1.0-ONNX",
-                        { dtype: "q8", device: "cpu" } // Use fp32 for compatibility
-                    );
-                    this.modelAvailable = true;
-                    console.log("[TextToSpeechService] Kokoro model loaded successfully");
-                }
-                break;
-            case 'xenova':
-                if (!this.model) {
-                    const { pipeline } = await (new Function("modulePath", "return import(modulePath)"))('@xenova/transformers');
-
-                    const defaultEmbedding = new Float32Array(256); // placeholder 256-dim zero vector
-                    console.log("[TextToSpeechService] Initializing Xenova model with default placeholder speaker_embeddings");
-                    console.log("[DEBUG] Speaker embeddings debug info — Type:", Object.prototype.toString.call(defaultEmbedding), "Length:", defaultEmbedding.length, "Instance of Float32Array:", defaultEmbedding instanceof Float32Array);
-                    // Ensure default embedding is actually passed if not provided in options
-                    const speakerEmbeddings = (this.options as any).speaker_embeddings || defaultEmbedding;
-                    const xenovaModelId = this.options.xenovaModel || 'Xenova/speecht5_tts'; // switched to fully public model
-                    const localModelPath = path.join(process.cwd(), 'models', 'xenova-public');
-
-                    // Ensure local model directory exists or trigger download
-                    if (!fs.existsSync(localModelPath) || fs.readdirSync(localModelPath).length === 0) {
-                        console.log(`[TextToSpeechService] Local Xenova model not found, downloading to ${localModelPath}...`);
-                        try {
-                            // Use node-fetch to download the model as huggingface_hub JS client is not installed
-                            const fetch = (await import('node-fetch')).default;
-                            const fsPromises = fs.promises;
-                            const downloadFile = async (url: string, dest: string) => {
-                                const res = await fetch(url, {
-                                    headers: {
-                                        ...(process.env.HUGGING_FACE_HUB_TOKEN || process.env.HF_TOKEN
-                                            ? { Authorization: `Bearer ${process.env.HUGGING_FACE_HUB_TOKEN || process.env.HF_TOKEN}` }
-                                            : {})
-                                    }
-                                });
-                                if (!res.ok) throw new Error(`Failed to download ${url}: ${res.status} ${res.statusText}`);
-                                const buffer = await res.arrayBuffer();
-                                await fsPromises.mkdir(path.dirname(dest), { recursive: true });
-                                await fsPromises.writeFile(dest, Buffer.from(buffer));
-                            };
-
-                            console.log('[TextToSpeechService] Downloading Xenova model files manually...');
-                            const baseUrl = `https://huggingface.co/${xenovaModelId}/resolve/main`;
-                            const filesToDownload = [
-                                // Ensure all model + tokenizer files are included for offline use
-                                'config.json',
-                                'model.onnx',
-                                'tokenizer.json',
-                                'tokenizer_config.json',
-                                'vocab.json',
-                                'preprocessor_config.json',
-                                'special_tokens_map.json'
-                            ];
-
-                            for (const fileName of filesToDownload) {
-                                await downloadFile(`${baseUrl}/${fileName}`, path.join(localModelPath, fileName));
-                            }
-                            // snapshotDownload removed — replaced with direct manual file downloads above
-                            console.log('[TextToSpeechService] ✅ Xenova model downloaded locally');
-                        } catch (downloadError) {
-                            console.warn('[TextToSpeechService] Failed to download Xenova model locally:', downloadError);
-                        }
-                    } else {
-                        console.log('[TextToSpeechService] Local Xenova model found, skipping download.');
-                    }
-
-                    this.model = await pipeline(
-                        'text-to-speech',
-                        'Xenova/speecht5_tts',
-                        {
-                            speaker_embeddings: new Float32Array(speakerEmbeddings), // Ensure proper Float32Array
-                            vocoder: 'Xenova/universal-vocoder'
-                        }
-                    );
-                    this.modelAvailable = true;
-                }
-                break;
-            case 'elevenlabs':
-                // ElevenLabs handled separately via API
-                const tempPath = path.join(this.tempDir, `tts_elevenlabs_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.wav`);
-                await this.synthesizeWithElevenLabs(text, tempPath);
-                // Read the WAV file and decode into Float32Array
-                const buffer = fs.readFileSync(tempPath);
-                // Decode WAV without external dependency
-                const decodeWav = (data: Buffer) => {
-                    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-                    view.getUint16(22, true); // numChannels (not used currently)
-                    const sampleRate = view.getUint32(24, true);
-                    const bitsPerSample = view.getUint16(34, true);
-                    if (bitsPerSample !== 16) {
-                        throw new Error(`[TextToSpeechService] Unsupported WAV bit depth: ${bitsPerSample}`);
-                    }
-                    const startOffset = 44;
-                    const samples = new Float32Array((data.length - startOffset) / 2);
-                    for (let i = 0; i < samples.length; i++) {
-                        const s = view.getInt16(startOffset + i * 2, true);
-                        samples[i] = s / 32768;
-                    }
-                    return { audioData: samples, sampleRate };
-                };
-                const audioBuffer = decodeWav(buffer);
-                return { audioData: audioBuffer.audioData, sampleRate: audioBuffer.sampleRate };
-
-            default:
-                break;
+        if (provider !== 'kokoro') {
+            throw new Error(`Only Kokoro provider is supported. Got: ${provider}`);
         }
 
-        if (provider === 'kokoro') {
-            // Use Kokoro.js to generate audio
-            const voice = this.options.kokoroVoice || "af_sky";
-            console.log(`[TextToSpeechService] Generating Kokoro speech with voice: ${voice}`);
-
-            const audio = await this.model.generate(text, { voice });
-
-            // Get the audio data as Float32Array
-            // Kokoro.js returns an audio object with audio property containing Float32Array
-            const audioData = audio.audio;
-            const sampleRate = audio.sampling_rate || 24000;
-
-            console.log(`[TextToSpeechService] Kokoro generated audio: ${audioData.length} samples at ${sampleRate}Hz`);
-
-            return { audioData, sampleRate };
-        } else if (provider === 'xenova') {
-            // Debug log actual speaker embeddings type before model call
-            let embToUse: any;
-            if (this.model && this.model.processor_config && this.model.processor_config.speaker_embeddings) {
-                embToUse = this.model.processor_config.speaker_embeddings;
-                console.log("[DEBUG] Speaker embeddings before TTS call — Type:", Object.prototype.toString.call(embToUse),
-                    "Is Float32Array:", embToUse instanceof Float32Array,
-                    "Length:", embToUse.length !== undefined ? embToUse.length : 'N/A');
-            } else {
-                embToUse = new Float32Array(512); // default if missing, match expected dimensions
-                console.log("[DEBUG] No speaker embeddings found in model.processor_config before TTS call — injecting default Float32Array(512)");
-            }
-
-            const output: any = await this.model(text, { speaker_embeddings: embToUse });
-
-            // Expect model output has audio tensor/data
-            let audioData: Float32Array;
-            let sampleRate = 22050; // typical default, adjust if provided
-            if (output && output.audio) {
-                audioData = output.audio instanceof Float32Array ? output.audio : new Float32Array(output.audio);
-                if (output.sample_rate) {
-                    sampleRate = output.sample_rate;
-                }
-            } else {
-                throw new Error(`[TextToSpeechService] ${provider} model returned no audio`);
-            }
-            return { audioData, sampleRate };
+        // Ensure model initialized lazily
+        if (!this.model) {
+            // @ts-ignore - kokoro-js is an ESM module
+            const { KokoroTTS } = await import('kokoro-js');
+            console.log("[TextToSpeechService] Initializing Kokoro-82M model...");
+            this.model = await KokoroTTS.from_pretrained(
+                "onnx-community/Kokoro-82M-v1.0-ONNX",
+                { dtype: "q8", device: "cpu" } // Use q8 quantization as requested
+            );
+            this.modelAvailable = true;
+            console.log("[TextToSpeechService] Kokoro model loaded successfully");
         }
 
-        throw new Error(`[TextToSpeechService] Unsupported provider in generateTTSDirectly: ${provider}`);
+        // Use Kokoro.js to generate audio
+        const voice = this.options.kokoroVoice || "af_sky";
+        console.log(`[TextToSpeechService] Generating Kokoro speech with voice: ${voice}`);
+
+        const audio = await this.model.generate(text, { voice });
+
+        // Get the audio data as Float32Array
+        // Kokoro.js returns an audio object with audio property containing Float32Array
+        const audioData = audio.audio;
+        const sampleRate = audio.sampling_rate || 24000;
+
+        console.log(`[TextToSpeechService] Kokoro generated audio: ${audioData.length} samples at ${sampleRate}Hz`);
+
+        return { audioData, sampleRate };
     }
 
     /**
@@ -1595,11 +941,10 @@ export class TextToSpeechService extends EventEmitter {
         const previousOptions = { ...this.options };
         this.options = { ...this.options, ...newOptions };
 
-        // If provider or model changed, reinitialize
+        // If provider changed, reinitialize
         const providerChanged = newOptions.provider && newOptions.provider !== previousOptions.provider;
-        const xenovaModelChanged = newOptions.xenovaModel && newOptions.xenovaModel !== previousOptions.xenovaModel;
 
-        if (providerChanged || xenovaModelChanged) {
+        if (providerChanged) {
             console.log(`[TextToSpeechService] Provider/model changed - reinitializing...`);
             console.log(`Previous: ${previousOptions.provider}, New: ${this.options.provider}`);
 
