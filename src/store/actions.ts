@@ -1,21 +1,21 @@
 // Thinking block actions
 export const addThinkingBlock = (block: any) => ({
-  type: 'ADD_THINKING_BLOCK',
-  payload: block
+    type: 'ADD_THINKING_BLOCK',
+    payload: block
 });
 
 export const updateThinkingBlock = (block: any) => ({
-  type: 'UPDATE_THINKING_BLOCK',
-  payload: block
+    type: 'UPDATE_THINKING_BLOCK',
+    payload: block
 });
 
 export const completeThinkingBlock = (blockId: string, endTime: number) => ({
-  type: 'COMPLETE_THINKING_BLOCK',
-  payload: { blockId, endTime }
+    type: 'COMPLETE_THINKING_BLOCK',
+    payload: { blockId, endTime }
 });
 
 export const clearThinkingBlocks = () => ({
-  type: 'CLEAR_THINKING_BLOCKS'
+    type: 'CLEAR_THINKING_BLOCKS'
 });
 
 // Existing actions
@@ -40,6 +40,10 @@ export const sendMessage = (text: string) => ({
 
 export const toggleSettings = () => ({
     type: 'TOGGLE_SETTINGS'
+});
+
+export const toggleDatabaseSidebar = () => ({
+    type: 'TOGGLE_DATABASE_SIDEBAR'
 });
 
 export const toggleDocumentPanel = () => ({

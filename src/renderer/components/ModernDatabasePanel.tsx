@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import DocumentViewer from './DocumentViewer';
 import { useSelector, useDispatch } from 'react-redux';
-import { getSettings, updateSettings } from '../../store/actions';
+import { getSettings, toggleDatabaseSidebar, updateSettings } from '../../store/actions';
 import {
     Box,
     Typography,
@@ -120,7 +120,7 @@ const ModernDatabasePanel: React.FC = () => {
         if (hasUnsavedChanges) {
             saveSettings();
         }
-        dispatch({ type: 'TOGGLE_DATABASE_SIDEBAR' });
+        dispatch(toggleDatabaseSidebar());
     };
 
     // Path browsing
@@ -136,6 +136,92 @@ const ModernDatabasePanel: React.FC = () => {
             console.error('Error showing directory dialog:', error);
         }
     };
+
+    // Handle outside click
+    const handleOutsideClick = useCallback((event: MouseEvent) => {
+        const target = event.target as Element;
+        const settingsPanel = document.querySelector('[data-settings-panel="true"]');
+
+        // Check if target is inside the settings panel
+        if (settingsPanel && settingsPanel.contains(target)) {
+            return; // Click is inside the panel, don't close
+        }
+
+        // Check if target is inside a MUI portal (dropdown, menu, etc.)
+        // MUI creates portals with classes like MuiPaper-root, MuiList-root, MuiMenu-root, etc.
+        const muiPortalSelectors = [
+            '.MuiPaper-root',
+            '.MuiList-root',
+            '.MuiMenu-root',
+            '.MuiMenuItem-root',
+            '.MuiSelect-root',
+            '.MuiPopper-root',
+            '.MuiModal-root',
+            '.MuiDialog-root',
+            '.MuiAutocomplete-popper',
+            '[role="presentation"]',
+            '[role="tooltip"]',
+            '[role="menu"]',
+            '[role="listbox"]'
+        ];
+
+        // Check if the click target or any of its parents match MUI portal selectors
+        for (const selector of muiPortalSelectors) {
+            if (target.closest(selector)) {
+                return; // Click is inside a MUI portal, don't close
+            }
+        }
+
+        // Check if target is inside any element with a MUI class
+        if (target.closest('[class*="Mui"]')) {
+            return; // Click is inside a MUI component, don't close
+        }
+
+        // Additional check for React portals and other dynamic content
+        // Check if the click target has any data attributes that suggest it's part of a component
+        if (target.hasAttribute && (
+            target.hasAttribute('data-testid') ||
+            target.hasAttribute('data-value') ||
+            target.hasAttribute('aria-labelledby') ||
+            target.hasAttribute('aria-describedby')
+        )) {
+            return; // Likely part of a component, don't close
+        }
+
+        // Final check: if target is inside any element with role attributes
+        if (target.closest('[role]')) {
+            const roleElement = target.closest('[role]');
+            const role = roleElement?.getAttribute('role');
+            if (role && ['menu', 'listbox', 'option', 'menuitem', 'combobox'].includes(role)) {
+                return; // Click is inside a form control, don't close
+            }
+        }
+
+        // If we get here, it's a genuine outside click
+        console.log('🔒 Outside click detected - hiding settings panel');
+        dispatch(toggleDatabaseSidebar());
+    }, [dispatch]);
+
+    // Handle escape key
+    const handleKeyDown = useCallback((event: KeyboardEvent) => {
+        if (event.key === 'Escape') {
+            console.log('🔒 Escape key pressed - hiding settings panel');
+            dispatch(toggleDatabaseSidebar());
+        }
+    }, [dispatch]);
+
+    // Add/remove outside click and keyboard listeners
+    useEffect(() => {
+        if (showDatabase) {
+            document.addEventListener('mousedown', handleOutsideClick);
+            document.addEventListener('keydown', handleKeyDown);
+            return () => {
+                document.removeEventListener('mousedown', handleOutsideClick);
+                document.removeEventListener('keydown', handleKeyDown);
+            };
+        }
+        return undefined;
+    }, [showDatabase, handleOutsideClick, handleKeyDown]);
 
     const handleNotesBrowse = async () => {
         try {
@@ -526,8 +612,8 @@ const ModernDatabasePanel: React.FC = () => {
                                                         <Typography variant="body2">
                                                             ✅ All files are indexed ({directoryStatus.indexedFiles} of {directoryStatus.totalFiles} files)
                                                         </Typography>
-                                                        <Button 
-                                                            size="small" 
+                                                        <Button
+                                                            size="small"
                                                             onClick={checkDirectoryStatus}
                                                             disabled={statusLoading}
                                                         >
@@ -558,9 +644,9 @@ const ModernDatabasePanel: React.FC = () => {
                                                 startIcon={isIndexing ? <CircularProgress size={20} /> : <RefreshIcon />}
                                                 fullWidth
                                             >
-                                                {isIndexing ? 'Indexing...' : 
-                                                 directoryStatus?.indexedFiles === 0 ? 'Start Indexing' :
-                                                 'Update Index'}
+                                                {isIndexing ? 'Indexing...' :
+                                                    directoryStatus?.indexedFiles === 0 ? 'Start Indexing' :
+                                                        'Update Index'}
                                             </Button>
                                         </Box>
                                     )}
