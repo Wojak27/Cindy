@@ -70,57 +70,6 @@ export class ThinkingCindyAgent {
         console.log('[ThinkingCindyAgent] Using provider:', this.llmProvider.getCurrentProvider());
     }
 
-    /**
-     * Detect if query requires location information
-     */
-    private async detectLocationRequirement(input: string): Promise<{
-        requiresLocation: boolean;
-        queryType?: string;
-        enhancedQuery?: string;
-        userLocation?: string;
-    }> {
-        try {
-            const response = await this.llmProvider.invoke([
-                { role: 'system' as const, content: AgentPrompts.LOCATION_DETECTION_PROMPT },
-                { role: 'user' as const, content: input }
-            ]);
-
-            const responseText = response.content as string;
-            const requiresLocation = responseText.includes('REQUIRES_LOCATION: true');
-
-            if (!requiresLocation) {
-                return { requiresLocation: false };
-            }
-
-            // Extract query type and enhanced query
-            const queryTypeMatch = responseText.match(/QUERY_TYPE:\s*(\w+)/);
-            const enhancedQueryMatch = responseText.match(/ENHANCED_QUERY:\s*(.+?)(?:\n|$)/);
-
-            return {
-                requiresLocation: true,
-                queryType: queryTypeMatch?.[1] || 'other',
-                enhancedQuery: enhancedQueryMatch?.[1]?.trim() || input
-            };
-        } catch (error) {
-            console.warn('[ThinkingCindyAgent] Location detection failed:', error);
-            return { requiresLocation: false };
-        }
-    }
-
-    /**
-     * Get user location (placeholder for now - could integrate with browser geolocation API)
-     */
-    private async getUserLocation(): Promise<string | null> {
-        // TODO: Implement actual location detection
-        // This could integrate with:
-        // - Browser Geolocation API
-        // - IP-based location services
-        // - User settings/preferences
-        // - Previous location mentions in conversation
-
-        // For now, return null to trigger location request
-        return null;
-    }
 
     /**
      * Analyze input for hashtags and intent
@@ -248,12 +197,6 @@ export class ThinkingCindyAgent {
         cleanInput: string,
         forcedTools: string[],
         context?: AgentContext,
-        locationInfo?: {
-            requiresLocation: boolean;
-            queryType?: string;
-            enhancedQuery?: string;
-            userLocation?: string;
-        }
     ): Promise<ThinkingPlan> {
         const availableTools = this.toolExecutor.getAvailableTools();
 
@@ -290,7 +233,7 @@ Respond with your thinking process and a clear plan. Be concise but thorough.`;
         const steps: ToolIntent[] = allTools.map(tool => ({
             tool,
             forced: forcedTools.includes(tool),
-            parameters: this.inferToolParameters(tool, cleanInput, locationInfo),
+            parameters: this.inferToolParameters(tool, cleanInput),
             reasoning: forcedTools.includes(tool) ? 'Forced by hashtag' : 'Suggested by analysis'
         }));
 
@@ -467,7 +410,7 @@ Provide a helpful, natural response that addresses the user's request using only
 
             // Analyze input
             console.log('\n🔍 [STREAMING] Analyzing input...');
-            const { cleanInput, forcedTools, hashtags, directResponse } = await this.analyzeInput(input);
+            const { cleanInput, forcedTools, directResponse } = await this.analyzeInput(input);
             if (directResponse) {
                 console.log('💬 Direct response detected - no tools needed')
                 let finalResponse: string;
@@ -482,34 +425,11 @@ Provide a helpful, natural response that addresses the user's request using only
                 await this.storeConversation(input, finalResponse, context);
             } else {
                 yield `<think id="thinking-${context?.conversationId || 'default'}-${thinkingStartTime}" start="${thinkingStartTime}">`;
-                yield `**Analysis:**\n`;
-                yield `• Clean input: "${cleanInput}"\n`;
-                if (hashtags.length > 0) yield `• Hashtags: ${hashtags.join(', ')}\n`;
-                if (forcedTools.length > 0) yield `• Forced tools: ${forcedTools.join(', ')}\n`;
-
-                // Check for location requirements
-                console.log('\n📍 [STREAMING] Checking location requirements...');
-                const locationInfo = await this.detectLocationRequirement(cleanInput);
-
-                if (locationInfo.requiresLocation) {
-                    yield `• Location required for: ${locationInfo.queryType}\n`;
-                    const userLocation = await this.getUserLocation();
-
-                    if (!userLocation) {
-                        yield `• **Location needed**: Please specify your location for accurate results\n`;
-                        // We could return early here and ask for location, or continue with generic search
-                    } else {
-                        yield `• Using location: ${userLocation}\n`;
-                        locationInfo.userLocation = userLocation;
-                    }
-                }
-                yield `\n`;
-
                 // Create thinking plan  
                 console.log('\n💭 [STREAMING] Creating execution plan...');
                 yield "**Planning approach...**\n";
 
-                const plan = await this.createThinkingPlan(cleanInput, forcedTools, context, locationInfo);
+                const plan = await this.createThinkingPlan(cleanInput, forcedTools, context);
 
                 yield `**Intent:** ${plan.intent}\n`;
                 if (plan.steps.length > 0) {
