@@ -701,38 +701,22 @@ export class LLMProvider extends EventEmitter {
         switch (this.currentProvider) {
             case 'openai':
                 return [
-                    'gpt-4-turbo-preview',
-                    'gpt-4',
-                    'gpt-4-32k',
-                    'gpt-4o',
-                    'gpt-4o-mini',
-                    'gpt-3.5-turbo',
-                    'gpt-3.5-turbo-16k',
+
                 ];
 
             case 'anthropic':
                 return [
-                    'claude-3-opus-20240229',
-                    'claude-3-sonnet-20240229',
-                    'claude-3-haiku-20240307',
-                    'claude-2.1',
-                    'claude-2.0',
+
                 ];
 
             case 'google':
                 return [
-                    'gemini-pro',
-                    'gemini-pro-vision',
-                    'gemini-1.5-pro-latest',
-                    'gemini-1.5-flash-latest',
+
                 ];
 
             case 'cohere':
                 return [
-                    'command',
-                    'command-light',
-                    'command-nightly',
-                    'command-light-nightly',
+
                 ];
 
             case 'ollama':
@@ -742,15 +726,7 @@ export class LLMProvider extends EventEmitter {
                 } catch (error) {
                     console.error('[LLMProvider] Failed to list Ollama models:', error);
                     return [
-                        'llama3:8b',
-                        'llama3:70b',
-                        'llama2:7b',
-                        'mistral:7b',
-                        'mixtral:8x7b',
-                        'qwen3:1.7b',
-                        'dengcao/Qwen3-Embedding-0.6B:Q8_0',
-                        'gemma:7b',
-                        'phi:3.8b',
+
                     ];
                 }
 
@@ -760,34 +736,17 @@ export class LLMProvider extends EventEmitter {
 
             case 'openrouter':
                 return [
-                    'openai/gpt-4-turbo',
-                    'openai/gpt-4',
-                    'openai/gpt-3.5-turbo',
-                    'anthropic/claude-3-opus',
-                    'anthropic/claude-3-sonnet',
-                    'anthropic/claude-3-haiku',
-                    'google/gemini-pro',
-                    'meta-llama/llama-2-70b-chat',
-                    'mistralai/mixtral-8x7b-instruct',
-                    'cohere/command',
+
                 ];
 
             case 'groq':
                 return [
-                    'llama3-8b-8192',
-                    'llama3-70b-8192',
-                    'mixtral-8x7b-32768',
-                    'gemma-7b-it',
-                    'llama2-70b-4096',
+
                 ];
 
             case 'huggingface':
                 // Popular HF models
                 return [
-                    'meta-llama/Llama-2-70b-chat-hf',
-                    'mistralai/Mixtral-8x7B-Instruct-v0.1',
-                    'google/flan-t5-xxl',
-                    'bigscience/bloom',
                 ];
 
             default:

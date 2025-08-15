@@ -58,9 +58,9 @@ if (!(Promise as any).withResolvers) {
 }
 
 // Configure pdfjs worker for Electron
-// Disable worker for Electron compatibility - PDFs will load slower but work reliably
-pdfjs.GlobalWorkerOptions.workerSrc = '';
-console.log('PDF.js running without web worker for Electron compatibility');
+// Use CDN with dynamic version matching for best compatibility
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+console.log(`PDF.js worker configured with version ${pdfjs.version}`);
 
 interface IndexedFile {
     path: string;

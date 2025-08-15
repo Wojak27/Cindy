@@ -9,7 +9,6 @@ import {
     Box,
     Chip,
     Collapse,
-    IconButton,
     Alert,
     CircularProgress,
     Slider,
@@ -18,15 +17,7 @@ import {
     Autocomplete,
 } from '@mui/material';
 import {
-    ExpandMore as ExpandMoreIcon,
     CheckCircle as CheckCircleIcon,
-    Cloud as CloudIcon,
-    Computer as ComputerIcon,
-    Psychology as PsychologyIcon,
-    Google as GoogleIcon,
-    Microsoft as MicrosoftIcon,
-    Hub as HubIcon,
-    Refresh as RefreshIcon,
 } from '@mui/icons-material';
 
 interface LLMProviderCardProps {
@@ -59,7 +50,6 @@ const LLMProviderCard: React.FC<LLMProviderCardProps> = ({
     onTestConnection,
 }) => {
     const theme = useTheme();
-    const [expanded, setExpanded] = useState(isSelected);
     const [showApiKey, setShowApiKey] = useState(false);
     const [availableModels, setAvailableModels] = useState<string[]>(provider.models);
     const [loadingModels, setLoadingModels] = useState(false);
@@ -74,11 +64,6 @@ const LLMProviderCard: React.FC<LLMProviderCardProps> = ({
         }
     }, [config?.model, provider.models, provider.name, modelInputValue, isSelected]);
 
-    React.useEffect(() => {
-        if (isSelected && !expanded) {
-            setExpanded(true);
-        }
-    }, [isSelected, expanded]);
 
     // Ensure model is set when provider becomes selected
     React.useEffect(() => {
@@ -104,7 +89,7 @@ const LLMProviderCard: React.FC<LLMProviderCardProps> = ({
                 provider: provider.id,
                 config: config
             });
-            
+
             if (models && models.length > 0) {
                 setAvailableModels([...new Set([...provider.models, ...models])]);
             }
@@ -116,44 +101,8 @@ const LLMProviderCard: React.FC<LLMProviderCardProps> = ({
         }
     }, [provider.id, provider.name, provider.models, provider.requiresApiKey, config]);
 
-    const handleExpandClick = () => {
-        setExpanded(!expanded);
-        if (!expanded && !isSelected) {
-            onSelect();
-        }
-    };
 
-    const renderProviderIcon = () => {
-        const iconProps = { 
-            sx: { 
-                fontSize: 40, 
-                color: isSelected ? provider.color : theme.palette.text.secondary 
-            } 
-        };
 
-        switch (provider.id) {
-            case 'openai':
-                return <PsychologyIcon {...iconProps} />;
-            case 'anthropic':
-                return <PsychologyIcon {...iconProps} sx={{ ...iconProps.sx, transform: 'rotate(15deg)' }} />;
-            case 'openrouter':
-                return <HubIcon {...iconProps} sx={{ ...iconProps.sx, color: '#8B5CF6' }} />;
-            case 'groq':
-                return <PsychologyIcon {...iconProps} sx={{ ...iconProps.sx, color: '#F97316', transform: 'rotate(-15deg)' }} />;
-            case 'google':
-                return <GoogleIcon {...iconProps} />;
-            case 'cohere':
-                return <HubIcon {...iconProps} />;
-            case 'azure':
-                return <MicrosoftIcon {...iconProps} />;
-            case 'huggingface':
-                return <HubIcon {...iconProps} sx={{ ...iconProps.sx, color: '#FF9A00' }} />;
-            case 'ollama':
-                return <ComputerIcon {...iconProps} />;
-            default:
-                return <CloudIcon {...iconProps} />;
-        }
-    };
 
     const renderConfigFields = () => {
         const updateConfig = (field: string, value: any) => {
@@ -177,6 +126,7 @@ const LLMProviderCard: React.FC<LLMProviderCardProps> = ({
                         setModelInputValue(selectedModel);
                         updateConfig('model', selectedModel);
                     }}
+                    onFocus={fetchModels}
                     renderInput={(params) => (
                         <TextField
                             {...params}
@@ -190,14 +140,7 @@ const LLMProviderCard: React.FC<LLMProviderCardProps> = ({
                                         {loadingModels ? (
                                             <CircularProgress size={20} />
                                         ) : (
-                                            <IconButton
-                                                size="small"
-                                                onClick={fetchModels}
-                                                disabled={!config?.apiKey && provider.requiresApiKey}
-                                                title="Refresh available models"
-                                            >
-                                                <RefreshIcon fontSize="small" />
-                                            </IconButton>
+                                            <></>
                                         )}
                                         {params.InputProps.endAdornment}
                                     </>
@@ -481,9 +424,9 @@ const LLMProviderCard: React.FC<LLMProviderCardProps> = ({
     };
 
     return (
-        <Card 
-            sx={{ 
-                mb: 2, 
+        <Card
+            sx={{
+                mb: 2,
                 border: isSelected ? `2px solid ${provider.color}` : `1px solid ${theme.palette.divider}`,
                 boxShadow: isSelected ? `0 0 0 1px ${provider.color}25` : theme.shadows[1],
                 transition: 'all 0.2s ease-in-out',
@@ -495,14 +438,8 @@ const LLMProviderCard: React.FC<LLMProviderCardProps> = ({
         >
             <CardContent sx={{ pb: 1 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                    <Box sx={{ mr: 2 }}>
-                        {renderProviderIcon()}
-                    </Box>
                     <Box sx={{ flex: 1 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
-                            <Typography variant="h6" sx={{ fontWeight: 600, mr: 1 }}>
-                                {provider.name}
-                            </Typography>
                             <Chip
                                 label={provider.isLocal ? 'Local' : 'Cloud'}
                                 size="small"
@@ -520,28 +457,11 @@ const LLMProviderCard: React.FC<LLMProviderCardProps> = ({
                                 />
                             )}
                         </Box>
-                        <Typography variant="body2" color="text.secondary">
-                            {provider.description}
-                        </Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        {isTesting && <CircularProgress size={20} sx={{ mr: 1 }} />}
-                        <IconButton
-                            onClick={handleExpandClick}
-                            sx={{
-                                transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                                transition: theme.transitions.create('transform', {
-                                    duration: theme.transitions.duration.shortest,
-                                }),
-                            }}
-                        >
-                            <ExpandMoreIcon />
-                        </IconButton>
                     </Box>
                 </Box>
             </CardContent>
 
-            <Collapse in={expanded} timeout="auto" unmountOnExit>
+            <Collapse in={true} timeout="auto" unmountOnExit>
                 <Divider />
                 <CardContent>
                     {renderConfigFields()}

@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import { getSettings, updateSettings, toggleSettings } from '../../store/actions';
+import { updateSettings, toggleSettings } from '../../store/actions';
 import LLMProviderCard from './LLMProviderCard';
-import ThemeToggle from './ThemeToggle';
 import {
     Box,
     Typography,
@@ -28,12 +27,7 @@ import {
     Psychology as PsychologyIcon,
     Mic as MicIcon,
     Person as PersonIcon,
-    Palette as PaletteIcon,
     Save as SaveIcon,
-    CloudDownload as DownloadIcon,
-    Delete as DeleteIcon,
-    Computer as LocalIcon,
-    Search as SearchIcon,
     ExpandMore as ExpandMoreIcon,
     ExpandLess as ExpandLessIcon,
     Cancel as CancelIcon,
@@ -96,7 +90,7 @@ const ModernSettingsPanel: React.FC = () => {
         wakeWordSensitivity: settings?.voice?.wakeWordSensitivity || 0.5,
         audioThreshold: settings?.voice?.audioThreshold || 0.01,
         // TTS Settings
-        ttsProvider: settings?.voice?.ttsProvider || 'auto',
+        ttsProvider: settings?.voice?.ttsProvider || 'kokoro',
         enableStreaming: settings?.voice?.enableStreaming || false,
         sentenceBufferSize: settings?.voice?.sentenceBufferSize || 2,
         // ElevenLabs settings
@@ -106,8 +100,6 @@ const ModernSettingsPanel: React.FC = () => {
         elevenlabsSimilarityBoost: settings?.voice?.elevenlabsSimilarityBoost || 0.5,
         // Kokoro settings
         kokoroVoice: settings?.voice?.kokoroVoice || 'af_sky',
-        // Xenova settings
-        xenovaModel: settings?.voice?.xenovaModel || 'Xenova/speecht5_tts',
     });
 
     // Profile Settings State
@@ -136,12 +128,6 @@ const ModernSettingsPanel: React.FC = () => {
     // Original settings for cancel functionality
     const [originalSettings, setOriginalSettings] = useState<any>(null);
 
-    // Model Management State
-    const [availableModels, setAvailableModels] = useState<string[]>([]);
-    const [installedModels, setInstalledModels] = useState<string[]>([]);
-    const [downloadingModels, setDownloadingModels] = useState<Set<string>>(new Set());
-    const [downloadProgress, setDownloadProgress] = useState<Record<string, number>>({});
-
     // Provider definitions with enhanced design
     const llmProviders = [
         {
@@ -151,7 +137,7 @@ const ModernSettingsPanel: React.FC = () => {
             color: '#10A37F',
             isLocal: false,
             requiresApiKey: true,
-            models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'],
+            models: [],
         },
         {
             id: 'anthropic' as const,
@@ -160,7 +146,7 @@ const ModernSettingsPanel: React.FC = () => {
             color: '#CC785C',
             isLocal: false,
             requiresApiKey: true,
-            models: ['claude-3-opus-20240229', 'claude-3-sonnet-20240229', 'claude-3-haiku-20240307'],
+            models: [],
         },
         {
             id: 'openrouter' as const,
@@ -169,7 +155,7 @@ const ModernSettingsPanel: React.FC = () => {
             color: '#8B5CF6',
             isLocal: false,
             requiresApiKey: true,
-            models: ['openai/gpt-4-turbo', 'openai/gpt-4', 'anthropic/claude-3-opus', 'anthropic/claude-3-sonnet', 'meta-llama/llama-2-70b-chat', 'mistralai/mixtral-8x7b-instruct'],
+            models: [],
         },
         {
             id: 'groq' as const,
@@ -178,7 +164,7 @@ const ModernSettingsPanel: React.FC = () => {
             color: '#F97316',
             isLocal: false,
             requiresApiKey: true,
-            models: ['llama3-8b-8192', 'llama3-70b-8192', 'mixtral-8x7b-32768', 'gemma-7b-it', 'llama2-70b-4096'],
+            models: [],
         },
         {
             id: 'google' as const,
@@ -187,7 +173,7 @@ const ModernSettingsPanel: React.FC = () => {
             color: '#4285F4',
             isLocal: false,
             requiresApiKey: true,
-            models: ['gemini-pro', 'gemini-pro-vision', 'gemini-1.5-pro-latest', 'gemini-1.5-flash-latest'],
+            models: [],
         },
         {
             id: 'cohere' as const,
@@ -205,7 +191,7 @@ const ModernSettingsPanel: React.FC = () => {
             color: '#0078D4',
             isLocal: false,
             requiresApiKey: true,
-            models: ['gpt-4', 'gpt-35-turbo'],
+            models: [],
         },
         {
             id: 'huggingface' as const,
@@ -214,7 +200,7 @@ const ModernSettingsPanel: React.FC = () => {
             color: '#FF9A00',
             isLocal: false,
             requiresApiKey: true,
-            models: ['meta-llama/Llama-2-70b-chat-hf', 'mistralai/Mixtral-8x7B-Instruct-v0.1'],
+            models: [],
         },
         {
             id: 'ollama' as const,
@@ -223,7 +209,7 @@ const ModernSettingsPanel: React.FC = () => {
             color: '#000000',
             isLocal: true,
             requiresApiKey: false,
-            models: ['llama3:8b', 'llama3:70b', 'mistral:7b', 'qwen3:4b', 'gemma:7b'],
+            models: [],
         },
     ];
 
@@ -292,8 +278,6 @@ const ModernSettingsPanel: React.FC = () => {
                 similarityBoost: voiceSettings.elevenlabsSimilarityBoost,
                 // Kokoro options
                 kokoroVoice: voiceSettings.kokoroVoice,
-                // Xenova options
-                xenovaModel: voiceSettings.xenovaModel,
             };
             const ttsResult = await ipcRenderer.invoke('tts-update-options', ttsOptions);
             console.log('✅ Direct TTS provider update result:', ttsResult);
@@ -441,77 +425,6 @@ const ModernSettingsPanel: React.FC = () => {
         }
     };
 
-    // Model Management Functions
-    const loadAvailableModels = useCallback(async () => {
-        try {
-            const models = await ipcRenderer.invoke('ollama-list-available-models');
-            setAvailableModels(models);
-        } catch (error) {
-            console.error('Failed to load available models:', error);
-            // Fallback to common models
-            setAvailableModels([
-                'llama3:8b',
-                'llama3:70b',
-                'llama2:7b',
-                'llama2:13b',
-                'mistral:7b',
-                'mixtral:8x7b',
-                'qwen3:4b',
-                'gemma:7b',
-                'phi:3.8b'
-            ]);
-        }
-    }, []);
-
-    const loadInstalledModels = useCallback(async () => {
-        try {
-            const models = await ipcRenderer.invoke('ollama-list-models');
-            setInstalledModels(models);
-        } catch (error) {
-            console.error('Failed to load installed models:', error);
-            setInstalledModels([]);
-        }
-    }, []);
-
-    const pullModel = async (modelName: string) => {
-        if (downloadingModels.has(modelName)) return;
-
-        setDownloadingModels(prev => new Set(prev).add(modelName));
-        setDownloadProgress(prev => ({ ...prev, [modelName]: 0 }));
-
-        try {
-            // Start the model pulling process
-            await ipcRenderer.invoke('ollama-pull-model', modelName);
-
-            // Refresh installed models list
-            await loadInstalledModels();
-
-            setHasUnsavedChanges(true);
-        } catch (error) {
-            console.error(`Failed to pull model ${modelName}:`, error);
-        } finally {
-            setDownloadingModels(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(modelName);
-                return newSet;
-            });
-            setDownloadProgress(prev => {
-                const newProgress = { ...prev };
-                delete newProgress[modelName];
-                return newProgress;
-            });
-        }
-    };
-
-    const removeModel = async (modelName: string) => {
-        try {
-            await ipcRenderer.invoke('ollama-remove-model', modelName);
-            await loadInstalledModels();
-            setHasUnsavedChanges(true);
-        } catch (error) {
-            console.error(`Failed to remove model ${modelName}:`, error);
-        }
-    };
 
     // Handle explicit close (close button only)
     const handleClose = () => {
@@ -636,8 +549,6 @@ const ModernSettingsPanel: React.FC = () => {
                 elevenlabsSimilarityBoost: settings?.voice?.elevenlabsSimilarityBoost || 0.5,
                 // Kokoro settings
                 kokoroVoice: settings?.voice?.kokoroVoice || 'default',
-                // Xenova settings
-                xenovaModel: settings?.voice?.xenovaModel || 'Xenova/speecht5_tts',
             });
             setProfileSettings({
                 name: settings?.profile?.name || '',
@@ -657,16 +568,6 @@ const ModernSettingsPanel: React.FC = () => {
             });
         }
     }, [settings]);
-
-    useEffect(() => {
-        dispatch(getSettings());
-
-        // Load model information when panel opens
-        if (showSettings) {
-            loadAvailableModels();
-            loadInstalledModels();
-        }
-    }, [dispatch, showSettings, loadAvailableModels, loadInstalledModels]);
 
     return (
         <Slide direction="left" in={showSettings} timeout={300} mountOnEnter unmountOnExit>
@@ -736,12 +637,9 @@ const ModernSettingsPanel: React.FC = () => {
                 <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
                     <Tabs value={tabValue} onChange={(_, newValue) => setTabValue(newValue)}>
                         <Tab icon={<PsychologyIcon />} label="AI PROVIDERS" />
-                        <Tab icon={<DownloadIcon />} label="Data Sources" />
                         <Tab icon={<SettingsIcon />} label="Integrations" />
                         <Tab icon={<MicIcon />} label="Voice" />
-                        <Tab icon={<SearchIcon />} label="Search" />
                         <Tab icon={<PersonIcon />} label="Profile" />
-                        <Tab icon={<PaletteIcon />} label="Theme" />
                     </Tabs>
                 </Box>
 
@@ -767,6 +665,7 @@ const ModernSettingsPanel: React.FC = () => {
                                             p: 2,
                                             border: `2px solid ${selectedProvider === provider.id ? provider.color : theme.palette.divider}`,
                                             borderRadius: 2,
+                                            gap: 1,
                                             cursor: 'pointer',
                                             '&:hover': {
                                                 borderColor: provider.color
@@ -786,11 +685,20 @@ const ModernSettingsPanel: React.FC = () => {
                                                 <Typography variant="h6" fontWeight={600}>
                                                     {provider.name}
                                                 </Typography>
-                                                <Typography variant="body2" color="text.secondary">
-                                                    {provider.description}
-                                                </Typography>
                                             </Box>
                                         </Box>
+                                        <Button
+                                            variant={selectedProvider === provider.id ? "contained" : "outlined"}
+                                            size="small"
+                                            style={{ backgroundColor: selectedProvider === provider.id ? provider.color : 'transparent', color: selectedProvider === provider.id ? '#fff' : provider.color }}
+                                            sx={{ ml: 'auto' }}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleProviderSelect(provider.id);
+                                            }}
+                                        >
+                                            {selectedProvider === provider.id ? 'Selected' : 'Select'}
+                                        </Button>
                                         <Button
                                             variant={selectedProvider === provider.id ? "contained" : "outlined"}
                                             size="small"
@@ -800,7 +708,7 @@ const ModernSettingsPanel: React.FC = () => {
                                                 toggleProviderExpansion(provider.id);
                                             }}
                                         >
-                                            Select
+                                            {expandedProviders.has(provider.id) ? 'Collapse' : 'Expand'}
                                         </Button>
                                     </Box>
                                     {expandedProviders.has(provider.id) && (
@@ -822,147 +730,9 @@ const ModernSettingsPanel: React.FC = () => {
                         </Box>
                     </TabPanel>
 
-                    {/* Models Tab */}
+
+                    {/* Integrations Tab */}
                     <TabPanel value={tabValue} index={1}>
-                        <Box sx={{ px: 3 }}>
-                            <Typography variant="h6" gutterBottom fontWeight={600}>
-                                Model Management
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                                Download and manage LLaMA models for local inference with Ollama.
-                            </Typography>
-
-                            {/* Available Models */}
-                            <Card sx={{ mb: 3 }}>
-                                <CardContent>
-                                    <Typography variant="subtitle1" gutterBottom fontWeight={600}>
-                                        Available Models
-                                    </Typography>
-                                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                                        Popular models you can download and use locally.
-                                    </Typography>
-
-                                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                                        {availableModels.map((modelName) => {
-                                            const isInstalled = installedModels.includes(modelName);
-                                            const isDownloading = downloadingModels.has(modelName);
-                                            const progress = downloadProgress[modelName] || 0;
-
-                                            return (
-                                                <Box
-                                                    key={modelName}
-                                                    sx={{
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'space-between',
-                                                        p: 2,
-                                                        border: `1px solid ${theme.palette.divider}`,
-                                                        borderRadius: 1,
-                                                        backgroundColor: isInstalled
-                                                            ? alpha(theme.palette.success.main, 0.05)
-                                                            : 'transparent'
-                                                    }}
-                                                >
-                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                                        {isInstalled ? (
-                                                            <LocalIcon color="success" />
-                                                        ) : (
-                                                            <DownloadIcon color="action" />
-                                                        )}
-                                                        <Box>
-                                                            <Typography variant="body1" fontWeight={500}>
-                                                                {modelName}
-                                                            </Typography>
-                                                            {isDownloading && (
-                                                                <Typography variant="caption" color="primary">
-                                                                    Downloading... {Math.round(progress)}%
-                                                                </Typography>
-                                                            )}
-                                                        </Box>
-                                                    </Box>
-
-                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                                        {isInstalled ? (
-                                                            <Button
-                                                                variant="outlined"
-                                                                size="small"
-                                                                color="error"
-                                                                startIcon={<DeleteIcon />}
-                                                                onClick={() => removeModel(modelName)}
-                                                            >
-                                                                Remove
-                                                            </Button>
-                                                        ) : (
-                                                            <Button
-                                                                variant="contained"
-                                                                size="small"
-                                                                startIcon={isDownloading ? null : <DownloadIcon />}
-                                                                onClick={() => pullModel(modelName)}
-                                                                disabled={isDownloading}
-                                                            >
-                                                                {isDownloading ? 'Downloading...' : 'Download'}
-                                                            </Button>
-                                                        )}
-                                                    </Box>
-                                                </Box>
-                                            );
-                                        })}
-                                    </Box>
-                                </CardContent>
-                            </Card>
-
-                            {/* Installed Models */}
-                            {installedModels.length > 0 && (
-                                <Card>
-                                    <CardContent>
-                                        <Typography variant="subtitle1" gutterBottom fontWeight={600}>
-                                            Installed Models ({installedModels.length})
-                                        </Typography>
-                                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                                            Models currently available on your system.
-                                        </Typography>
-
-                                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                                            {installedModels.map((modelName) => (
-                                                <Box
-                                                    key={modelName}
-                                                    sx={{
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'space-between',
-                                                        p: 2,
-                                                        border: `1px solid ${alpha(theme.palette.success.main, 0.3)}`,
-                                                        borderRadius: 1,
-                                                        backgroundColor: alpha(theme.palette.success.main, 0.05)
-                                                    }}
-                                                >
-                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                                        <LocalIcon color="success" />
-                                                        <Typography variant="body1" fontWeight={500}>
-                                                            {modelName}
-                                                        </Typography>
-                                                    </Box>
-
-                                                    <Button
-                                                        variant="outlined"
-                                                        size="small"
-                                                        color="error"
-                                                        startIcon={<DeleteIcon />}
-                                                        onClick={() => removeModel(modelName)}
-                                                    >
-                                                        Remove
-                                                    </Button>
-                                                </Box>
-                                            ))}
-                                        </Box>
-                                    </CardContent>
-                                </Card>
-                            )}
-                        </Box>
-                    </TabPanel>
-
-                    {/* Search Tab */}
-                    <TabPanel value={tabValue} index={2}>
                         <Box sx={{ px: 3 }}>
                             <Typography variant="h6" gutterBottom fontWeight={600}>
                                 Web Search & Browsers
@@ -1064,7 +834,7 @@ const ModernSettingsPanel: React.FC = () => {
                     </TabPanel>
 
                     {/* Voice Tab */}
-                    <TabPanel value={tabValue} index={3}>
+                    <TabPanel value={tabValue} index={2}>
                         <Box sx={{ px: 3 }}>
                             <Typography variant="h6" gutterBottom fontWeight={600}>
                                 Voice Settings
@@ -1096,7 +866,6 @@ const ModernSettingsPanel: React.FC = () => {
                                         >
                                             <MenuItem value="auto">Auto</MenuItem>
                                             <MenuItem value="whisper">Whisper</MenuItem>
-                                            <MenuItem value="azure">Azure Speech</MenuItem>
                                         </Select>
                                     </FormControl>
 
@@ -1150,21 +919,20 @@ const ModernSettingsPanel: React.FC = () => {
                                     <FormControl fullWidth sx={{ mb: 2 }}>
                                         <InputLabel>TTS Provider</InputLabel>
                                         <Select
-                                            value={voiceSettings.ttsProvider || 'auto'}
+                                            value={'kokoro'}
+                                            disabled={true}
                                             onChange={(e) => {
                                                 trackOriginalSettings();
                                                 setVoiceSettings(prev => ({ ...prev, ttsProvider: e.target.value }));
                                                 setHasUnsavedChanges(true);
                                             }}
                                         >
-                                            <MenuItem value="xenova">⚡ Xenova Transformers (Local AI)</MenuItem>
                                             <MenuItem value="kokoro">🚀 Kokoro-82M (Local AI)</MenuItem>
-                                            <MenuItem value="elevenlabs">☁️ ElevenLabs (Cloud, Premium)</MenuItem>
                                         </Select>
                                     </FormControl>
 
                                     {/* Streaming Settings - show for compatible providers */}
-                                    {['kokoro', 'xenova'].includes(voiceSettings.ttsProvider) && (
+                                    {['kokoro'].includes(voiceSettings.ttsProvider) && (
                                         <Card sx={{ mb: 2, backgroundColor: alpha(theme.palette.primary.main, 0.05) }}>
                                             <CardContent>
                                                 <Typography variant="subtitle2" gutterBottom fontWeight={600}>
@@ -1356,46 +1124,13 @@ const ModernSettingsPanel: React.FC = () => {
                                             </CardContent>
                                         </Card>
                                     )}
-
-                                    {/* Xenova specific settings */}
-                                    {voiceSettings.ttsProvider === 'xenova' && (
-                                        <Card sx={{ mb: 2, backgroundColor: alpha(theme.palette.info.main, 0.05) }}>
-                                            <CardContent>
-                                                <Typography variant="subtitle2" gutterBottom fontWeight={600}>
-                                                    ⚡ Xenova Transformers Settings
-                                                </Typography>
-
-                                                <FormControl fullWidth sx={{ mb: 2 }}>
-                                                    <InputLabel>Model</InputLabel>
-                                                    <Select
-                                                        value={voiceSettings.xenovaModel || 'Xenova/speecht5_tts'}
-                                                        onChange={(e) => {
-                                                            trackOriginalSettings();
-                                                            setVoiceSettings(prev => ({ ...prev, xenovaModel: e.target.value }));
-                                                            setHasUnsavedChanges(true);
-                                                        }}
-                                                    >
-                                                        <MenuItem value="Xenova/speecht5_tts">SpeechT5 TTS (Default)</MenuItem>
-                                                    </Select>
-                                                </FormControl>
-
-                                                <Alert severity="info" sx={{ fontSize: '0.875rem' }}>
-                                                    <strong>⚡ Xenova Benefits:</strong><br />
-                                                    • Browser-optimized transformer models<br />
-                                                    • Completely offline processing<br />
-                                                    • Lightweight and efficient<br />
-                                                    • Multiple model options for different use cases
-                                                </Alert>
-                                            </CardContent>
-                                        </Card>
-                                    )}
                                 </CardContent>
                             </Card>
                         </Box>
                     </TabPanel>
 
                     {/* Profile Tab */}
-                    <TabPanel value={tabValue} index={4}>
+                    <TabPanel value={tabValue} index={3}>
                         <Box sx={{ px: 3 }}>
                             <Typography variant="h6" gutterBottom fontWeight={600}>
                                 Profile Settings
@@ -1424,24 +1159,6 @@ const ModernSettingsPanel: React.FC = () => {
                                                 setHasUnsavedChanges(true);
                                             }}
                                         />
-                                    </Box>
-                                </CardContent>
-                            </Card>
-                        </Box>
-                    </TabPanel>
-
-                    {/* Theme Tab */}
-                    <TabPanel value={tabValue} index={5}>
-                        <Box sx={{ px: 3 }}>
-                            <Typography variant="h6" gutterBottom fontWeight={600}>
-                                Appearance
-                            </Typography>
-
-                            <Card>
-                                <CardContent>
-                                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <Typography>Theme</Typography>
-                                        <ThemeToggle />
                                     </Box>
                                 </CardContent>
                             </Card>

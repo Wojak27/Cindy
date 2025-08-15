@@ -222,12 +222,7 @@ const setupSettingsIPC = () => {
                 case 'anthropic':
                     // Anthropic doesn't have a public models API, return known models
                     models = [
-                        'claude-3-opus-20240229',
-                        'claude-3-sonnet-20240229',
-                        'claude-3-haiku-20240307',
-                        'claude-2.1',
-                        'claude-2.0',
-                        'claude-instant-1.2'
+
                     ];
                     break;
 
@@ -258,10 +253,7 @@ const setupSettingsIPC = () => {
                 case 'google':
                     // Google Gemini models - static list since no public API for model list
                     models = [
-                        'gemini-pro',
-                        'gemini-pro-vision',
-                        'text-bison-001',
-                        'chat-bison-001'
+
                     ];
                     break;
 
@@ -285,31 +277,21 @@ const setupSettingsIPC = () => {
                         models = response.data.models.map((model: any) => model.name).sort();
                     } catch (error) {
                         console.warn('Failed to fetch Ollama models, using defaults:', error.message);
-                        models = ['qwen:4b', 'llama3.1:8b', 'codellama:7b', 'mistral:7b'];
+                        models = [];
                     }
                     break;
 
                 case 'huggingface':
                     // HuggingFace has many models, provide common ones
                     models = [
-                        'microsoft/DialoGPT-medium',
-                        'microsoft/DialoGPT-large',
-                        'EleutherAI/gpt-neo-2.7B',
-                        'EleutherAI/gpt-j-6B',
-                        'bigscience/bloom-560m',
-                        'google/flan-t5-base',
-                        'google/flan-t5-large'
+
                     ];
                     break;
 
                 case 'azure':
                     // Azure OpenAI models depend on deployment, return common ones
                     models = [
-                        'gpt-4',
-                        'gpt-4-32k',
-                        'gpt-35-turbo',
-                        'gpt-35-turbo-16k',
-                        'text-davinci-003'
+
                     ];
                     break;
 
@@ -1792,35 +1774,6 @@ app.on('ready', async () => {
             console.error('Main process - ollama-remove-model error:', error);
             return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
         }
-    });
-
-    ipcMain.handle('ollama-list-available-models', async () => {
-        console.log('Main process - ollama-list-available-models IPC called');
-        // Return a curated list of popular models that can be pulled from Ollama
-        const availableModels = [
-            'llama3:8b',
-            'llama3:70b',
-            'llama2:7b',
-            'llama2:13b',
-            'llama2:70b',
-            'mistral:7b',
-            'mixtral:8x7b',
-            'qwen:4b',
-            'qwen:7b',
-            'qwen:14b',
-            'gemma:7b',
-            'phi:3.8b',
-            'codegemma:7b',
-            'dolphin-mixtral:8x7b',
-            'neural-chat:7b',
-            'starling-lm:7b',
-            'vicuna:7b',
-            'orca-mini:3b',
-            'tinyllama:1.1b'
-        ];
-
-        console.log('Main process - ollama-list-available-models: returning', availableModels.length, 'models');
-        return availableModels;
     });
 
     // IPC handlers for real-time transcription
