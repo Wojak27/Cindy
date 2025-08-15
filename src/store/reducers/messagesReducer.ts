@@ -1,10 +1,13 @@
 // src/store/reducers/messagesReducer.ts
 // Manages messages and thinking blocks state
 
+import { v4 as uuidv4 } from 'uuid';
+
 const initialState = {
   messages: [],
   thinkingBlocks: [],
-  toolCalls: []
+  toolCalls: [],
+  currentConversationId: uuidv4(), // Unique ID for the current conversation
 };
 
 const messagesReducer = (state = initialState, action: any) => {
@@ -23,15 +26,15 @@ const messagesReducer = (state = initialState, action: any) => {
     case 'LOAD_MESSAGES':
       // Batch load messages (for conversation history) with deduplication
       const newMessages = action.payload || [];
-      
+
       // Remove duplicates based on message ID and content
       const uniqueMessages = [];
       const seenIds = new Set();
       const seenContentHashes = new Set();
-      
+
       for (const msg of newMessages) {
         const contentHash = `${msg.role}-${msg.content}-${msg.conversationId}`;
-        
+
         if (!seenIds.has(msg.id) && !seenContentHashes.has(contentHash)) {
           seenIds.add(msg.id);
           seenContentHashes.add(contentHash);
@@ -40,10 +43,10 @@ const messagesReducer = (state = initialState, action: any) => {
           console.warn('Skipping duplicate message during load:', msg.id || contentHash);
         }
       }
-      
+
       // Sort by timestamp to ensure proper chronological order
       uniqueMessages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-      
+
       return {
         ...state,
         messages: uniqueMessages
@@ -120,7 +123,8 @@ const messagesReducer = (state = initialState, action: any) => {
             ? { content: action.payload }
             : action.payload
           ),
-          isStreaming: false
+          isStreaming: false,
+          isIncomplete: false,
         };
         return {
           ...state,
@@ -137,14 +141,22 @@ const messagesReducer = (state = initialState, action: any) => {
       const updatedMessages = state.messages.map(message => {
         if (message.id === action.payload.messageId && message.conversationId === action.payload.conversationId) {
           console.log('🔧 DEBUG: Setting isStreaming to false for message:', message.id);
-          return { ...message, isStreaming: false };
+          return { ...message, isStreaming: false, isIncomplete: false };
         }
         return message;
+      });
+      const updatedThinking = state.thinkingBlocks.map(block => {
+        if (block.messageId === action.payload.messageId && block.conversationId === action.payload.conversationId) {
+          console.log('🔧 DEBUG: Setting isStreaming to false for message:', block.id);
+          return { ...block, isStreaming: false, isIncomplete: false };
+        }
+        return block;
       });
       console.log('🔧 DEBUG: Messages after finalization:', updatedMessages.filter(m => m.role === 'assistant').map(m => ({ id: m.id, isStreaming: m.isStreaming })));
       return {
         ...state,
-        messages: updatedMessages
+        messages: updatedMessages,
+        thinkingBlocks: updatedThinking
       };
     case 'COMPLETE_ASSISTANT_MESSAGE':
       const completeIdx = state.messages.length - 1;
@@ -200,10 +212,6 @@ const messagesReducer = (state = initialState, action: any) => {
     case 'ADD_THINKING_BLOCK':
       // Prevent duplicate thinking blocks
       const blockExists = state.thinkingBlocks.some(block => block.id === action.payload.id);
-      if (blockExists) {
-        console.warn('Preventing duplicate thinking block:', action.payload.id);
-        return state;
-      }
 
       // Associate thinking block with the current assistant message if available
       const currentAssistantMessage = state.messages.length > 0 && state.messages[state.messages.length - 1].role === 'assistant'
@@ -213,7 +221,16 @@ const messagesReducer = (state = initialState, action: any) => {
       const enhancedBlock = currentAssistantMessage
         ? { ...action.payload, messageId: currentAssistantMessage.id }
         : action.payload;
-
+      if (blockExists) {
+        // If the block already exists, we can either update it or ignore
+        console.warn('Preventing duplicate thinking block:', enhancedBlock.id);
+        return {
+          ...state,
+          thinkingBlocks: state.thinkingBlocks.map(block =>
+            block.id === enhancedBlock.id ? { ...block, ...enhancedBlock } : block
+          )
+        };
+      }
       return {
         ...state,
         thinkingBlocks: [...state.thinkingBlocks, enhancedBlock]
@@ -223,6 +240,12 @@ const messagesReducer = (state = initialState, action: any) => {
       return {
         ...state,
         thinkingBlocks: action.payload || []
+      };
+
+    case 'SET_CURRENT_CONVERSATION_ID':
+      return {
+        ...state,
+        currentConversationId: action.payload || uuidv4() // Reset to a new ID if payload is null
       };
     case 'UPDATE_THINKING_BLOCK':
       return {

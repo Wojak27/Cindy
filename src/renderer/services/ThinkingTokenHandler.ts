@@ -22,7 +22,7 @@ interface ProcessedContent {
 
 export class ThinkingTokenHandler {
     private static instance: ThinkingTokenHandler;
-    private thinkingStack: {content: string, id: string, startTime: number}[] = [];
+    private thinkingStack: { content: string, id: string, startTime: number }[] = [];
     private currentBlockId = 0;
     private readonly TOKEN_REGEX = /<think[^>]*>|<\/think[^>]*>/g;
 
@@ -45,15 +45,9 @@ export class ThinkingTokenHandler {
      * @returns Processed content with thinking blocks separated
      */
     public processChunk(chunk: string, conversationId: string): ProcessedContent {
-        console.log('🐛 DEBUG - ThinkingTokenHandler.processChunk called:', {
-            chunkLength: chunk?.length || 0,
-            chunkPreview: chunk?.substring(0, 100) + '...',
-            conversationId,
-            currentStackDepth: this.thinkingStack.length
-        });
+
 
         if (!chunk) {
-            console.log('🐛 DEBUG - ThinkingTokenHandler: Empty chunk, returning empty result');
             return {
                 displayContent: '',
                 thinkingBlocks: [],
@@ -97,20 +91,20 @@ export class ThinkingTokenHandler {
             if (token.startsWith('<think')) {
                 // Start of thinking block - parse attributes
                 console.log('🐛 DEBUG - ThinkingTokenHandler: Found thinking start token:', token);
-                
+
                 const idMatch = token.match(/id="([^"]*)"/) || token.match(/id='([^']*)'/);
                 const startMatch = token.match(/start="([^"]*)"/) || token.match(/start='([^']*)'/);
-                
+
                 const blockId = idMatch ? idMatch[1] : `thinking-${conversationId}-${this.currentBlockId++}`;
                 const startTime = startMatch ? parseInt(startMatch[1]) : Date.now();
-                
+
                 this.thinkingStack.push({
                     content: '',
                     id: blockId,
                     startTime: startTime
                 });
                 inThinkingBlock = true;
-                
+
                 // Immediately emit incomplete thinking block for display
                 result.thinkingBlocks.push({
                     id: blockId,
@@ -118,21 +112,21 @@ export class ThinkingTokenHandler {
                     startTime: startTime,
                     isStreaming: true
                 });
-                
+
                 console.log('🐛 DEBUG - ThinkingTokenHandler: Started thinking block immediately:', {
                     blockId,
                     startTime
                 });
-                
+
             } else if (token.startsWith('</think')) {
                 // End of thinking block - parse attributes
                 console.log('🐛 DEBUG - ThinkingTokenHandler: Found thinking end token:', token);
-                
+
                 if (this.thinkingStack.length > 0) {
                     const thinkingBlock = this.thinkingStack.pop()!;
                     const endMatch = token.match(/end="([^"]*)"/) || token.match(/end='([^']*)'/);
                     const endTime = endMatch ? parseInt(endMatch[1]) : Date.now();
-                    
+
                     console.log('🐛 DEBUG - ThinkingTokenHandler: Completed thinking block:', {
                         blockId: thinkingBlock.id,
                         contentLength: thinkingBlock.content.length,

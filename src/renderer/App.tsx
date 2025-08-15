@@ -18,7 +18,7 @@ import ModernDatabasePanel from './components/ModernDatabasePanel';
 import ChatDocumentPanel from './components/ChatDocumentPanel';
 import ThemeToggle from './components/ThemeToggle';
 import { ThemeProvider } from './contexts/ThemeContext';
-import { getSettings } from '../store/actions';
+import { getSettings, setCurrentConversationId } from '../store/actions';
 import { toggleSettings } from '../store/actions';
 import { hideDocument, showDocument } from '../store/actions';
 import { streamError } from '../store/actions';
@@ -27,6 +27,7 @@ import './styles/main.css';
 import './styles/database-sidebar.css';
 import { ipcRenderer } from 'electron';
 import ChatList from './components/ChatList';
+import { v4 as uuidv4 } from 'uuid';
 import {
     IconButton,
     CssBaseline
@@ -60,7 +61,7 @@ const App: React.FC = () => {
     const isListening = false; // No longer used for real-time transcription, kept for display compatibility
     const [inputValue, setInputValue] = useState('');
     const messages = useSelector((state: any) => state.messages?.messages || []);
-    const [currentConversationId, setCurrentConversationId] = useState<string | undefined>(undefined);
+    const currentConversationId = useSelector((state: any) => state.messages?.currentConversationId || null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [isAppLoading, setIsAppLoading] = useState(true);
     const [isTransitioning, setIsTransitioning] = useState(false);
@@ -77,6 +78,7 @@ const App: React.FC = () => {
     const chatMessagesRef = useRef<HTMLDivElement>(null);
     const [availableDocuments, setAvailableDocuments] = useState<any[]>([]);
 
+
     // Memoize welcome message to prevent re-calculation on every render
     const welcomeMessage = useMemo(() => {
         if (settings?.profile?.name) {
@@ -91,9 +93,15 @@ const App: React.FC = () => {
         }
         return "How can I assist you today?";
     }, [settings?.profile?.name]);
+    useEffect(() => {
+        if (!currentConversationId) {
+            dispatch(setCurrentConversationId(uuidv4()));
+        }
+    }, [dispatch])
 
     // Load conversation history when conversation changes
     useEffect(() => {
+
         const loadConversationHistory = async () => {
             if (!currentConversationId) return;
 
@@ -107,6 +115,7 @@ const App: React.FC = () => {
                 dispatch({ type: 'CLEAR_MESSAGES' });
                 dispatch({ type: 'CLEAR_THINKING_BLOCKS' });
                 dispatch({ type: 'CLEAR_TOOL_CALLS' });
+
 
                 // Reset token handlers
                 thinkingTokenHandler.reset();
@@ -337,7 +346,7 @@ const App: React.FC = () => {
                             // Don't add to frontend store here to prevent duplicates
 
                             // Create assistant message placeholder for streaming
-                            const assistantMessageId = `assistant-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                            const assistantMessageId = `assistant-${Date.now()}-${Math.random().toString(36).slice(2)}`;
                             const assistantMessage = {
                                 id: assistantMessageId,
                                 role: 'assistant',
@@ -346,8 +355,9 @@ const App: React.FC = () => {
                                 isStreaming: true,
                                 conversationId: chatID
                             };
-                            dispatch({ type: 'ADD_MESSAGE', payload: assistantMessage });
-                            dispatch({ type: 'START_THINKING' });
+                            // When creating the placeholder (in handleSendClick and mic path)
+                            dispatch({ type: 'ADD_MESSAGE', payload: { id: assistantMessageId, role: 'assistant', content: '', isStreaming: true, timestamp: Date.now() + 1, conversationId: chatID } });
+                            dispatch({ type: 'SET_CURRENT_ASSISTANT_ID', payload: { conversationId: chatID, messageId: assistantMessageId } });
                             setInputValue(''); // Clear input field after sending
                             setActiveHashtags([]); // Clear hashtags after sending
 
@@ -368,7 +378,7 @@ const App: React.FC = () => {
                             }
                         }
                         if (chatID !== currentConversationId) {
-                            setCurrentConversationId(chatID);
+                            dispatch(setCurrentConversationId(chatID));
                         }
                     }
                 } else {
@@ -521,7 +531,7 @@ const App: React.FC = () => {
                 dispatch({ type: 'STOP_THINKING' });
             }
             if (convID !== currentConversationId) {
-                setCurrentConversationId(convID);
+                dispatch(setCurrentConversationId(convID));
             }
         }
     };
@@ -568,6 +578,7 @@ const App: React.FC = () => {
     }, [currentConversationId]);
 
     // Listen for streaming events from main process
+    const currentAssistantId = useSelector((s: any) => s.messages.currentAssistantIdByConversation?.[currentConversationIdRef.current]);
     useEffect(() => {
         const handleStreamChunk = (_: any, data: { chunk: string, conversationId: string }) => {
             console.log('🔧 DEBUG: Frontend received stream-chunk event:', data,);
@@ -598,10 +609,10 @@ const App: React.FC = () => {
                         // New incomplete thinking block - show it immediately
                         const enhancedIncompleteBlock = {
                             ...incompleteBlock,
-                            messageId: `assistant-${Date.now()}`,
+                            messageId: currentAssistantId,            // << use the real id
                             conversationId: currentConversationIdRef.current,
-                            isIncomplete: true, // Flag to indicate this is still being processed
-                            isStreaming: true   // Flag for UI animation/styling
+                            isIncomplete: true,
+                            isStreaming: true
                         };
                         dispatch({ type: 'ADD_THINKING_BLOCK', payload: enhancedIncompleteBlock });
                         console.log('🧠 IMMEDIATE THINKING: Showing incomplete thinking block:', {
@@ -627,8 +638,8 @@ const App: React.FC = () => {
                 processedTools.toolCalls.forEach(toolCall => {
                     const enhancedToolCall = {
                         ...toolCall,
-                        messageId: `assistant-${Date.now()}`, // Will be updated to actual message ID
-                        conversationId: currentConversationId
+                        messageId: currentAssistantId,            // << use the real id
+                        conversationId: currentConversationIdRef.current
                     };
                     dispatch({ type: 'ADD_TOOL_CALL', payload: enhancedToolCall });
                 });
@@ -648,7 +659,6 @@ const App: React.FC = () => {
             console.log('🔧 DEBUG: Frontend received stream-complete event for conversation:', data.conversationId);
             console.log('🔧 DEBUG: Current conversation ID:', currentConversationIdRef.current);
             console.log('🔧 DEBUG: Conversation IDs match:', data.conversationId === currentConversationIdRef.current);
-
             if (data.conversationId === currentConversationIdRef.current) {
                 // FINALIZE STREAMING MESSAGE: Set isStreaming to false for the last assistant message
                 console.log('Messages:', messages);
@@ -658,24 +668,7 @@ const App: React.FC = () => {
 
                 console.log('🔧 DEBUG: Found streaming message to finalize:', streamingMessage?.id);
 
-                if (streamingMessage) {
-                    console.log('🔧 DEBUG: Dispatching FINALIZE_STREAMING_MESSAGE for message:', streamingMessage.id);
-                    dispatch({
-                        type: 'FINALIZE_STREAMING_MESSAGE',
-                        payload: {
-                            messageId: streamingMessage.id,
-                            conversationId: currentConversationIdRef.current
-                        }
-                    });
-                    console.log('📝 FINALIZED MESSAGE: Set isStreaming to false for message:', streamingMessage.id);
-                } else {
-                    console.log('🔧 DEBUG: No streaming message found to finalize. Current messages:',
-                        messages.filter(msg => msg.role === 'assistant' && msg.conversationId === currentConversationIdRef.current).map(msg => ({
-                            id: msg.id,
-                            isStreaming: msg.isStreaming
-                        }))
-                    );
-                }
+
 
                 // FINALIZE INCOMPLETE THINKING BLOCKS: Convert any remaining incomplete blocks to completed ones
                 const remainingIncompleteBlocks = thinkingTokenHandler.getIncompleteThinkingBlocks(currentConversationIdRef.current);
@@ -752,6 +745,24 @@ const App: React.FC = () => {
                 }
 
                 dispatch({ type: 'STOP_THINKING' });
+                if (streamingMessage) {
+                    console.log('🔧 DEBUG: Dispatching FINALIZE_STREAMING_MESSAGE for message:', streamingMessage.id);
+                    dispatch({
+                        type: 'FINALIZE_STREAMING_MESSAGE',
+                        payload: {
+                            messageId: streamingMessage.id,
+                            conversationId: currentConversationIdRef.current
+                        }
+                    });
+                    console.log('📝 FINALIZED MESSAGE: Set isStreaming to false for message:', streamingMessage.id);
+                } else {
+                    console.log('🔧 DEBUG: No streaming message found to finalize. Current messages:',
+                        messages.filter(msg => msg.role === 'assistant' && msg.conversationId === currentConversationIdRef.current).map(msg => ({
+                            id: msg.id,
+                            isStreaming: msg.isStreaming
+                        }))
+                    );
+                }
             }
         };
 
@@ -811,7 +822,7 @@ const App: React.FC = () => {
                 streamController.current.abort();
             }
         };
-    }, [dispatch]); // Removed currentConversationId dependency to prevent listener re-registration
+    }, [dispatch, messages]); // Removed currentConversationId dependency to prevent listener re-registration
 
     // Handle input change with auto-resize
     const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -943,12 +954,12 @@ const App: React.FC = () => {
                 <div className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
                     <div className="sidebar-content">
                         <ChatList
-                            onSelectConversation={setCurrentConversationId}
+                            onSelectConversation={(id: string) => dispatch(setCurrentConversationId(id))}
                             onCreateNewChat={async () => {
                                 try {
                                     // Create new conversation through IPC handler
                                     const newId = await ipcRenderer.invoke('create-conversation');
-                                    setCurrentConversationId(newId);
+                                    dispatch(setCurrentConversationId(newId));
                                     // Clear messages for the new conversation
                                     dispatch({ type: 'CLEAR_MESSAGES' });
                                     // Reset token handlers for new conversation
@@ -958,7 +969,7 @@ const App: React.FC = () => {
                                     console.error('Failed to create new conversation:', error);
                                     // Fallback to local ID generation if IPC fails
                                     const fallbackId = Date.now().toString();
-                                    setCurrentConversationId(fallbackId);
+                                    dispatch(setCurrentConversationId(fallbackId));
                                     dispatch({ type: 'CLEAR_MESSAGES' });
                                 }
                             }}

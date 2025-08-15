@@ -14,6 +14,11 @@ export const completeThinkingBlock = (blockId: string, endTime: number) => ({
     payload: { blockId, endTime }
 });
 
+export const setCurrentConversationId = (conversationId: string | null) => ({
+    type: 'SET_CURRENT_CONVERSATION_ID',
+    payload: conversationId || null // Reset to null if conversationId is not provided
+});
+
 export const clearThinkingBlocks = () => ({
     type: 'CLEAR_THINKING_BLOCKS'
 });
