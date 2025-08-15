@@ -340,7 +340,7 @@ export class DuckDBSettingsService extends EventEmitter {
                 await this.db.run(
                     `INSERT OR REPLACE INTO settings (key, section, value, data_type) 
                      VALUES (?, ?, ?, ?)`,
-                    [key, section as string, JSON.stringify(value), dataType]
+                    key, section as string, JSON.stringify(value), dataType
                 );
             }
 

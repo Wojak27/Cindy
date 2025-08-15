@@ -561,7 +561,7 @@ const App: React.FC = () => {
 
     // Create a ref to store current conversation ID for IPC handlers
     const currentConversationIdRef = useRef(currentConversationId);
-    
+
     // Update ref when conversation ID changes
     useEffect(() => {
         currentConversationIdRef.current = currentConversationId;
@@ -791,10 +791,10 @@ const App: React.FC = () => {
         ipcRenderer.on('stream-chunk', handleStreamChunk);
         ipcRenderer.on('stream-complete', handleStreamComplete);
         ipcRenderer.on('stream-error', handleStreamError);
-        
+
         // Test IPC channel registration
         console.log('🔧 DEBUG: IPC listeners registered, testing stream-complete channel...');
-        
+
         // Add a test listener to see if events are being received at all
         const testStreamCompleteListener = (_: any, data: any) => {
             console.log('🔧 DEBUG: TEST LISTENER received stream-complete event:', data);
@@ -832,7 +832,6 @@ const App: React.FC = () => {
     // Handle key press (Enter to send, Shift+Enter for new line)
     const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
             handleSendClick();
         }
     };
@@ -911,28 +910,6 @@ const App: React.FC = () => {
         }
     };
 
-
-    // Handle click outside to close sidebars
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            // Close settings sidebar if clicking outside
-            if (showSettings && settingsSidebarRef.current && !settingsSidebarRef.current.contains(event.target as Node)) {
-                dispatch(toggleSettings());
-            }
-            // Close database sidebar if clicking outside
-            if (showDatabase && databaseSidebarRef.current && !databaseSidebarRef.current.contains(event.target as Node)) {
-                dispatch({ type: 'TOGGLE_DATABASE_SIDEBAR' });
-            }
-        };
-
-        if (showSettings || showDatabase) {
-            document.addEventListener('mousedown', handleClickOutside);
-        }
-
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
-    }, [showSettings, showDatabase, dispatch]);
 
     // Show loading screen with just the blob
     if (isAppLoading) {
@@ -1544,18 +1521,18 @@ const App: React.FC = () => {
                         )}
                     </div>
 
-
-                    {/* Dark overlay when sidebars are open */}
-                    {(showSettings || showDatabase) && (
-                        <div className="sidebar-overlay" />
-                    )}
-
                     <div ref={settingsSidebarRef} className={`settings-sidebar-container ${showSettings ? 'open' : ''}`}>
                         <ModernSettingsPanel />
                     </div>
                     <div ref={databaseSidebarRef} className={`database-sidebar-container ${showDatabase ? 'open' : ''}`}>
                         <ModernDatabasePanel />
                     </div>
+
+                    {/* Dark overlay when sidebars are open */}
+                    {(showSettings || showDatabase) && (
+                        <div className="sidebar-overlay" />
+                    )}
+
                 </div>
             </div>
         </ThemeProvider>

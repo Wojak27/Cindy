@@ -396,9 +396,21 @@ const ModernSettingsPanel: React.FC = () => {
     };
 
     // Handle search settings changes
-    const handleSearchSettingChange = (key: string, e: any) => {
-        e.preventDefault();
-        const value = e.target.value;
+    const handleSearchSettingChange = (key: string, valueOrEvent: any) => {
+        // Handle both event objects and direct values
+        let value: any;
+        if (valueOrEvent && typeof valueOrEvent === 'object' && 'target' in valueOrEvent) {
+            // It's an event object
+            console.log(`🔧 Handling search setting change for ${key}:`, valueOrEvent);
+            if (valueOrEvent.preventDefault) {
+                valueOrEvent.preventDefault();
+            }
+            value = valueOrEvent.target.value;
+        } else {
+            // It's a direct value
+            value = valueOrEvent;
+        }
+
         trackOriginalSettings();
         const newSettings = { ...searchSettings, [key]: value };
 
@@ -503,6 +515,7 @@ const ModernSettingsPanel: React.FC = () => {
 
     // Handle explicit close (close button only)
     const handleClose = () => {
+        console.log('🔒 Close button clicked - hiding settings panel');
         dispatch(toggleSettings());
     };
 
@@ -520,7 +533,7 @@ const ModernSettingsPanel: React.FC = () => {
         // MUI creates portals with classes like MuiPaper-root, MuiList-root, MuiMenu-root, etc.
         const muiPortalSelectors = [
             '.MuiPaper-root',
-            '.MuiList-root', 
+            '.MuiList-root',
             '.MuiMenu-root',
             '.MuiMenuItem-root',
             '.MuiSelect-root',
@@ -567,12 +580,14 @@ const ModernSettingsPanel: React.FC = () => {
         }
 
         // If we get here, it's a genuine outside click
+        console.log('🔒 Outside click detected - hiding settings panel');
         dispatch(toggleSettings());
     }, [dispatch]);
 
     // Handle escape key
     const handleKeyDown = useCallback((event: KeyboardEvent) => {
         if (event.key === 'Escape') {
+            console.log('🔒 Escape key pressed - hiding settings panel');
             dispatch(toggleSettings());
         }
     }, [dispatch]);
@@ -992,7 +1007,7 @@ const ModernSettingsPanel: React.FC = () => {
                                         label={`Brave Search API Key ${searchSettings.braveApiKey && searchSettings.braveApiKey !== '' ? '✓' : '✗'}`}
                                         type="password"
                                         value={searchSettings.braveApiKey}
-                                        onChange={(e) => handleSearchSettingChange('braveApiKey', e.target.value)}
+                                        onChange={(e) => handleSearchSettingChange('braveApiKey', e)}
                                         sx={{ mb: 2 }}
                                         helperText="Get your free API key at search.brave.com"
                                         color={searchSettings.braveApiKey && searchSettings.braveApiKey !== '' ? 'success' : 'primary'}
@@ -1003,7 +1018,7 @@ const ModernSettingsPanel: React.FC = () => {
                                         label={`Tavily AI API Key ${searchSettings.tavilyApiKey && searchSettings.tavilyApiKey !== '' ? '✓' : '✗'}`}
                                         type="password"
                                         value={searchSettings.tavilyApiKey}
-                                        onChange={(e) => handleSearchSettingChange('tavilyApiKey', e.target.value)}
+                                        onChange={(e) => handleSearchSettingChange('tavilyApiKey', e)}
                                         sx={{ mb: 2 }}
                                         helperText="Get your API key at tavily.com"
                                         color={searchSettings.tavilyApiKey && searchSettings.tavilyApiKey !== '' ? 'success' : 'primary'}
@@ -1014,7 +1029,7 @@ const ModernSettingsPanel: React.FC = () => {
                                         label={`SerpAPI Key ${searchSettings.serpApiKey && searchSettings.serpApiKey !== '' ? '✓' : '✗'}`}
                                         type="password"
                                         value={searchSettings.serpApiKey}
-                                        onChange={(e) => handleSearchSettingChange('serpApiKey', e.target.value)}
+                                        onChange={(e) => handleSearchSettingChange('serpApiKey', e)}
                                         sx={{ mb: 2 }}
                                         helperText="Get your API key at serpapi.com"
                                         color={searchSettings.serpApiKey && searchSettings.serpApiKey !== '' ? 'success' : 'primary'}
@@ -1155,7 +1170,7 @@ const ModernSettingsPanel: React.FC = () => {
                                                 <Typography variant="subtitle2" gutterBottom fontWeight={600}>
                                                     🎯 Streaming Settings (Faster TTS)
                                                 </Typography>
-                                                
+
                                                 <FormControl component="fieldset" sx={{ mb: 2 }}>
                                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                                                         <Typography>Enable Streaming:</Typography>
@@ -1164,9 +1179,9 @@ const ModernSettingsPanel: React.FC = () => {
                                                             value={voiceSettings.enableStreaming ? 'enabled' : 'disabled'}
                                                             onChange={(e) => {
                                                                 trackOriginalSettings();
-                                                                setVoiceSettings(prev => ({ 
-                                                                    ...prev, 
-                                                                    enableStreaming: e.target.value === 'enabled' 
+                                                                setVoiceSettings(prev => ({
+                                                                    ...prev,
+                                                                    enableStreaming: e.target.value === 'enabled'
                                                                 }));
                                                                 setHasUnsavedChanges(true);
                                                             }}
@@ -1303,7 +1318,7 @@ const ModernSettingsPanel: React.FC = () => {
                                                 <Typography variant="subtitle2" gutterBottom fontWeight={600}>
                                                     🚀 Kokoro-82M Settings
                                                 </Typography>
-                                                
+
                                                 <FormControl fullWidth sx={{ mb: 2 }}>
                                                     <InputLabel>Voice</InputLabel>
                                                     <Select
@@ -1349,7 +1364,7 @@ const ModernSettingsPanel: React.FC = () => {
                                                 <Typography variant="subtitle2" gutterBottom fontWeight={600}>
                                                     ⚡ Xenova Transformers Settings
                                                 </Typography>
-                                                
+
                                                 <FormControl fullWidth sx={{ mb: 2 }}>
                                                     <InputLabel>Model</InputLabel>
                                                     <Select
