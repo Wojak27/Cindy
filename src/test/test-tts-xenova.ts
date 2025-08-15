@@ -4,8 +4,7 @@ import * as path from "path";
 (async () => {
     try {
         const tts = new TextToSpeechService({
-            provider: "xenova",
-            xenovaModel: "Xenova/text-to-speech"
+            provider: "kokoro"
         });
 
         await tts.initialize();

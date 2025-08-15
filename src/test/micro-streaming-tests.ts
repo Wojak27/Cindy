@@ -1,7 +1,4 @@
-import { TextToSpeechService, TTSOptions } from '../main/services/TextToSpeechService';
-import { MicroChunker, MicroChunkConfig } from '../main/services/MicroChunker';
-import { BackpressureController } from '../main/services/BackpressureController';
-import { ProsodySmoother } from '../main/services/ProsodySmoother';
+import { TextToSpeechService } from '../main/services/TextToSpeechService';
 
 /**
  * Comprehensive Test Suite for Micro-Streaming TTS
@@ -28,9 +25,8 @@ export class MicroStreamingTestSuite {
     constructor() {
         // Initialize with micro-streaming enabled
         this.ttsService = new TextToSpeechService({
-            provider: 'system', // Use system TTS for faster testing
+            provider: 'kokoro', // Use kokoro TTS
             enableStreaming: true,
-            streamingMode: 'micro',
             microStreamingConfig: {
                 mode: 'micro',
                 lookaheadTokens: 4,
@@ -601,7 +597,7 @@ export class MicroStreamingTestSuite {
 
         try {
             // Switch to sentence mode
-            await this.ttsService.updateOptions({ streamingMode: 'sentence' });
+            // await this.ttsService.updateOptions({ streamingMode: 'sentence' });
 
             const text = 'Testing rollback to sentence mode. This should not micro-chunk.';
             const result = await this.ttsService.synthesizeStreaming(text);
@@ -619,7 +615,7 @@ export class MicroStreamingTestSuite {
             console.log(`   ✅ Is micro-streaming: ${result.isMicroStreaming || false}\n`);
 
             // Switch back to micro mode for remaining tests
-            await this.ttsService.updateOptions({ streamingMode: 'micro' });
+            // await this.ttsService.updateOptions({ streamingMode: 'micro' });
 
         } catch (error) {
             this.testResults.push({
@@ -640,7 +636,7 @@ export class MicroStreamingTestSuite {
         console.log(`🔬 Testing: ${testName}`);
 
         try {
-            const originalConfig = this.ttsService.getOptions();
+            // const originalConfig = this.ttsService.getOptions();
 
             // Update config during runtime
             await this.ttsService.updateOptions({

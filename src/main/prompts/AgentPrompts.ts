@@ -108,6 +108,27 @@ RESPONSE STRUCTURE:
 - Acknowledge any limitations or missing information
 - Suggest next steps if appropriate`;
 
+    static readonly DIRECT_RESPONSE = `You are a function that generates a binary response (YES/NO) based on the user's query.
+REASONS FOR YES:
+- The query is straightforward and can be answered with a simple affirmative or negative.
+- The query does not require complex reasoning or tool execution.
+
+REASONS FOR NO:
+- The query is ambiguous or requires more context.
+- The query cannot be answered definitively with a yes or no.
+
+FORMAT:
+- If the answer is yes, respond with "YES".
+- If the answer is no, respond with "NO".
+
+Examples:
+User: "Is the sky blue?"
+Response: "YES"
+
+User: "Can you tell me the meaning of life?"
+Response: "NO"`;
+
+
     /**
      * Error handling prompt for failed tool executions
      */
@@ -171,7 +192,7 @@ QUALITY INDICATORS:
     /**
      * Get the appropriate system prompt based on context
      */
-    static getSystemPrompt(context: 'main' | 'thinking' | 'synthesis' | 'error'): string {
+    static getSystemPrompt(context: 'main' | 'thinking' | 'synthesis' | 'error' | 'direct_response'): string {
         switch (context) {
             case 'main':
                 return this.MAIN_SYSTEM_PROMPT;
@@ -179,6 +200,8 @@ QUALITY INDICATORS:
                 return this.THINKING_SYSTEM_PROMPT;
             case 'synthesis':
                 return this.SYNTHESIS_PROMPT;
+            case 'direct_response':
+                return this.DIRECT_RESPONSE; // Assuming direct response uses synthesis prompt
             case 'error':
                 return this.TOOL_ERROR_PROMPT;
             default:
@@ -189,14 +212,14 @@ QUALITY INDICATORS:
     /**
      * Build a dynamic prompt for tool execution results
      */
-    static buildToolResultsPrompt(toolResults: Array<{name: string, success: boolean, result?: any, error?: string}>): string {
+    static buildToolResultsPrompt(toolResults: Array<{ name: string, success: boolean, result?: any, error?: string }>): string {
         const successfulTools = toolResults.filter(t => t.success);
         const failedTools = toolResults.filter(t => !t.success);
-        
+
         let prompt = `TOOL EXECUTION SUMMARY:
 
 `;
-        
+
         if (successfulTools.length > 0) {
             prompt += `SUCCESSFUL TOOLS (${successfulTools.length}):\n`;
             successfulTools.forEach(tool => {
@@ -204,7 +227,7 @@ QUALITY INDICATORS:
             });
             prompt += '\n';
         }
-        
+
         if (failedTools.length > 0) {
             prompt += `FAILED TOOLS (${failedTools.length}):\n`;
             failedTools.forEach(tool => {
@@ -212,13 +235,13 @@ QUALITY INDICATORS:
             });
             prompt += '\n';
         }
-        
+
         prompt += `RESPONSE REQUIREMENTS:
 - Only use information from successful tool executions
 - Acknowledge failed tools appropriately
 - Do not fabricate information for failed tools
 - Be helpful within these constraints`;
-        
+
         return prompt;
     }
 }

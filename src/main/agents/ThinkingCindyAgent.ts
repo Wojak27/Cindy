@@ -87,7 +87,7 @@ export class ThinkingCindyAgent {
 
             const responseText = response.content as string;
             const requiresLocation = responseText.includes('REQUIRES_LOCATION: true');
-            
+
             if (!requiresLocation) {
                 return { requiresLocation: false };
             }
@@ -117,7 +117,7 @@ export class ThinkingCindyAgent {
         // - IP-based location services
         // - User settings/preferences
         // - Previous location mentions in conversation
-        
+
         // For now, return null to trigger location request
         return null;
     }
@@ -125,28 +125,128 @@ export class ThinkingCindyAgent {
     /**
      * Analyze input for hashtags and intent
      */
-    private analyzeInput(input: string): { cleanInput: string; forcedTools: string[]; hashtags: string[] } {
-        const hashtags = (input.match(/#\w+/g) || []).map(tag => tag.toLowerCase());
-        const forcedTools = hashtags.map(tag => this.hashtagToTool[tag]).filter(Boolean);
-        const cleanInput = input.replace(/#\w+/g, '').trim();
+    // Assumes the class has:
+    // private readonly hashtagToTool: Record<string, string> = { ... }  // your mapping
 
-        this.addThinkingStep('analyze',
-            `Input analysis:\n` +
-            `- Original: "${input}"\n` +
-            `- Clean input: "${cleanInput}"\n` +
-            `- Hashtags found: ${hashtags.join(', ') || 'none'}\n` +
-            `- Forced tools: ${forcedTools.join(', ') || 'none'}`
+    private async analyzeInput(
+        input: string
+    ): Promise<{ cleanInput: string; forcedTools: string[]; hashtags: string[]; directResponse: boolean }> {
+        const hashtagRe = /#\w+/g;
+
+        // 1) Extract hashtags (lowercased) exactly as written in the input
+        const hashtags = (input.match(hashtagRe) ?? []).map(tag => tag.toLowerCase());
+
+        // 2) Use your provided hashtagToTool mapping directly
+        const forcedTools = Array.from(
+            new Set(
+                hashtags
+                    .map(tag => this.hashtagToTool[tag]) // <- use the mapping as-is
+                    .filter((t): t is string => Boolean(t))
+            )
         );
 
-        return { cleanInput, forcedTools, hashtags };
+        // 3) Clean input (remove hashtags + collapse spaces)
+        const cleanInput = input.replace(hashtagRe, '').replace(/\s{2,}/g, ' ').trim();
+
+        // 4) Decide if we should answer directly (ask LLM only if no tools are forced)
+        let directResponse: boolean;
+        if (forcedTools.length === 0) {
+            const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+            const parseDirect = (raw: unknown): boolean | undefined => {
+                // Strip message from <think> tags
+                const cleanContent = String((raw as any)?.content ?? '')
+                    .replace(/<think\b[^>]*>.*?<\/think>/gs, '')
+                    .trim();
+                if (!cleanContent) return undefined; // empty response
+                const content: string = (
+                    cleanContent ??
+                    String(raw ?? '')
+                ).toString();
+
+
+
+
+                const t = content.trim().toLowerCase();
+
+                // Strict single-token booleans
+                if (/^(true|yes|y|1|YES)$/.test(t)) return true;
+                if (/^(false|no|n|0|NO)$/.test(t)) return false;
+
+                // JSON / key-style hints
+                try {
+                    const j = JSON.parse(t);
+                    if (typeof j === 'boolean') return j;
+                    if (j && typeof j === 'object') {
+                        const val = (j as any).directResponse ?? (j as any).direct_response ?? (j as any).direct;
+                        if (typeof val === 'boolean') return val;
+                        if (typeof val === 'string') {
+                            const s = val.toLowerCase();
+                            if (['true', 'yes', 'y', '1', 'YES'].includes(s)) return true;
+                            if (['false', 'no', 'n', '0', 'NO'].includes(s)) return false;
+                        }
+                    }
+                } catch { }
+
+                if (/"directresponse"\s*:\s*true/.test(t)) return true;
+                if (/"directresponse"\s*:\s*false/.test(t)) return false;
+
+                // Heuristics
+                if (/\bdirect\b/.test(t) && !/\b(tool|tools)\b/.test(t)) return true;
+                if (/\b(use|needs?)\s+tool(s)?\b/.test(t)) return false;
+
+                return undefined; // ambiguous -> trigger retry
+            };
+
+            const baseSystem = AgentPrompts.getSystemPrompt('direct_response');
+
+            const tryOnce = async (strictness: number): Promise<boolean | undefined> => {
+                const extra =
+                    strictness === 0
+                        ? ''
+                        : strictness === 1
+                            ? 'Reply with a single token: true or false. No punctuation or extra words.'
+                            : 'Reply EXACTLY "true" or "false". Nothing else.';
+                const res = await this.llmProvider.invoke([
+                    { role: 'system' as const, content: [baseSystem, extra].filter(Boolean).join('\n\n') },
+                    { role: 'user' as const, content: cleanInput }
+                ]);
+                return parseDirect(res);
+            };
+
+            const maxAttempts = 3;
+            const baseDelayMs = 250;
+            let parsed: boolean | undefined;
+
+            for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                try {
+                    parsed = await tryOnce(attempt); // escalate strictness per attempt
+                    if (parsed !== undefined) break;
+                } catch {
+                    // ignore and retry with backoff
+                }
+                if (attempt < maxAttempts - 1) {
+                    const jitter = Math.floor(Math.random() * 50);
+                    await sleep(baseDelayMs * Math.pow(2, attempt) + jitter);
+                }
+            }
+
+            directResponse = parsed ?? false; // conservative fallback
+        } else {
+            directResponse = false; // tools forced => not a simple direct response
+        }
+
+        return { cleanInput, forcedTools, hashtags, directResponse };
     }
+
+
 
     /**
      * Think and create execution plan
      */
     private async createThinkingPlan(
-        cleanInput: string, 
-        forcedTools: string[], 
+        cleanInput: string,
+        forcedTools: string[],
         context?: AgentContext,
         locationInfo?: {
             requiresLocation: boolean;
@@ -156,26 +256,6 @@ export class ThinkingCindyAgent {
         }
     ): Promise<ThinkingPlan> {
         const availableTools = this.toolExecutor.getAvailableTools();
-
-        // Check if this is a simple greeting that doesn't require complex planning
-        if (this.isSimpleGreeting(cleanInput) && forcedTools.length === 0) {
-            console.log('🎯 Simple greeting detected - skipping complex planning phase');
-            
-            const plan: ThinkingPlan = {
-                intent: 'simple greeting',
-                forcedTools: [],
-                suggestedTools: [],
-                reasoning: 'Simple greeting detected - no tools needed for direct response',
-                steps: []
-            };
-
-            this.addThinkingStep('think',
-                `Simple greeting detected: "${cleanInput}"\n` +
-                `No planning required - will respond directly without tools`
-            );
-
-            return plan;
-        }
 
         // Build thinking prompt for complex requests
         const thinkingPrompt = `You are Cindy, an intelligent voice assistant. Analyze this user request and create an execution plan.
@@ -265,7 +345,7 @@ Respond with your thinking process and a clear plan. Be concise but thorough.`;
             const startTime = Date.now();
             try {
                 console.log(`   🚀 Executing...`);
-                
+
                 // Handle special web search preference routing
                 let actualTool = step.tool;
                 if (step.tool === 'web_search_preferred') {
@@ -273,7 +353,7 @@ Respond with your thinking process and a clear plan. Be concise but thorough.`;
                     actualTool = 'web_search'; // This will be handled by LangChainToolExecutorService routing
                     console.log(`   🔄 Routing #web hashtag to preferred web search provider`);
                 }
-                
+
                 const result = await this.toolExecutor.executeTool(actualTool, step.parameters);
                 const duration = Date.now() - startTime;
 
@@ -335,7 +415,7 @@ Respond with your thinking process and a clear plan. Be concise but thorough.`;
         }));
 
         const toolResultsPrompt = AgentPrompts.buildToolResultsPrompt(toolResultsForPrompt);
-        
+
         const synthesisPrompt = `User's original request: "${cleanInput}"
 My thinking process: ${plan.reasoning}
 Tools executed: ${plan.steps.map(s => s.tool).join(', ') || 'none'}
@@ -457,60 +537,56 @@ Provide a helpful, natural response that addresses the user's request using only
             // Analyze input
             console.log('\n🔍 ANALYZING INPUT');
             console.log('─'.repeat(40));
-            const { cleanInput, forcedTools, hashtags } = this.analyzeInput(input);
-
-            console.log(`📝 Clean input: "${cleanInput}"`);
-            console.log(`🏷️  Hashtags found: [${hashtags.join(', ') || 'none'}]`);
-            console.log(`🔧 Forced tools: [${forcedTools.join(', ') || 'none'}]`);
-
-            // Check for location requirements
-            console.log('\n📍 CHECKING LOCATION REQUIREMENTS');
-            console.log('─'.repeat(40));
-            const locationInfo = await this.detectLocationRequirement(cleanInput);
-            
-            if (locationInfo.requiresLocation) {
-                console.log(`📍 Location required for: ${locationInfo.queryType}`);
-                const userLocation = await this.getUserLocation();
-                
-                if (!userLocation) {
-                    console.log('📍 No location available - will request from user');
-                } else {
-                    console.log(`📍 Using location: ${userLocation}`);
-                    locationInfo.userLocation = userLocation;
-                }
-            }
-
-            // Create thinking plan
-            console.log('\n💭 CREATING EXECUTION PLAN');
-            console.log('─'.repeat(40));
-            const plan = await this.createThinkingPlan(cleanInput, forcedTools, context, locationInfo);
-
-            console.log(`🎯 Intent: ${plan.intent}`);
-            console.log(`🛠️  Tools to execute: [${plan.steps.map(s => s.tool).join(', ') || 'none'}]`);
-            console.log(`📋 Execution steps: ${plan.steps.length}`);
-
-            // Execute tools
-            console.log('\n⚙️ EXECUTING TOOLS');
-            console.log('─'.repeat(40));
-            const toolResults = await this.executeTools(plan, context);
-
-            const successCount = Object.values(toolResults).filter(r => r.success).length;
-            const totalTools = Object.keys(toolResults).length;
-            console.log(`✅ Tool execution complete: ${successCount}/${totalTools} successful`);
-
-            // Generate response
+            const { cleanInput, forcedTools, hashtags, directResponse } = await this.analyzeInput(input);
             let finalResponse: string;
-            if (plan.steps.length === 0 && plan.intent === 'simple greeting') {
-                // Direct response for simple greetings - no synthesis needed
-                console.log('\n💬 DIRECT RESPONSE (SIMPLE GREETING)');
-                console.log('─'.repeat(40));
-                const directResponse = await this.llmProvider.invoke([
-                    { role: 'system' as const, content: this.getSystemPrompt() },
+            if (directResponse) {
+                console.log('💬 Direct response detected - no tools needed')
+                return await this.llmProvider.invoke([
+                    { role: 'system' as const, content: AgentPrompts.getSystemPrompt('direct_response') },
                     { role: 'user' as const, content: cleanInput }
-                ]);
-                finalResponse = directResponse.content as string;
+                ]).then(response => response.content as string);
             } else {
-                // Complex response with synthesis
+
+                console.log(`📝 Clean input: "${cleanInput}"`);
+                console.log(`🏷️  Hashtags found: [${hashtags.join(', ') || 'none'}]`);
+                console.log(`🔧 Forced tools: [${forcedTools.join(', ') || 'none'}]`);
+
+                // Check for location requirements
+                console.log('\n📍 CHECKING LOCATION REQUIREMENTS');
+                console.log('─'.repeat(40));
+                const locationInfo = await this.detectLocationRequirement(cleanInput);
+
+                if (locationInfo.requiresLocation) {
+                    console.log(`📍 Location required for: ${locationInfo.queryType}`);
+                    const userLocation = await this.getUserLocation();
+
+                    if (!userLocation) {
+                        console.log('📍 No location available - will request from user');
+                    } else {
+                        console.log(`📍 Using location: ${userLocation}`);
+                        locationInfo.userLocation = userLocation;
+                    }
+                }
+
+                // Create thinking plan
+                console.log('\n💭 CREATING EXECUTION PLAN');
+                console.log('─'.repeat(40));
+                const plan = await this.createThinkingPlan(cleanInput, forcedTools, context, locationInfo);
+
+                console.log(`🎯 Intent: ${plan.intent}`);
+                console.log(`🛠️  Tools to execute: [${plan.steps.map(s => s.tool).join(', ') || 'none'}]`);
+                console.log(`📋 Execution steps: ${plan.steps.length}`);
+
+                // Execute tools
+                console.log('\n⚙️ EXECUTING TOOLS');
+                console.log('─'.repeat(40));
+                const toolResults = await this.executeTools(plan, context);
+
+                const successCount = Object.values(toolResults).filter(r => r.success).length;
+                const totalTools = Object.keys(toolResults).length;
+                console.log(`✅ Tool execution complete: ${successCount}/${totalTools} successful`);
+
+                // Generate response
                 console.log('\n📝 SYNTHESIZING RESPONSE');
                 console.log('─'.repeat(40));
                 finalResponse = await this.synthesizeResponse(cleanInput, plan, toolResults, context);
@@ -548,155 +624,162 @@ Provide a helpful, natural response that addresses the user's request using only
 
             // Start thinking block with timer
             const thinkingStartTime = Date.now();
-            yield `<think id="thinking-${context?.conversationId || 'default'}-${thinkingStartTime}" start="${thinkingStartTime}">`;
-            yield "**Analyzing your request...**\n\n";
-            yield `Input: "${input}"\n\n`;
 
             // Analyze input
             console.log('\n🔍 [STREAMING] Analyzing input...');
-            const { cleanInput, forcedTools, hashtags } = this.analyzeInput(input);
-
-            yield `**Analysis:**\n`;
-            yield `• Clean input: "${cleanInput}"\n`;
-            if (hashtags.length > 0) yield `• Hashtags: ${hashtags.join(', ')}\n`;
-            if (forcedTools.length > 0) yield `• Forced tools: ${forcedTools.join(', ')}\n`;
-
-            // Check for location requirements
-            console.log('\n📍 [STREAMING] Checking location requirements...');
-            const locationInfo = await this.detectLocationRequirement(cleanInput);
-            
-            if (locationInfo.requiresLocation) {
-                yield `• Location required for: ${locationInfo.queryType}\n`;
-                const userLocation = await this.getUserLocation();
-                
-                if (!userLocation) {
-                    yield `• **Location needed**: Please specify your location for accurate results\n`;
-                    // We could return early here and ask for location, or continue with generic search
-                } else {
-                    yield `• Using location: ${userLocation}\n`;
-                    locationInfo.userLocation = userLocation;
-                }
-            }
-            yield `\n`;
-
-            // Create thinking plan  
-            console.log('\n💭 [STREAMING] Creating execution plan...');
-            yield "**Planning approach...**\n";
-
-            const plan = await this.createThinkingPlan(cleanInput, forcedTools, context, locationInfo);
-
-            yield `**Intent:** ${plan.intent}\n`;
-            if (plan.steps.length > 0) {
-                yield `**Tools planned:** ${plan.steps.map(s => `${s.tool}${s.forced ? ' (forced)' : ''}`).join(', ')}\n`;
-            }
-            yield `\n`;
-            
-            // End thinking block before tool execution
-            const thinkingEndTime = Date.now();
-            yield `</think end="${thinkingEndTime}">`;
-
-            // Execute tools
-            if (plan.steps.length > 0) {
-                console.log('\n⚙️ [STREAMING] Executing tools...');
-                yield `**Executing tools...**\n`;
-
-                const toolResults: Record<string, any> = {};
-
-                for (let i = 0; i < plan.steps.length; i++) {
-                    const step = plan.steps[i];
-                    const stepNum = i + 1;
-                    const toolId = `tool-${context?.conversationId || 'default'}-${Date.now()}-${i}`;
-
-                    // Start tool execution block with structured information
-                    const toolCallInfo = {
-                        id: toolId,
-                        name: step.tool,
-                        parameters: step.parameters,
-                        status: 'executing',
-                        startTime: Date.now(),
-                        reasoning: step.reasoning,
-                        forced: step.forced,
-                        stepNumber: stepNum,
-                        totalSteps: plan.steps.length
-                    };
-
-                    // Emit structured tool execution start
-                    yield `<tool>${JSON.stringify(toolCallInfo)}</tool>\n`;
-
-                    const startTime = Date.now();
-                    try {
-                        // Handle special web search preference routing
-                        let actualTool = step.tool;
-                        if (step.tool === 'web_search_preferred') {
-                            // Route to user's preferred web search provider
-                            actualTool = 'web_search'; // This will be handled by LangChainToolExecutorService routing
-                            console.log(`   🔄 [STREAMING] Routing #web hashtag to preferred web search provider`);
-                        }
-                        
-                        const result = await this.toolExecutor.executeTool(actualTool, step.parameters);
-                        const duration = Date.now() - startTime;
-                        toolResults[step.tool] = result;
-
-                        // Update tool call with completion status
-                        const completedToolCall = {
-                            ...toolCallInfo,
-                            status: result.success ? 'completed' : 'failed',
-                            endTime: Date.now(),
-                            duration: `${(duration / 1000).toFixed(1)}s`,
-                            result: result.success ? result.result : undefined,
-                            error: result.success ? undefined : result.error
-                        };
-
-                        // Emit structured tool completion
-                        yield `<tool>${JSON.stringify(completedToolCall)}</tool>\n`;
-
-                    } catch (error) {
-                        console.error(`[ThinkingCindyAgent] Tool execution error for ${step.tool}:`, error);
-                        const duration = Date.now() - startTime;
-                        toolResults[step.tool] = { success: false, error: (error as Error).message };
-
-                        // Update tool call with error status
-                        const failedToolCall = {
-                            ...toolCallInfo,
-                            status: 'failed',
-                            endTime: Date.now(),
-                            duration: `${(duration / 1000).toFixed(1)}s`,
-                            error: (error as Error).message
-                        };
-
-                        // Emit structured tool error
-                        yield `<tool>${JSON.stringify(failedToolCall)}</tool>\n`;
-                    }
-                }
-
-                // Synthesize response with citations
-                console.log('\n📝 [STREAMING] Synthesizing response...');
-                yield "**Synthesizing response...**\n";
-
-                const finalResponse = await this.synthesizeResponse(cleanInput, plan, toolResults, context);
-
+            const { cleanInput, forcedTools, hashtags, directResponse } = await this.analyzeInput(input);
+            if (directResponse) {
+                console.log('💬 Direct response detected - no tools needed')
+                const finalResponse = await this.llmProvider.invoke([
+                    { role: 'system' as const, content: AgentPrompts.getSystemPrompt('synthesis') },
+                    { role: 'user' as const, content: cleanInput }
+                ]).then(response => response.content as string);
+                yield finalResponse;
                 // Store conversation
                 await this.storeConversation(input, finalResponse, context);
-
-                yield finalResponse;
             } else {
-                // No tools needed, direct response
-                console.log('\n💬 [STREAMING] Direct response (no tools needed)...');
-                yield "**Responding directly...**\n\n";
+                yield `<think id="thinking-${context?.conversationId || 'default'}-${thinkingStartTime}" start="${thinkingStartTime}">`;
+                yield `**Analysis:**\n`;
+                yield `• Clean input: "${cleanInput}"\n`;
+                if (hashtags.length > 0) yield `• Hashtags: ${hashtags.join(', ')}\n`;
+                if (forcedTools.length > 0) yield `• Forced tools: ${forcedTools.join(', ')}\n`;
 
-                const directResponse = await this.llmProvider.invoke([
-                    { role: 'system' as const, content: this.getSystemPrompt() },
-                    { role: 'user' as const, content: cleanInput }
-                ]);
+                // Check for location requirements
+                console.log('\n📍 [STREAMING] Checking location requirements...');
+                const locationInfo = await this.detectLocationRequirement(cleanInput);
 
-                const response = directResponse.content as string;
-                await this.storeConversation(input, response, context);
-                yield response;
+                if (locationInfo.requiresLocation) {
+                    yield `• Location required for: ${locationInfo.queryType}\n`;
+                    const userLocation = await this.getUserLocation();
+
+                    if (!userLocation) {
+                        yield `• **Location needed**: Please specify your location for accurate results\n`;
+                        // We could return early here and ask for location, or continue with generic search
+                    } else {
+                        yield `• Using location: ${userLocation}\n`;
+                        locationInfo.userLocation = userLocation;
+                    }
+                }
+                yield `\n`;
+
+                // Create thinking plan  
+                console.log('\n💭 [STREAMING] Creating execution plan...');
+                yield "**Planning approach...**\n";
+
+                const plan = await this.createThinkingPlan(cleanInput, forcedTools, context, locationInfo);
+
+                yield `**Intent:** ${plan.intent}\n`;
+                if (plan.steps.length > 0) {
+                    yield `**Tools planned:** ${plan.steps.map(s => `${s.tool}${s.forced ? ' (forced)' : ''}`).join(', ')}\n`;
+                }
+                yield `\n`;
+
+                // End thinking block before tool execution
+                const thinkingEndTime = Date.now();
+                yield `</think end="${thinkingEndTime}">`;
+
+                // Execute tools
+                if (plan.steps.length > 0) {
+                    console.log('\n⚙️ [STREAMING] Executing tools...');
+                    yield `**Executing tools...**\n`;
+
+                    const toolResults: Record<string, any> = {};
+
+                    for (let i = 0; i < plan.steps.length; i++) {
+                        const step = plan.steps[i];
+                        const stepNum = i + 1;
+                        const toolId = `tool-${context?.conversationId || 'default'}-${Date.now()}-${i}`;
+
+                        // Start tool execution block with structured information
+                        const toolCallInfo = {
+                            id: toolId,
+                            name: step.tool,
+                            parameters: step.parameters,
+                            status: 'executing',
+                            startTime: Date.now(),
+                            reasoning: step.reasoning,
+                            forced: step.forced,
+                            stepNumber: stepNum,
+                            totalSteps: plan.steps.length
+                        };
+
+                        // Emit structured tool execution start
+                        yield `<tool>${JSON.stringify(toolCallInfo)}</tool>\n`;
+
+                        const startTime = Date.now();
+                        try {
+                            // Handle special web search preference routing
+                            let actualTool = step.tool;
+                            if (step.tool === 'web_search_preferred') {
+                                // Route to user's preferred web search provider
+                                actualTool = 'web_search'; // This will be handled by LangChainToolExecutorService routing
+                                console.log(`   🔄 [STREAMING] Routing #web hashtag to preferred web search provider`);
+                            }
+
+                            const result = await this.toolExecutor.executeTool(actualTool, step.parameters);
+                            const duration = Date.now() - startTime;
+                            toolResults[step.tool] = result;
+
+                            // Update tool call with completion status
+                            const completedToolCall = {
+                                ...toolCallInfo,
+                                status: result.success ? 'completed' : 'failed',
+                                endTime: Date.now(),
+                                duration: `${(duration / 1000).toFixed(1)}s`,
+                                result: result.success ? result.result : undefined,
+                                error: result.success ? undefined : result.error
+                            };
+
+                            // Emit structured tool completion
+                            yield `<tool>${JSON.stringify(completedToolCall)}</tool>\n`;
+
+                        } catch (error) {
+                            console.error(`[ThinkingCindyAgent] Tool execution error for ${step.tool}:`, error);
+                            const duration = Date.now() - startTime;
+                            toolResults[step.tool] = { success: false, error: (error as Error).message };
+
+                            // Update tool call with error status
+                            const failedToolCall = {
+                                ...toolCallInfo,
+                                status: 'failed',
+                                endTime: Date.now(),
+                                duration: `${(duration / 1000).toFixed(1)}s`,
+                                error: (error as Error).message
+                            };
+
+                            // Emit structured tool error
+                            yield `<tool>${JSON.stringify(failedToolCall)}</tool>\n`;
+                        }
+                    }
+
+                    // Synthesize response with citations
+                    console.log('\n📝 [STREAMING] Synthesizing response...');
+                    yield "**Synthesizing response...**\n";
+
+                    const finalResponse = await this.synthesizeResponse(cleanInput, plan, toolResults, context);
+
+
+                    yield finalResponse;
+                    // Store conversation
+                    await this.storeConversation(input, finalResponse, context);
+                } else {
+                    // No tools needed, direct response
+                    console.log('\n💬 [STREAMING] Direct response (no tools needed)...');
+                    yield "**Responding directly...**\n\n";
+
+                    const directResponse = await this.llmProvider.invoke([
+                        { role: 'system' as const, content: this.getSystemPrompt() },
+                        { role: 'user' as const, content: cleanInput }
+                    ]);
+
+                    const response = directResponse.content as string;
+                    await this.storeConversation(input, response, context);
+                    yield response;
+                }
+
+                console.log('\n🎉 [STREAMING] Thinking process completed successfully');
+                console.log('═'.repeat(80));
             }
-
-            console.log('\n🎉 [STREAMING] Thinking process completed successfully');
-            console.log('═'.repeat(80));
-
         } catch (error) {
             console.log('\n❌ [STREAMING] Thinking process error');
             console.log('═'.repeat(80));
@@ -706,33 +789,6 @@ Provide a helpful, natural response that addresses the user's request using only
     }
 
 
-    // Helper methods
-    private isSimpleGreeting(input: string): boolean {
-        const cleanInput = input.toLowerCase().trim();
-        
-        // Simple greetings and basic interactions
-        const simpleGreetings = [
-            'hi', 'hello', 'hey', 'howdy', 'yo',
-            'good morning', 'good afternoon', 'good evening', 'good night',
-            'how are you', 'how are you doing', 'how\'s it going',
-            'what\'s up', 'whats up', 'sup',
-            'thanks', 'thank you', 'bye', 'goodbye', 'see you',
-            'yes', 'no', 'ok', 'okay', 'sure', 'alright'
-        ];
-
-        // Check exact matches
-        if (simpleGreetings.includes(cleanInput)) {
-            return true;
-        }
-
-        // Check if input is very short and likely conversational
-        if (cleanInput.length <= 10 && !cleanInput.includes('?') && !cleanInput.includes('search') && !cleanInput.includes('find')) {
-            return true;
-        }
-
-        return false;
-    }
-
     private addThinkingStep(step: ThinkingStep['step'], content: string): void {
         this.thinkingSteps.push({
             step,
@@ -740,19 +796,6 @@ Provide a helpful, natural response that addresses the user's request using only
             timestamp: new Date()
         });
 
-        // Enhanced console output with thinking process visibility
-        const stepEmojis = {
-            'analyze': '🔍',
-            'think': '💭',
-            'tool': '⚙️',
-            'synthesize': '📝'
-        };
-
-        const emoji = stepEmojis[step] || '🤖';
-        const stepName = step.toUpperCase().padEnd(10);
-
-        console.log(`\n${emoji} [${stepName}] ${content}`);
-        console.log('─'.repeat(80));
     }
 
     private suggestToolsFromContent(input: string, availableTools: string[]): string[] {
@@ -804,7 +847,7 @@ Provide a helpful, natural response that addresses the user's request using only
                 if (locationInfo?.requiresLocation && locationInfo.enhancedQuery && locationInfo.userLocation) {
                     searchQuery = locationInfo.enhancedQuery.replace('{LOCATION}', locationInfo.userLocation);
                 }
-                
+
                 // Ensure search query is meaningful (at least 3 characters)
                 if (searchQuery.length < 3) {
                     return { input: `information about ${searchQuery}` };

@@ -2,7 +2,7 @@ import { app, BrowserWindow, Menu, nativeImage, NativeImage, ipcMain, desktopCap
 import * as path from 'path';
 import * as os from 'os';
 import { CindyMenu } from './menu';
-import { SettingsService, Settings } from './services/SettingsService';
+import { DuckDBSettingsService, Settings } from './services/DuckDBSettingsService';
 import { TrayService } from './services/TrayService';
 import axios from 'axios';
 import { ChatStorageService } from './services/ChatStorageService';
@@ -1214,7 +1214,7 @@ if (process.platform === 'win32') {
 
 let mainWindow: BrowserWindow | null = null;
 let trayService: TrayService | null = null;
-let settingsService: SettingsService | null = null;
+let settingsService: DuckDBSettingsService | null = null;
 let chatStorageService: ChatStorageService | null = null;
 // let duckDBChatStorageService: DuckDBChatStorageService | null = null;
 let llmProvider: LLMProvider | null = null;
@@ -1441,7 +1441,7 @@ app.on('ready', async () => {
     if (!settingsService) {
         try {
             console.log('🔧 DEBUG: Initializing SettingsService...');
-            settingsService = new SettingsService();
+            settingsService = new DuckDBSettingsService();
             await settingsService.initialize();
             console.log('🔧 DEBUG: SettingsService initialized successfully');
         } catch (error) {
@@ -1992,7 +1992,8 @@ app.on('ready', async () => {
                 provider: settings.provider || 'ollama',
                 openai: settings.openai ? {
                     ...settings.openai,
-                    apiKey: apiKey
+                    apiKey: apiKey,
+                    maxTokens: settings.openai.maxTokens || 1500
                 } : undefined,
                 ollama: settings.ollama || {
                     model: 'llama3:8b',
@@ -2312,7 +2313,8 @@ app.on('ready', async () => {
                                     provider: currentProvider,
                                     openai: currentSettings.openai ? {
                                         ...currentSettings.openai,
-                                        apiKey: currentProvider === 'openai' ? apiKeyForProvider : ''
+                                        apiKey: currentProvider === 'openai' ? apiKeyForProvider : '',
+                                        maxTokens: currentSettings.openai.maxTokens || 1500
                                     } : undefined,
                                     ollama: currentSettings.ollama || {
                                         model: 'llama3:8b',
@@ -2423,7 +2425,8 @@ app.on('ready', async () => {
                                 provider: provider,
                                 openai: llmSettings?.openai ? {
                                     ...llmSettings.openai,
-                                    apiKey: provider === 'openai' ? apiKeyForProvider : ''
+                                    apiKey: provider === 'openai' ? apiKeyForProvider : '',
+                                    maxTokens: llmSettings.openai.maxTokens || 1500
                                 } : undefined,
                                 ollama: llmSettings?.ollama || {
                                     model: 'llama3:8b',
@@ -2911,7 +2914,8 @@ app.on('ready', async () => {
                             provider: settings.provider || 'ollama',
                             openai: settings.openai ? {
                                 ...settings.openai,
-                                apiKey: apiKey || ''
+                                apiKey: apiKey || '',
+                                maxTokens: settings.openai.maxTokens || 1500
                             } : undefined,
                             ollama: settings.ollama || {
                                 model: 'llama3:8b',

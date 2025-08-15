@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { SettingsService } from './SettingsService';
+import { DuckDBSettingsService } from './DuckDBSettingsService';
 import { LLMProvider } from './LLMProvider';
 import { LangChainToolExecutorService } from './LangChainToolExecutorService';
 
@@ -10,7 +10,7 @@ import { LangChainToolExecutorService } from './LangChainToolExecutorService';
  * dynamically, preventing heavy ML/AI libraries from loading at startup.
  */
 export class ServiceManager extends EventEmitter {
-    private settingsService: SettingsService | null;
+    private settingsService: DuckDBSettingsService | null;
     private llmProvider: LLMProvider | null;
 
     // Dynamic service references
@@ -23,7 +23,7 @@ export class ServiceManager extends EventEmitter {
     private isLoadingMemoryService = false;
     private isLoadingCindyAgent = false;
 
-    constructor(settingsService: SettingsService | null = null, llmProvider: LLMProvider | null = null) {
+    constructor(settingsService: DuckDBSettingsService | null = null, llmProvider: LLMProvider | null = null) {
         super();
         this.settingsService = settingsService;
         this.llmProvider = llmProvider;
@@ -32,7 +32,7 @@ export class ServiceManager extends EventEmitter {
     /**
      * Update references to core services
      */
-    updateCoreServices(settingsService: SettingsService | null, llmProvider: LLMProvider | null): void {
+    updateCoreServices(settingsService: DuckDBSettingsService | null, llmProvider: LLMProvider | null): void {
         this.settingsService = settingsService;
         this.llmProvider = llmProvider;
     }
