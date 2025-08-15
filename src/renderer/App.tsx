@@ -570,6 +570,7 @@ const App: React.FC = () => {
     // Listen for streaming events from main process
     useEffect(() => {
         const handleStreamChunk = (_: any, data: { chunk: string, conversationId: string }) => {
+            console.log('🔧 DEBUG: Frontend received stream-chunk event:', data,);
             if (data.conversationId === currentConversationIdRef.current) {
                 // Process the chunk for thinking tokens
                 const processedThinking = thinkingTokenHandler.processChunk(data.chunk, currentConversationIdRef.current);
@@ -650,6 +651,7 @@ const App: React.FC = () => {
 
             if (data.conversationId === currentConversationIdRef.current) {
                 // FINALIZE STREAMING MESSAGE: Set isStreaming to false for the last assistant message
+                console.log('Messages:', messages);
                 const streamingMessage = messages.find((msg: any) =>
                     msg.role === 'assistant' && msg.conversationId === currentConversationIdRef.current && msg.isStreaming
                 );
@@ -795,11 +797,6 @@ const App: React.FC = () => {
         // Test IPC channel registration
         console.log('🔧 DEBUG: IPC listeners registered, testing stream-complete channel...');
 
-        // Add a test listener to see if events are being received at all
-        const testStreamCompleteListener = (_: any, data: any) => {
-            console.log('🔧 DEBUG: TEST LISTENER received stream-complete event:', data);
-        };
-        ipcRenderer.on('stream-complete', testStreamCompleteListener);
         ipcRenderer.on('tool-execution-update', handleToolExecutionUpdate);
         ipcRenderer.on('user-message', handleUserMessage);
 
@@ -807,7 +804,6 @@ const App: React.FC = () => {
         return () => {
             ipcRenderer.off('stream-chunk', handleStreamChunk);
             ipcRenderer.off('stream-complete', handleStreamComplete);
-            ipcRenderer.off('stream-complete', testStreamCompleteListener);
             ipcRenderer.off('stream-error', handleStreamError);
             ipcRenderer.off('tool-execution-update', handleToolExecutionUpdate);
             ipcRenderer.off('user-message', handleUserMessage);

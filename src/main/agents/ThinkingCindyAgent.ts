@@ -314,77 +314,6 @@ Respond with your thinking process and a clear plan. Be concise but thorough.`;
     }
 
     /**
-     * Execute tools according to plan
-     */
-    private async executeTools(plan: ThinkingPlan, _context?: AgentContext): Promise<Record<string, any>> {
-        const toolResults: Record<string, any> = {};
-
-        if (plan.steps.length === 0) {
-            console.log('📭 No tools to execute - proceeding with direct response');
-            return toolResults;
-        }
-
-        console.log(`🔧 Executing ${plan.steps.length} tool(s):`);
-
-        for (let i = 0; i < plan.steps.length; i++) {
-            const step = plan.steps[i];
-            const stepNum = i + 1;
-
-            console.log(`\n🛠️  TOOL ${stepNum}/${plan.steps.length}: ${step.tool.toUpperCase()}`);
-            console.log(`   ${step.forced ? '🔒 FORCED by hashtag' : '💡 SUGGESTED by analysis'}`);
-            console.log(`   📋 Reason: ${step.reasoning}`);
-            console.log(`   ⚙️  Parameters: ${JSON.stringify(step.parameters, null, 2)}`);
-
-            this.addThinkingStep('tool',
-                `Tool ${stepNum}: ${step.tool}\n` +
-                `Type: ${step.forced ? 'FORCED' : 'SUGGESTED'}\n` +
-                `Reason: ${step.reasoning}\n` +
-                `Parameters: ${JSON.stringify(step.parameters, null, 2)}`
-            );
-
-            const startTime = Date.now();
-            try {
-                console.log(`   🚀 Executing...`);
-
-                // Handle special web search preference routing
-                let actualTool = step.tool;
-                if (step.tool === 'web_search_preferred') {
-                    // Route to user's preferred web search provider
-                    actualTool = 'web_search'; // This will be handled by LangChainToolExecutorService routing
-                    console.log(`   🔄 Routing #web hashtag to preferred web search provider`);
-                }
-
-                const result = await this.toolExecutor.executeTool(actualTool, step.parameters);
-                const duration = Date.now() - startTime;
-
-                toolResults[step.tool] = result;
-
-                if (result.success) {
-                    console.log(`   ✅ SUCCESS (${duration}ms)`);
-                    console.log(`   📄 Result: ${typeof result.result === 'string' ?
-                        result.result.substring(0, 150) + (result.result.length > 150 ? '...' : '') :
-                        JSON.stringify(result.result).substring(0, 150)}`);
-                } else {
-                    console.log(`   ❌ FAILED (${duration}ms)`);
-                    console.log(`   🚫 Error: ${result.error}`);
-                }
-
-            } catch (error) {
-                const duration = Date.now() - startTime;
-                console.log(`   💥 EXCEPTION (${duration}ms)`);
-                console.log(`   🚫 Error: ${(error as Error).message}`);
-
-                toolResults[step.tool] = {
-                    success: false,
-                    error: (error as Error).message
-                };
-            }
-        }
-
-        return toolResults;
-    }
-
-    /**
      * Synthesize final response with citations
      */
     private async synthesizeResponse(
@@ -520,95 +449,6 @@ Provide a helpful, natural response that addresses the user's request using only
         }
     }
 
-    /**
-     * Main processing method with thinking workflow
-     */
-    async process(input: string, context?: AgentContext): Promise<string> {
-        try {
-            console.log('\n🧠 THINKING AGENT PROCESSING INPUT');
-            console.log('═'.repeat(80));
-            console.log(`📥 USER INPUT: "${input}"`);
-            console.log(`🕒 TIMESTAMP: ${new Date().toISOString()}`);
-            console.log(`👤 CONTEXT: ${context?.conversationId || 'default'}`);
-            console.log('═'.repeat(80));
-
-            this.thinkingSteps = []; // Reset thinking steps
-
-            // Analyze input
-            console.log('\n🔍 ANALYZING INPUT');
-            console.log('─'.repeat(40));
-            const { cleanInput, forcedTools, hashtags, directResponse } = await this.analyzeInput(input);
-            let finalResponse: string;
-            if (directResponse) {
-                console.log('💬 Direct response detected - no tools needed')
-                return await this.llmProvider.invoke([
-                    { role: 'system' as const, content: AgentPrompts.getSystemPrompt('direct_response') },
-                    { role: 'user' as const, content: cleanInput }
-                ]).then(response => response.content as string);
-            } else {
-
-                console.log(`📝 Clean input: "${cleanInput}"`);
-                console.log(`🏷️  Hashtags found: [${hashtags.join(', ') || 'none'}]`);
-                console.log(`🔧 Forced tools: [${forcedTools.join(', ') || 'none'}]`);
-
-                // Check for location requirements
-                console.log('\n📍 CHECKING LOCATION REQUIREMENTS');
-                console.log('─'.repeat(40));
-                const locationInfo = await this.detectLocationRequirement(cleanInput);
-
-                if (locationInfo.requiresLocation) {
-                    console.log(`📍 Location required for: ${locationInfo.queryType}`);
-                    const userLocation = await this.getUserLocation();
-
-                    if (!userLocation) {
-                        console.log('📍 No location available - will request from user');
-                    } else {
-                        console.log(`📍 Using location: ${userLocation}`);
-                        locationInfo.userLocation = userLocation;
-                    }
-                }
-
-                // Create thinking plan
-                console.log('\n💭 CREATING EXECUTION PLAN');
-                console.log('─'.repeat(40));
-                const plan = await this.createThinkingPlan(cleanInput, forcedTools, context, locationInfo);
-
-                console.log(`🎯 Intent: ${plan.intent}`);
-                console.log(`🛠️  Tools to execute: [${plan.steps.map(s => s.tool).join(', ') || 'none'}]`);
-                console.log(`📋 Execution steps: ${plan.steps.length}`);
-
-                // Execute tools
-                console.log('\n⚙️ EXECUTING TOOLS');
-                console.log('─'.repeat(40));
-                const toolResults = await this.executeTools(plan, context);
-
-                const successCount = Object.values(toolResults).filter(r => r.success).length;
-                const totalTools = Object.keys(toolResults).length;
-                console.log(`✅ Tool execution complete: ${successCount}/${totalTools} successful`);
-
-                // Generate response
-                console.log('\n📝 SYNTHESIZING RESPONSE');
-                console.log('─'.repeat(40));
-                finalResponse = await this.synthesizeResponse(cleanInput, plan, toolResults, context);
-            }
-
-            console.log(`📄 Response length: ${finalResponse.length} characters`);
-            console.log(`🎯 Response preview: "${finalResponse.substring(0, 100)}${finalResponse.length > 100 ? '...' : ''}"`);
-
-            // Store conversation in memory
-            await this.storeConversation(input, finalResponse, context);
-
-            console.log('\n🎉 THINKING PROCESS COMPLETED SUCCESSFULLY');
-            console.log('═'.repeat(80));
-            return finalResponse;
-
-        } catch (error) {
-            console.log('\n❌ THINKING PROCESS ERROR');
-            console.log('═'.repeat(80));
-            console.error('[ThinkingCindyAgent] Error details:', error);
-            return this.handleError(input, error as Error, context);
-        }
-    }
 
     /**
      * Streaming version with thinking steps shown
@@ -630,11 +470,14 @@ Provide a helpful, natural response that addresses the user's request using only
             const { cleanInput, forcedTools, hashtags, directResponse } = await this.analyzeInput(input);
             if (directResponse) {
                 console.log('💬 Direct response detected - no tools needed')
-                const finalResponse = await this.llmProvider.invoke([
+                let finalResponse: string;
+                for await (const chunk of this.llmProvider.stream([
                     { role: 'system' as const, content: AgentPrompts.getSystemPrompt('synthesis') },
                     { role: 'user' as const, content: cleanInput }
-                ]).then(response => response.content as string);
-                yield finalResponse;
+                ])) {
+                    finalResponse += chunk;
+                    yield chunk; // Stream response as it comes in
+                }
                 // Store conversation
                 await this.storeConversation(input, finalResponse, context);
             } else {
@@ -678,104 +521,89 @@ Provide a helpful, natural response that addresses the user's request using only
                 const thinkingEndTime = Date.now();
                 yield `</think end="${thinkingEndTime}">`;
 
-                // Execute tools
-                if (plan.steps.length > 0) {
-                    console.log('\n⚙️ [STREAMING] Executing tools...');
-                    yield `**Executing tools...**\n`;
+                console.log('\n⚙️ [STREAMING] Executing tools...');
+                yield `**Executing tools...**\n`;
 
-                    const toolResults: Record<string, any> = {};
+                const toolResults: Record<string, any> = {};
 
-                    for (let i = 0; i < plan.steps.length; i++) {
-                        const step = plan.steps[i];
-                        const stepNum = i + 1;
-                        const toolId = `tool-${context?.conversationId || 'default'}-${Date.now()}-${i}`;
+                for (let i = 0; i < plan.steps.length; i++) {
+                    const step = plan.steps[i];
+                    const stepNum = i + 1;
+                    const toolId = `tool-${context?.conversationId || 'default'}-${Date.now()}-${i}`;
 
-                        // Start tool execution block with structured information
-                        const toolCallInfo = {
-                            id: toolId,
-                            name: step.tool,
-                            parameters: step.parameters,
-                            status: 'executing',
-                            startTime: Date.now(),
-                            reasoning: step.reasoning,
-                            forced: step.forced,
-                            stepNumber: stepNum,
-                            totalSteps: plan.steps.length
+                    // Start tool execution block with structured information
+                    const toolCallInfo = {
+                        id: toolId,
+                        name: step.tool,
+                        parameters: step.parameters,
+                        status: 'executing',
+                        startTime: Date.now(),
+                        reasoning: step.reasoning,
+                        forced: step.forced,
+                        stepNumber: stepNum,
+                        totalSteps: plan.steps.length
+                    };
+
+                    // Emit structured tool execution start
+                    yield `<tool>${JSON.stringify(toolCallInfo)}</tool>\n`;
+
+                    const startTime = Date.now();
+                    try {
+                        // Handle special web search preference routing
+                        let actualTool = step.tool;
+                        if (step.tool === 'web_search_preferred') {
+                            // Route to user's preferred web search provider
+                            actualTool = 'web_search'; // This will be handled by LangChainToolExecutorService routing
+                            console.log(`   🔄 [STREAMING] Routing #web hashtag to preferred web search provider`);
+                        }
+
+                        const result = await this.toolExecutor.executeTool(actualTool, step.parameters);
+                        const duration = Date.now() - startTime;
+                        toolResults[step.tool] = result;
+
+                        // Update tool call with completion status
+                        const completedToolCall = {
+                            ...toolCallInfo,
+                            status: result.success ? 'completed' : 'failed',
+                            endTime: Date.now(),
+                            duration: `${(duration / 1000).toFixed(1)}s`,
+                            result: result.success ? result.result : undefined,
+                            error: result.success ? undefined : result.error
                         };
 
-                        // Emit structured tool execution start
-                        yield `<tool>${JSON.stringify(toolCallInfo)}</tool>\n`;
+                        // Emit structured tool completion
+                        yield `<tool>${JSON.stringify(completedToolCall)}</tool>\n`;
 
-                        const startTime = Date.now();
-                        try {
-                            // Handle special web search preference routing
-                            let actualTool = step.tool;
-                            if (step.tool === 'web_search_preferred') {
-                                // Route to user's preferred web search provider
-                                actualTool = 'web_search'; // This will be handled by LangChainToolExecutorService routing
-                                console.log(`   🔄 [STREAMING] Routing #web hashtag to preferred web search provider`);
-                            }
+                    } catch (error) {
+                        console.error(`[ThinkingCindyAgent] Tool execution error for ${step.tool}:`, error);
+                        const duration = Date.now() - startTime;
+                        toolResults[step.tool] = { success: false, error: (error as Error).message };
 
-                            const result = await this.toolExecutor.executeTool(actualTool, step.parameters);
-                            const duration = Date.now() - startTime;
-                            toolResults[step.tool] = result;
+                        // Update tool call with error status
+                        const failedToolCall = {
+                            ...toolCallInfo,
+                            status: 'failed',
+                            endTime: Date.now(),
+                            duration: `${(duration / 1000).toFixed(1)}s`,
+                            error: (error as Error).message
+                        };
 
-                            // Update tool call with completion status
-                            const completedToolCall = {
-                                ...toolCallInfo,
-                                status: result.success ? 'completed' : 'failed',
-                                endTime: Date.now(),
-                                duration: `${(duration / 1000).toFixed(1)}s`,
-                                result: result.success ? result.result : undefined,
-                                error: result.success ? undefined : result.error
-                            };
-
-                            // Emit structured tool completion
-                            yield `<tool>${JSON.stringify(completedToolCall)}</tool>\n`;
-
-                        } catch (error) {
-                            console.error(`[ThinkingCindyAgent] Tool execution error for ${step.tool}:`, error);
-                            const duration = Date.now() - startTime;
-                            toolResults[step.tool] = { success: false, error: (error as Error).message };
-
-                            // Update tool call with error status
-                            const failedToolCall = {
-                                ...toolCallInfo,
-                                status: 'failed',
-                                endTime: Date.now(),
-                                duration: `${(duration / 1000).toFixed(1)}s`,
-                                error: (error as Error).message
-                            };
-
-                            // Emit structured tool error
-                            yield `<tool>${JSON.stringify(failedToolCall)}</tool>\n`;
-                        }
+                        // Emit structured tool error
+                        yield `<tool>${JSON.stringify(failedToolCall)}</tool>\n`;
                     }
-
-                    // Synthesize response with citations
-                    console.log('\n📝 [STREAMING] Synthesizing response...');
-                    yield "**Synthesizing response...**\n";
-
-                    const finalResponse = await this.synthesizeResponse(cleanInput, plan, toolResults, context);
-
-
-                    yield finalResponse;
-                    // Store conversation
-                    await this.storeConversation(input, finalResponse, context);
-                } else {
-                    // No tools needed, direct response
-                    console.log('\n💬 [STREAMING] Direct response (no tools needed)...');
-                    yield "**Responding directly...**\n\n";
-
-                    const directResponse = await this.llmProvider.invoke([
-                        { role: 'system' as const, content: this.getSystemPrompt() },
-                        { role: 'user' as const, content: cleanInput }
-                    ]);
-
-                    const response = directResponse.content as string;
-                    await this.storeConversation(input, response, context);
-                    yield response;
                 }
+
+                // Synthesize response with citations
+                console.log('\n📝 [STREAMING] Synthesizing response...');
+                yield "**Synthesizing response...**\n";
+
+                const finalResponse = await this.synthesizeResponse(cleanInput, plan, toolResults, context);
+
+
+                yield finalResponse;
+                // Store conversation
+                await this.storeConversation(input, finalResponse, context);
+
 
                 console.log('\n🎉 [STREAMING] Thinking process completed successfully');
                 console.log('═'.repeat(80));
@@ -919,26 +747,6 @@ Provide a helpful, natural response that addresses the user's request using only
         }
     }
 
-    private async handleError(input: string, error: Error, context?: AgentContext): Promise<string> {
-        console.error('[ThinkingCindyAgent] Processing error:', error);
-
-        // Try fallback direct response
-        try {
-            const contextInfo = context?.conversationId ? ` (Conversation: ${context.conversationId})` : '';
-            const fallbackResponse = await this.llmProvider.invoke([
-                { role: 'system' as const, content: AgentPrompts.getSystemPrompt('error') },
-                { role: 'user' as const, content: `I asked: "${input}" but there was an error${contextInfo}. Can you help me anyway?` }
-            ]);
-
-            return `I encountered a technical issue, but let me try to help: ${fallbackResponse.content}`;
-        } catch (fallbackError) {
-            return "I'm sorry, I'm experiencing technical difficulties right now. Please try again in a moment.";
-        }
-    }
-
-    private getSystemPrompt(): string {
-        return AgentPrompts.getSystemPrompt('main');
-    }
 
     // Expose thinking steps for debugging/transparency
     getThinkingSteps(): ThinkingStep[] {
