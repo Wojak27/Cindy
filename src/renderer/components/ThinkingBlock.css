@@ -259,6 +259,38 @@
     color: #2563eb;
 }
 
+/* Dark mode thinking block text overrides */
+[data-theme="dark"] .thinking-toggle {
+    color: #ffffff !important;
+}
+
+[data-theme="dark"] .thinking-toggle .thinking-label {
+    color: #60a5fa !important;
+}
+
+[data-theme="dark"] .thinking-toggle .thinking-duration {
+    color: #aaaaaa !important;
+}
+
+[data-theme="dark"] .thinking-toggle .thinking-arrow {
+    color: #aaaaaa !important;
+}
+
+[data-theme="dark"] .thinking-content-inner,
+[data-theme="dark"] .thinking-paragraph,
+[data-theme="dark"] .thinking-content *,
+[data-theme="dark"] .thinking-block * {
+    color: #ffffff !important;
+}
+
+[data-theme="dark"] .thinking-cursor {
+    color: #60a5fa !important;
+}
+
+[data-theme="dark"] .thinking-loading {
+    color: #aaaaaa !important;
+}
+
 @keyframes dots {
 
     0%,

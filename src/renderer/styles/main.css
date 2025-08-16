@@ -57,7 +57,7 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     margin: 0;
     padding: 0;
-    background: #ffffff !important;
+    background: #000000 !important;
     color: var(--text-primary);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
@@ -442,8 +442,30 @@ body:not([data-theme="dark"]) .message * {
     --message-text-color: #ffffff;
 }
 
-[data-theme="dark"] .message-text {
-    color: var(--message-text-color) !important;
+[data-theme="dark"] .message-text,
+[data-theme="dark"] .message-text *,
+[data-theme="dark"] .message *,
+[data-theme="dark"] .message {
+    color: #ffffff !important;
+}
+
+/* Ensure thinking blocks and all content is white in dark mode */
+[data-theme="dark"] .thinking-content-inner,
+[data-theme="dark"] .thinking-paragraph,
+[data-theme="dark"] .thinking-content,
+[data-theme="dark"] .thinking-block *,
+[data-theme="dark"] .tool-content *,
+[data-theme="dark"] .tool-block *,
+[data-theme="dark"] .code-block,
+[data-theme="dark"] .code-block * {
+    color: #ffffff !important;
+}
+
+/* Welcome message dark mode fix */
+[data-theme="dark"] .welcome-message,
+[data-theme="dark"] .welcome-message *,
+[data-theme="dark"] .welcome-message h2 {
+    color: #ffffff !important;
 }
 
 /* Force light mode text to be black */
@@ -708,6 +730,19 @@ html:not([data-theme="dark"]) .message-text {
     font-size: 24px;
     font-weight: 600;
     color: var(--text-primary);
+}
+
+/* Dark mode welcome message fixes */
+[data-theme="dark"] .welcome-message {
+    color: #ffffff !important;
+}
+
+[data-theme="dark"] .welcome-message h2 {
+    color: #ffffff !important;
+}
+
+[data-theme="dark"] .welcome-message p {
+    color: #aaaaaa !important;
 }
 
 /* Settings sidebars */
@@ -1257,7 +1292,6 @@ html:not([data-theme="dark"]) .message-text {
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     font-family: inherit;
     resize: none;
-    min-height: 48px;
     max-height: 200px;
     text-align: center;
     color: var(--text-primary);

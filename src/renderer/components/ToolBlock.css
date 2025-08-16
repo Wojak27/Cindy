@@ -250,3 +250,48 @@
 .tool-toggle .tool-status[style*="var(--error)"] {
     background: rgba(239, 68, 68, 0.2);
 }
+
+/* Dark mode tool block text overrides */
+[data-theme="dark"] .tool-toggle {
+    color: #ffffff !important;
+}
+
+[data-theme="dark"] .tool-toggle .tool-name {
+    color: #10b981 !important;
+}
+
+[data-theme="dark"] .tool-toggle .tool-duration {
+    color: #aaaaaa !important;
+}
+
+[data-theme="dark"] .tool-toggle .tool-arrow {
+    color: #aaaaaa !important;
+}
+
+[data-theme="dark"] .tool-content-inner,
+[data-theme="dark"] .tool-section,
+[data-theme="dark"] .tool-content *,
+[data-theme="dark"] .tool-block * {
+    color: #ffffff !important;
+}
+
+[data-theme="dark"] .tool-section-header {
+    color: #ffffff !important;
+}
+
+[data-theme="dark"] .tool-code-block {
+    color: #ffffff !important;
+    background: #2d2d2d !important;
+}
+
+[data-theme="dark"] .tool-metadata-label {
+    color: #aaaaaa !important;
+}
+
+[data-theme="dark"] .tool-metadata-value {
+    color: #ffffff !important;
+}
+
+[data-theme="dark"] .tool-error {
+    color: #fca5a5 !important;
+}

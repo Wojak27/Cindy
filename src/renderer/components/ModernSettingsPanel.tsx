@@ -68,16 +68,64 @@ const ModernSettingsPanel: React.FC = () => {
 
     // LLM Settings State
     const [selectedProvider, setSelectedProvider] = useState(settings?.llm?.provider || 'ollama');
+    // Initialize provider configs with preserved API keys from settings
     const [providerConfigs, setProviderConfigs] = useState({
-        openai: settings?.llm?.openai || { model: 'gpt-4o-mini', apiKey: '', temperature: 0.7, maxTokens: 4096 },
-        anthropic: settings?.llm?.anthropic || { model: 'claude-3-haiku-20240307', apiKey: '', temperature: 0.7, maxTokens: 4000 },
-        openrouter: settings?.llm?.openrouter || { model: 'openai/gpt-4-turbo', apiKey: '', temperature: 0.7, maxTokens: 4096, siteUrl: 'https://localhost:3000', appName: 'Cindy Voice Assistant' },
-        groq: settings?.llm?.groq || { model: 'llama3-8b-8192', apiKey: '', temperature: 0.7, maxTokens: 4096 },
-        google: settings?.llm?.google || { model: 'gemini-pro', apiKey: '', temperature: 0.7, maxOutputTokens: 2048 },
-        cohere: settings?.llm?.cohere || { model: 'command', apiKey: '', temperature: 0.7 },
-        azure: settings?.llm?.azure || { deploymentName: '', apiKey: '', apiVersion: '2024-02-01', instanceName: '', temperature: 0.7, maxTokens: 4096 },
-        huggingface: settings?.llm?.huggingface || { model: 'meta-llama/Llama-2-70b-chat-hf', apiKey: '', temperature: 0.7, maxTokens: 2048 },
-        ollama: settings?.llm?.ollama || { model: 'llama3:8b', baseUrl: 'http://127.0.0.1:11434', temperature: 0.7 },
+        openai: { 
+            model: settings?.llm?.openai?.model || 'gpt-4o-mini', 
+            apiKey: settings?.llm?.openai?.apiKey || '', 
+            temperature: settings?.llm?.openai?.temperature || 0.7, 
+            maxTokens: settings?.llm?.openai?.maxTokens || 4096 
+        },
+        anthropic: { 
+            model: settings?.llm?.anthropic?.model || 'claude-3-haiku-20240307', 
+            apiKey: settings?.llm?.anthropic?.apiKey || '', 
+            temperature: settings?.llm?.anthropic?.temperature || 0.7, 
+            maxTokens: settings?.llm?.anthropic?.maxTokens || 4000 
+        },
+        openrouter: { 
+            model: settings?.llm?.openrouter?.model || 'openai/gpt-4-turbo', 
+            apiKey: settings?.llm?.openrouter?.apiKey || '', 
+            temperature: settings?.llm?.openrouter?.temperature || 0.7, 
+            maxTokens: settings?.llm?.openrouter?.maxTokens || 4096, 
+            siteUrl: settings?.llm?.openrouter?.siteUrl || 'https://localhost:3000', 
+            appName: settings?.llm?.openrouter?.appName || 'Cindy Voice Assistant' 
+        },
+        groq: { 
+            model: settings?.llm?.groq?.model || 'llama3-8b-8192', 
+            apiKey: settings?.llm?.groq?.apiKey || '', 
+            temperature: settings?.llm?.groq?.temperature || 0.7, 
+            maxTokens: settings?.llm?.groq?.maxTokens || 4096 
+        },
+        google: { 
+            model: settings?.llm?.google?.model || 'gemini-pro', 
+            apiKey: settings?.llm?.google?.apiKey || '', 
+            temperature: settings?.llm?.google?.temperature || 0.7, 
+            maxOutputTokens: settings?.llm?.google?.maxOutputTokens || 2048 
+        },
+        cohere: { 
+            model: settings?.llm?.cohere?.model || 'command', 
+            apiKey: settings?.llm?.cohere?.apiKey || '', 
+            temperature: settings?.llm?.cohere?.temperature || 0.7 
+        },
+        azure: { 
+            deploymentName: settings?.llm?.azure?.deploymentName || '', 
+            apiKey: settings?.llm?.azure?.apiKey || '', 
+            apiVersion: settings?.llm?.azure?.apiVersion || '2024-02-01', 
+            instanceName: settings?.llm?.azure?.instanceName || '', 
+            temperature: settings?.llm?.azure?.temperature || 0.7, 
+            maxTokens: settings?.llm?.azure?.maxTokens || 4096 
+        },
+        huggingface: { 
+            model: settings?.llm?.huggingface?.model || 'meta-llama/Llama-2-70b-chat-hf', 
+            apiKey: settings?.llm?.huggingface?.apiKey || '', 
+            temperature: settings?.llm?.huggingface?.temperature || 0.7, 
+            maxTokens: settings?.llm?.huggingface?.maxTokens || 2048 
+        },
+        ollama: { 
+            model: settings?.llm?.ollama?.model || 'llama3:8b', 
+            baseUrl: settings?.llm?.ollama?.baseUrl || 'http://127.0.0.1:11434', 
+            temperature: settings?.llm?.ollama?.temperature || 0.7 
+        },
     });
 
     const [connectionStatus, setConnectionStatus] = useState<Record<string, boolean>>({});
@@ -518,21 +566,69 @@ const ModernSettingsPanel: React.FC = () => {
         return undefined;
     }, [showSettings, handleOutsideClick, handleKeyDown]);
 
-    // Update state when settings change
+    // Update state when settings change - PRESERVE API KEYS
     useEffect(() => {
         if (settings) {
             setSelectedProvider(settings?.llm?.provider || 'ollama');
-            setProviderConfigs({
-                openai: settings?.llm?.openai || { model: 'gpt-4o-mini', apiKey: '', temperature: 0.7, maxTokens: 4096 },
-                anthropic: settings?.llm?.anthropic || { model: 'claude-3-haiku-20240307', apiKey: '', temperature: 0.7, maxTokens: 4000 },
-                openrouter: settings?.llm?.openrouter || { model: 'openai/gpt-4-turbo', apiKey: '', temperature: 0.7, maxTokens: 4096, siteUrl: 'https://localhost:3000', appName: 'Cindy Voice Assistant' },
-                groq: settings?.llm?.groq || { model: 'llama3-8b-8192', apiKey: '', temperature: 0.7, maxTokens: 4096 },
-                google: settings?.llm?.google || { model: 'gemini-pro', apiKey: '', temperature: 0.7, maxOutputTokens: 2048 },
-                cohere: settings?.llm?.cohere || { model: 'command', apiKey: '', temperature: 0.7 },
-                azure: settings?.llm?.azure || { deploymentName: '', apiKey: '', apiVersion: '2024-02-01', instanceName: '', temperature: 0.7, maxTokens: 4096 },
-                huggingface: settings?.llm?.huggingface || { model: 'meta-llama/Llama-2-70b-chat-hf', apiKey: '', temperature: 0.7, maxTokens: 2048 },
-                ollama: settings?.llm?.ollama || { model: 'llama3:8b', baseUrl: 'http://127.0.0.1:11434', temperature: 0.7 },
-            });
+            // Only update provider configs if they're actually different to preserve API keys
+            setProviderConfigs(prevConfigs => ({
+                openai: {
+                    model: settings?.llm?.openai?.model || prevConfigs.openai?.model || 'gpt-4o-mini',
+                    apiKey: settings?.llm?.openai?.apiKey || prevConfigs.openai?.apiKey || '',
+                    temperature: settings?.llm?.openai?.temperature ?? prevConfigs.openai?.temperature ?? 0.7,
+                    maxTokens: settings?.llm?.openai?.maxTokens || prevConfigs.openai?.maxTokens || 4096
+                },
+                anthropic: {
+                    model: settings?.llm?.anthropic?.model || prevConfigs.anthropic?.model || 'claude-3-haiku-20240307',
+                    apiKey: settings?.llm?.anthropic?.apiKey || prevConfigs.anthropic?.apiKey || '',
+                    temperature: settings?.llm?.anthropic?.temperature ?? prevConfigs.anthropic?.temperature ?? 0.7,
+                    maxTokens: settings?.llm?.anthropic?.maxTokens || prevConfigs.anthropic?.maxTokens || 4000
+                },
+                openrouter: {
+                    model: settings?.llm?.openrouter?.model || prevConfigs.openrouter?.model || 'openai/gpt-4-turbo',
+                    apiKey: settings?.llm?.openrouter?.apiKey || prevConfigs.openrouter?.apiKey || '',
+                    temperature: settings?.llm?.openrouter?.temperature ?? prevConfigs.openrouter?.temperature ?? 0.7,
+                    maxTokens: settings?.llm?.openrouter?.maxTokens || prevConfigs.openrouter?.maxTokens || 4096,
+                    siteUrl: settings?.llm?.openrouter?.siteUrl || prevConfigs.openrouter?.siteUrl || 'https://localhost:3000',
+                    appName: settings?.llm?.openrouter?.appName || prevConfigs.openrouter?.appName || 'Cindy Voice Assistant'
+                },
+                groq: {
+                    model: settings?.llm?.groq?.model || prevConfigs.groq?.model || 'llama3-8b-8192',
+                    apiKey: settings?.llm?.groq?.apiKey || prevConfigs.groq?.apiKey || '',
+                    temperature: settings?.llm?.groq?.temperature ?? prevConfigs.groq?.temperature ?? 0.7,
+                    maxTokens: settings?.llm?.groq?.maxTokens || prevConfigs.groq?.maxTokens || 4096
+                },
+                google: {
+                    model: settings?.llm?.google?.model || prevConfigs.google?.model || 'gemini-pro',
+                    apiKey: settings?.llm?.google?.apiKey || prevConfigs.google?.apiKey || '',
+                    temperature: settings?.llm?.google?.temperature ?? prevConfigs.google?.temperature ?? 0.7,
+                    maxOutputTokens: settings?.llm?.google?.maxOutputTokens || prevConfigs.google?.maxOutputTokens || 2048
+                },
+                cohere: {
+                    model: settings?.llm?.cohere?.model || prevConfigs.cohere?.model || 'command',
+                    apiKey: settings?.llm?.cohere?.apiKey || prevConfigs.cohere?.apiKey || '',
+                    temperature: settings?.llm?.cohere?.temperature ?? prevConfigs.cohere?.temperature ?? 0.7
+                },
+                azure: {
+                    deploymentName: settings?.llm?.azure?.deploymentName || prevConfigs.azure?.deploymentName || '',
+                    apiKey: settings?.llm?.azure?.apiKey || prevConfigs.azure?.apiKey || '',
+                    apiVersion: settings?.llm?.azure?.apiVersion || prevConfigs.azure?.apiVersion || '2024-02-01',
+                    instanceName: settings?.llm?.azure?.instanceName || prevConfigs.azure?.instanceName || '',
+                    temperature: settings?.llm?.azure?.temperature ?? prevConfigs.azure?.temperature ?? 0.7,
+                    maxTokens: settings?.llm?.azure?.maxTokens || prevConfigs.azure?.maxTokens || 4096
+                },
+                huggingface: {
+                    model: settings?.llm?.huggingface?.model || prevConfigs.huggingface?.model || 'meta-llama/Llama-2-70b-chat-hf',
+                    apiKey: settings?.llm?.huggingface?.apiKey || prevConfigs.huggingface?.apiKey || '',
+                    temperature: settings?.llm?.huggingface?.temperature ?? prevConfigs.huggingface?.temperature ?? 0.7,
+                    maxTokens: settings?.llm?.huggingface?.maxTokens || prevConfigs.huggingface?.maxTokens || 2048
+                },
+                ollama: {
+                    model: settings?.llm?.ollama?.model || prevConfigs.ollama?.model || 'llama3:8b',
+                    baseUrl: settings?.llm?.ollama?.baseUrl || prevConfigs.ollama?.baseUrl || 'http://127.0.0.1:11434',
+                    temperature: settings?.llm?.ollama?.temperature ?? prevConfigs.ollama?.temperature ?? 0.7
+                }
+            }));
             setVoiceSettings({
                 activationPhrase: settings?.voice?.activationPhrase || 'Hi Cindy!',
                 sttProvider: settings?.voice?.sttProvider || 'auto',
