@@ -57,7 +57,7 @@ export class ServiceManager extends EventEmitter {
         try {
             console.log('[ServiceManager] Dynamically loading LangChainToolExecutorService...');
             console.log('[ServiceManager] DuckDB vector store provided:', !!duckdbVectorStore);
-            
+
             // If no vector store provided, try to create one
             if (!duckdbVectorStore) {
                 console.log('[ServiceManager] No vector store provided, attempting to create one...');
@@ -65,22 +65,22 @@ export class ServiceManager extends EventEmitter {
                     const { DuckDBVectorStore } = require('./DuckDBVectorStore');
                     const path = require('path');
                     const { app } = require('electron');
-                    
+
                     // Get settings for configuration
                     const settingsData = await this.settingsService?.getAll();
                     let databasePath = settingsData?.database?.path;
-                    
+
                     // If no database path in settings, try to find an existing vector database
                     if (!databasePath) {
                         console.log('[ServiceManager] No database path in settings, checking for existing vector databases...');
-                        
+
                         // Check common locations for existing vector databases
                         const possiblePaths = [
                             '/Users/karwo09/Documents/DeepResearchDocs',  // Your current path
                             path.join(app.getPath('userData'), 'default-database'),
                             path.join(app.getPath('documents'), 'DeepResearchDocs')
                         ];
-                        
+
                         for (const testPath of possiblePaths) {
                             const testDbPath = path.join(testPath, '.vector_store', 'duckdb_vectors.db');
                             if (require('fs').existsSync(testDbPath)) {
@@ -89,14 +89,14 @@ export class ServiceManager extends EventEmitter {
                                 break;
                             }
                         }
-                        
+
                         // Final fallback
                         if (!databasePath) {
                             databasePath = path.join(app.getPath('userData'), 'default-database');
                             console.log('[ServiceManager] Using fallback database path:', databasePath);
                         }
                     }
-                    
+
                     const llmSettings = settingsData?.llm || { provider: 'ollama' };
                     const provider = llmSettings.provider || 'ollama';
 
@@ -122,7 +122,7 @@ export class ServiceManager extends EventEmitter {
                         fullDatabasePath: vectorStoreConfig.databasePath,
                         embeddingProvider: vectorStoreConfig.embeddingProvider
                     });
-                    
+
                     // Verify the database file exists
                     if (require('fs').existsSync(vectorStoreConfig.databasePath)) {
                         console.log('[ServiceManager] ✅ Vector database file exists at:', vectorStoreConfig.databasePath);
@@ -227,7 +227,7 @@ export class ServiceManager extends EventEmitter {
         this.isLoadingCindyAgent = true;
 
         try {
-            console.log('[ServiceManager] Dynamically loading ThinkingCindyAgent...');
+            console.log('[ServiceManager] Dynamically loading LangGraphAgent...');
 
             if (!this.llmProvider) {
                 throw new Error('LLM provider required for Cindy agent initialization');
@@ -241,25 +241,24 @@ export class ServiceManager extends EventEmitter {
             const memoryService = await this.getMemoryService();
             const toolExecutorService = await this.getToolExecutorService(duckdbVectorStore);
 
-            // Dynamic import to avoid loading at startup - using new ThinkingCindyAgent
-            const { ThinkingCindyAgent } = await import('../agents/ThinkingCindyAgent');
+            // Dynamic import to avoid loading at startup - using new LangGraphAgent
+            const { LangGraphAgent } = await import('../agents/LangGraphAgent');
 
             // Get agent config from settings
             const agentConfig = await this.settingsService.get('general') || {};
 
             // Initialize thinking agent with enhanced capabilities
-            this.langChainCindyAgent = new ThinkingCindyAgent({
-                store: {},
+            this.langChainCindyAgent = new LangGraphAgent({
                 memoryService: memoryService,
                 toolExecutor: toolExecutorService,
                 config: {
                     enableStreaming: true,
                     ...agentConfig
                 },
-                llmRouter: this.llmProvider
+                llmProvider: this.llmProvider
             });
 
-            console.log('[ServiceManager] ThinkingCindyAgent loaded successfully');
+            console.log('[ServiceManager] LangGraphAgent loaded successfully');
             this.emit('cindyAgentLoaded', this.langChainCindyAgent);
 
             return this.langChainCindyAgent;

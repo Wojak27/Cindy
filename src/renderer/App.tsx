@@ -1135,7 +1135,7 @@ const App: React.FC = () => {
                                                         onChange={handleInputChange}
                                                         onKeyDown={handleKeyPress}
                                                         onBlur={handleInputBlur}
-                                                        placeholder="Type your message (try #search, #read, #write)... Press Shift+Enter for new line"
+                                                        placeholder="Type your message "
                                                         disabled={isRecording}
                                                         className={`message-input ${inputValue.length > 0 ? 'has-content' : ''}`}
                                                         style={{

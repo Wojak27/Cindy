@@ -718,8 +718,8 @@ html:not([data-theme="dark"]) .message-text {
     right: -400px;
     width: 400px;
     height: 100vh;
-    background: #ffffff !important;
-    color: #000000 !important;
+    background: var(--surface) !important;
+    color: var(--text-primary) !important;
     border-left: 1px solid var(--border);
     transition: var(--transition);
     z-index: 1000;
@@ -740,6 +740,67 @@ html:not([data-theme="dark"]) .message-text {
 [data-theme="light"] .settings-sidebar-container .MuiTypography-root,
 [data-theme="light"] .database-sidebar-container .MuiTypography-root {
     color: #000000 !important;
+}
+
+[data-theme="dark"] .settings-sidebar-container,
+[data-theme="dark"] .database-sidebar-container {
+    background: #1e1e1e !important;
+    color: #ffffff !important;
+}
+
+[data-theme="dark"] .settings-sidebar-container *,
+[data-theme="dark"] .database-sidebar-container * {
+    color: #ffffff !important;
+}
+
+[data-theme="dark"] .settings-sidebar-container .MuiTypography-root,
+[data-theme="dark"] .database-sidebar-container .MuiTypography-root {
+    color: #ffffff !important;
+}
+
+[data-theme="dark"] .settings-sidebar-container .MuiTextField-root .MuiOutlinedInput-input,
+[data-theme="dark"] .database-sidebar-container .MuiTextField-root .MuiOutlinedInput-input {
+    color: #ffffff !important;
+    background-color: #2d2d2d !important;
+}
+
+[data-theme="dark"] .settings-sidebar-container .MuiInputLabel-root,
+[data-theme="dark"] .database-sidebar-container .MuiInputLabel-root {
+    color: #aaaaaa !important;
+}
+
+[data-theme="dark"] .settings-sidebar-container .MuiSelect-select,
+[data-theme="dark"] .database-sidebar-container .MuiSelect-select {
+    color: #ffffff !important;
+    background-color: #2d2d2d !important;
+}
+
+[data-theme="dark"] .settings-sidebar-container .MuiCard-root,
+[data-theme="dark"] .database-sidebar-container .MuiCard-root {
+    background-color: #2d2d2d !important;
+    color: #ffffff !important;
+}
+
+[data-theme="dark"] .settings-sidebar-container .MuiButton-root,
+[data-theme="dark"] .database-sidebar-container .MuiButton-root {
+    color: #ffffff !important;
+    background-color: #2d2d2d !important;
+    border-color: #555555 !important;
+}
+
+[data-theme="dark"] .settings-sidebar-container .MuiTab-root,
+[data-theme="dark"] .database-sidebar-container .MuiTab-root {
+    color: #aaaaaa !important;
+}
+
+[data-theme="dark"] .settings-sidebar-container .MuiTab-root.Mui-selected,
+[data-theme="dark"] .database-sidebar-container .MuiTab-root.Mui-selected {
+    color: #90caf9 !important;
+}
+
+[data-theme="dark"] .settings-sidebar-container .MuiTabs-indicator,
+[data-theme="dark"] .database-sidebar-container .MuiTabs-indicator {
+    background-color: #90caf9 !important;
 }
 
 .settings-sidebar-container.open,
@@ -1214,7 +1275,6 @@ html:not([data-theme="dark"]) .message-text {
     border-color: var(--primary);
     box-shadow: 0 0 0 3px rgb(37 99 235 / 0.1);
     text-align: left;
-    min-height: 80px;
     border-radius: 16px;
 }
 

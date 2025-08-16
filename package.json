@@ -37,6 +37,7 @@
         "@langchain/core": "^0.3.67",
         "@langchain/google-genai": "^0.2.16",
         "@langchain/groq": "^0.2.3",
+        "@langchain/langgraph": "^0.4.5",
         "@langchain/ollama": "^0.2.3",
         "@langchain/openai": "^0.6.5",
         "@langchain/textsplitters": "^0.1.0",
