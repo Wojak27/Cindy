@@ -1,6 +1,5 @@
 import { LLMProvider } from '../services/LLMProvider';
 import { LangChainMemoryService as MemoryService } from '../services/LangChainMemoryService';
-import { LangChainToolExecutorService as ToolExecutorService } from '../services/LangChainToolExecutorService';
 import { LangGraphAgent } from './LangGraphAgent';
 
 interface AgentContext {
@@ -14,7 +13,6 @@ interface AgentContext {
 interface AgentOptions {
     store: any;
     memoryService: MemoryService;
-    toolExecutor: ToolExecutorService;
     config: any;
     llmRouter: LLMProvider;
 }
@@ -38,7 +36,6 @@ export class ThinkingCindyAgent {
         this.langGraphAgent = new LangGraphAgent({
             llmProvider: options.llmRouter,
             memoryService: options.memoryService,
-            toolExecutor: options.toolExecutor,
             config: options.config
         });
 

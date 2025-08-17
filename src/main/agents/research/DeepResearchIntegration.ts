@@ -4,32 +4,31 @@
  */
 
 import { LLMProvider } from '../../services/LLMProvider';
-import { LangChainToolExecutorService } from '../../services/LangChainToolExecutorService';
+import { toolRegistry } from '../tools/ToolRegistry';
+import { toolLoader } from '../tools/ToolLoader';
 import { SettingsService } from '../../services/SettingsService';
 import { DeepResearchAgent } from './DeepResearchAgent';
 import { DeepResearchConfiguration, DeepResearchConfigManager } from './DeepResearchConfig';
-import { toolLoader } from '../tools/ToolLoader';
-import { toolRegistry } from '../tools/ToolRegistry';
+import { ToolAgent } from '../ToolAgent';
 
 /**
  * Integration options for Deep Research
  */
 export interface DeepResearchIntegrationOptions {
     llmProvider: LLMProvider;
-    toolExecutor: LangChainToolExecutorService;
     settingsService: SettingsService;
     enableDeepResearch?: boolean;
     fallbackToOriginal?: boolean;
 }
 
 /**
- * Deep Research Integration Manager
- * Handles the integration between the new Deep Research agent and existing systems
+ * Multi-Agent Router and Integration Manager
+ * Routes user requests to Deep Research, Tool Agent, or Direct Response
  */
 export class DeepResearchIntegration {
     private deepResearchAgent: DeepResearchAgent;
+    private toolAgent: ToolAgent;
     private llmProvider: LLMProvider;
-    private toolExecutor: LangChainToolExecutorService;
     private settingsService: SettingsService;
     private configManager: DeepResearchConfigManager;
     private enabled: boolean;
@@ -37,7 +36,6 @@ export class DeepResearchIntegration {
 
     constructor(options: DeepResearchIntegrationOptions) {
         this.llmProvider = options.llmProvider;
-        this.toolExecutor = options.toolExecutor;
         this.settingsService = options.settingsService;
         this.enabled = options.enableDeepResearch !== false; // Default to enabled
         this.fallbackToOriginal = options.fallbackToOriginal !== false; // Default to enabled
@@ -48,8 +46,12 @@ export class DeepResearchIntegration {
         // Create Deep Research agent
         this.deepResearchAgent = new DeepResearchAgent({
             llmProvider: this.llmProvider,
-            toolExecutor: this.toolExecutor,
             config: this.configManager.getConfig()
+        });
+
+        // Create Tool agent
+        this.toolAgent = new ToolAgent({
+            llmProvider: this.llmProvider
         });
 
         // Initialize tools
@@ -126,7 +128,7 @@ export class DeepResearchIntegration {
     private async checkVectorStoreHasFiles(): Promise<boolean> {
         try {
             // Check if toolExecutor has vector store functionality
-            const availableTools = this.toolExecutor.getAvailableTools();
+            const availableTools = toolRegistry.getAvailableTools();
 
             // If search_documents tool is not even available, return false
             if (!availableTools.includes('search_documents')) {
@@ -164,7 +166,8 @@ export class DeepResearchIntegration {
                     wikipedia: true,
                     serpapi: false,
                     tavily: false,
-                    vector: hasVectorStoreFiles // Only enable if there are user files
+                    vector: hasVectorStoreFiles, // Only enable if there are user files
+                    weather: true // Always enable weather tool (works with mock data)
                 }
             };
 
@@ -178,87 +181,262 @@ export class DeepResearchIntegration {
     }
 
     /**
-     * Determine if a message should use Deep Research using LLM decision making
-     * Returns true for Deep Research, or a direct response string for simple queries
+     * Intelligent routing using LLM to decide between Deep Research, Tool Agent, or Direct Response
+     * Returns routing decision and response with retry logic
      */
-    async shouldUseDeepResearch(message: string): Promise<boolean | string> {
-        try {
-            const routingPrompt = `You are an intelligent routing agent that decides whether a user message requires comprehensive Deep Research or can be answered with a simple, direct response.
+    async routeMessage(message: string, maxRetries: number = 3): Promise<{
+        route: 'deep_research' | 'tool_agent' | 'direct_response';
+        response?: string;
+    }> {
+        const routingPrompt = `You are an intelligent routing agent that decides how to handle user requests. You have three options:
 
-DEEP RESEARCH should be used for:
-- Complex questions requiring multiple sources and comprehensive analysis
+DEEP RESEARCH - For complex research requiring comprehensive analysis:
 - Research requests about topics, trends, or detailed information
 - Comparative analysis or multi-faceted investigations
-- Questions that benefit from structured research methodology
+- Questions requiring multiple sources and structured methodology
 - Requests for in-depth reports or comprehensive overviews
+- Academic or professional research needs
 
-SIMPLE RESPONSE should be used for:
+TOOL AGENT - For specific actions that require tools:
+- Weather inquiries (current conditions, forecasts)
+- Quick web searches for specific facts
+- Tool-based calculations or conversions
+- Location-based queries
+- Real-time data requests
+
+DIRECT RESPONSE - For simple questions requiring immediate answers:
 - Basic factual questions with straightforward answers
-- Simple calculations or conversions
-- Common knowledge queries
-- Personal assistance requests (scheduling, reminders, etc.)
-- Technical questions with clear, direct answers
+- Common knowledge queries  
 - Casual conversation or greetings
+- Simple explanations that don't require tools or research
 
 User Message: "${message}"
 
-If this requires Deep Research, respond with exactly: "USE_DEEP_RESEARCH"
+CRITICAL: You MUST respond with exactly one of these three options. No other format is acceptable:
+- "ROUTE_DEEP_RESEARCH" - for comprehensive research requests
+- "ROUTE_TOOL_AGENT" - for tool-based actions (weather, searches, etc.)  
+- "ROUTE_DIRECT" followed by your direct response - for simple questions
 
-If this can be answered simply, provide a helpful, direct response (2-3 sentences maximum) that answers the user's question.`;
+Examples:
+- "what's the weather in Paris?" → "ROUTE_TOOL_AGENT"
+- "research AI trends in healthcare" → "ROUTE_DEEP_RESEARCH"  
+- "hello, how are you?" → "ROUTE_DIRECT Hello! I'm here to help you with questions, research, and various tasks. How can I assist you today?"
 
-            const result = await this.llmProvider.invoke([
-                { role: 'user', content: routingPrompt }
-            ]);
+IMPORTANT: Only use the exact routing format above. Do not add explanations or extra text.`;
 
-            const response = (result.content as string).trim();
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                console.log(`[DeepResearchIntegration] Routing attempt ${attempt}/${maxRetries} for message: "${message.substring(0, 50)}..."`);
 
-            if (response === 'USE_DEEP_RESEARCH') {
-                console.log('[DeepResearchIntegration] LLM routing decision: Deep Research');
-                return true;
-            } else {
-                console.log('[DeepResearchIntegration] LLM routing decision: Direct response');
-                return response;
+                const result = await this.llmProvider.invoke([
+                    { role: 'user', content: routingPrompt }
+                ]);
+                const thinkTagRegex = /<think[^>]*>([\s\S]*?)<\/think>/g;
+                result.content = (result.content as string).replace(thinkTagRegex, '').trim();
+
+                const response = (result.content as string).trim();
+                console.log(`[DeepResearchIntegration] Routing response (attempt ${attempt}): "${response}"`);
+
+                // Validate response using the validation helper
+                const validation = this.validateRoutingResponse(response);
+
+                if (validation.isValid) {
+                    console.log(`[DeepResearchIntegration] ✅ Valid routing decision: ${validation.route}`);
+                    return {
+                        route: validation.route!,
+                        response: validation.directResponse
+                    };
+                } else {
+                    console.warn(`[DeepResearchIntegration] ⚠️ Invalid routing format on attempt ${attempt}:`);
+                    console.warn(`[DeepResearchIntegration]   Response: "${response}"`);
+                    console.warn(`[DeepResearchIntegration]   Issues: ${validation.issues.join(', ')}`);
+                }
+
+                // If we got here, the response format was invalid
+                if (attempt < maxRetries) {
+                    console.log(`[DeepResearchIntegration] Retrying routing decision (attempt ${attempt + 1}/${maxRetries})`);
+                    // Add a small delay before retry
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+
+            } catch (error) {
+                console.error(`[DeepResearchIntegration] Error in routing attempt ${attempt}:`, error);
+
+                if (attempt < maxRetries) {
+                    console.log(`[DeepResearchIntegration] Retrying after error (attempt ${attempt + 1}/${maxRetries})`);
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                } else {
+                    console.error('[DeepResearchIntegration] All routing attempts failed due to errors');
+                }
             }
+        }
 
-        } catch (error) {
-            console.error('[DeepResearchIntegration] Error in LLM routing decision:', error);
-            // Fallback to Deep Research on error
+        // All retries exhausted - return fallback with clear messaging
+        console.error('[DeepResearchIntegration] ❌ All routing attempts failed, using fallback');
+        return {
+            route: 'direct_response',
+            response: 'I\'m experiencing technical difficulties with my routing system. I can still help you, but some advanced features may be temporarily unavailable. Please try rephrasing your request or try again in a moment.'
+        };
+    }
+
+    /**
+     * Validate and debug routing response format
+     */
+    private validateRoutingResponse(response: string): {
+        isValid: boolean;
+        route?: 'deep_research' | 'tool_agent' | 'direct_response';
+        directResponse?: string;
+        issues: string[];
+    } {
+        const issues: string[] = [];
+        const trimmed = response.trim();
+
+        // Check for exact matches first
+        if (trimmed === 'ROUTE_DEEP_RESEARCH') {
+            return { isValid: true, route: 'deep_research', issues: [] };
+        }
+
+        if (trimmed.startsWith('ROUTE_TOOL_AGENT')) {
+            return { isValid: true, route: 'tool_agent', issues: [] };
+        }
+
+        if (trimmed.startsWith('ROUTE_DIRECT ')) {
+            const directResponse = trimmed.substring('ROUTE_DIRECT '.length).trim();
+            if (directResponse.length === 0) {
+                issues.push('Empty direct response after ROUTE_DIRECT');
+                return { isValid: false, issues };
+            }
+            return { isValid: true, route: 'direct_response', directResponse, issues: [] };
+        }
+
+        // Analyze what went wrong
+        if (trimmed.toLowerCase().includes('route_deep_research')) {
+            issues.push('Incorrect casing or format for ROUTE_DEEP_RESEARCH');
+        }
+        if (trimmed.toLowerCase().includes('route_tool_agent')) {
+            issues.push('Incorrect casing or format for ROUTE_TOOL_AGENT');
+        }
+        if (trimmed.toLowerCase().includes('route_direct')) {
+            issues.push('Incorrect casing or format for ROUTE_DIRECT');
+        }
+        if (trimmed.length === 0) {
+            issues.push('Empty response');
+        }
+        if (trimmed.includes('explanation') || trimmed.includes('because') || trimmed.includes('reasoning')) {
+            issues.push('Response contains explanation instead of just routing decision');
+        }
+
+        return { isValid: false, issues };
+    }
+
+    /**
+     * Legacy method for backward compatibility
+     */
+    async shouldUseDeepResearch(message: string): Promise<boolean | string> {
+        const routing = await this.routeMessage(message);
+        if (routing.route === 'deep_research') {
             return true;
+        } else {
+            return routing.response || 'I can help you with that.';
         }
     }
 
     /**
-     * Process a message using Deep Research or direct response
+     * Process a message using the appropriate agent (Deep Research, Tool Agent, or Direct Response)
      */
     async processMessage(message: string): Promise<{
         result: string;
         usedDeepResearch: boolean;
+        usedToolAgent?: boolean;
         processingTime: number;
+        sideViewData?: any;
     }> {
         const startTime = Date.now();
 
         try {
-            const routingDecision = await this.shouldUseDeepResearch(message);
+            const routing = await this.routeMessage(message);
 
-            if (routingDecision === true) {
-                console.log('[DeepResearchIntegration] Using Deep Research for message');
+            switch (routing.route) {
+                case 'deep_research':
+                    console.log('[DeepResearchIntegration] Using Deep Research for message');
+                    const researchResult = await this.deepResearchAgent.processResearch(message);
+                    return {
+                        result: researchResult,
+                        usedDeepResearch: true,
+                        usedToolAgent: false,
+                        processingTime: Date.now() - startTime
+                    };
 
-                const result = await this.deepResearchAgent.processResearch(message);
+                case 'tool_agent':
+                    console.log('[DeepResearchIntegration] Using Tool Agent for message');
 
-                return {
-                    result,
-                    usedDeepResearch: true,
-                    processingTime: Date.now() - startTime
-                };
-            } else {
-                console.log('[DeepResearchIntegration] Using direct LLM response');
+                    // Check tool availability before processing
+                    const availableTools = this.toolAgent.getAvailableTools();
+                    console.log(`[DeepResearchIntegration] Available tools: ${availableTools.join(', ')}`);
 
-                // Return the direct response from the LLM routing decision
-                return {
-                    result: routingDecision as string,
-                    usedDeepResearch: false,
-                    processingTime: Date.now() - startTime
-                };
+                    if (availableTools.length === 0) {
+                        console.warn('[DeepResearchIntegration] No tools available, returning helpful message');
+                        return {
+                            result: 'I understand you need help with that request, but my tool services are currently unavailable. I can still provide general information or assistance through conversation. Could you try asking in a different way, or would you like me to help with something else?',
+                            usedDeepResearch: false,
+                            usedToolAgent: false,
+                            processingTime: Date.now() - startTime
+                        };
+                    }
+
+                    try {
+                        const toolResult = await this.toolAgent.process(message);
+
+                        // Validate tool result to prevent hallucination
+                        if (!toolResult || !toolResult.result) {
+                            console.warn('[DeepResearchIntegration] Tool agent returned empty result');
+                            return {
+                                result: 'I tried to help with your request using my tools, but didn\'t get a proper response. This might be due to service availability or network issues. Please try again in a moment, or rephrase your request.',
+                                usedDeepResearch: false,
+                                usedToolAgent: false,
+                                processingTime: Date.now() - startTime
+                            };
+                        }
+
+                        // Check if the result indicates tool failure
+                        const result = toolResult.result.toLowerCase();
+                        if (result.includes('error') || result.includes('failed') || result.includes('unavailable') || result.includes('don\'t have the right tools')) {
+                            console.warn('[DeepResearchIntegration] Tool execution failed or tools unavailable');
+                            return {
+                                result: 'I attempted to use my tools to help with your request, but they\'re currently experiencing issues. I can still provide general information and assistance through conversation. Would you like me to try a different approach to help you?',
+                                usedDeepResearch: false,
+                                usedToolAgent: false,
+                                processingTime: Date.now() - startTime
+                            };
+                        }
+
+                        return {
+                            result: toolResult.result,
+                            usedDeepResearch: false,
+                            usedToolAgent: true,
+                            processingTime: Date.now() - startTime,
+                            sideViewData: toolResult.sideViewData
+                        };
+
+                    } catch (toolError: any) {
+                        console.error('[DeepResearchIntegration] Tool Agent error:', toolError);
+                        return {
+                            result: 'I encountered an issue while trying to use my tools to help with your request. My tool services may be temporarily unavailable. I can still assist you through conversation - would you like to try asking in a different way?',
+                            usedDeepResearch: false,
+                            usedToolAgent: false,
+                            processingTime: Date.now() - startTime
+                        };
+                    }
+
+                case 'direct_response':
+                default:
+                    console.log('[DeepResearchIntegration] Using direct response');
+                    return {
+                        result: routing.response || 'I can help you with that.',
+                        usedDeepResearch: false,
+                        usedToolAgent: false,
+                        processingTime: Date.now() - startTime
+                    };
             }
 
         } catch (error: any) {
@@ -282,42 +460,120 @@ If this can be answered simply, provide a helpful, direct response (2-3 sentence
     }
 
     /**
-     * Stream Deep Research with progress updates or direct response
+     * Stream processing with support for all three agent types
      */
     async *streamMessage(message: string): AsyncGenerator<{
-        type: 'progress' | 'result';
+        type: 'progress' | 'result' | 'tool_result' | 'side_view';
         content: string;
         usedDeepResearch: boolean;
+        usedToolAgent?: boolean;
         status?: string;
+        data?: any;
     }> {
         try {
-            const routingDecision = await this.shouldUseDeepResearch(message);
+            const routing = await this.routeMessage(message);
 
-            if (routingDecision === true) {
-                console.log('[DeepResearchIntegration] Streaming Deep Research');
+            switch (routing.route) {
+                case 'deep_research':
+                    console.log('[DeepResearchIntegration] Streaming Deep Research');
+                    for await (const update of this.deepResearchAgent.streamResearch(message)) {
+                        yield {
+                            ...update,
+                            usedDeepResearch: true,
+                            usedToolAgent: false
+                        };
+                    }
+                    break;
 
-                for await (const update of this.deepResearchAgent.streamResearch(message)) {
+                case 'tool_agent':
+                    console.log('[DeepResearchIntegration] Streaming Tool Agent');
+
+                    // Check tool availability before streaming
+                    const availableTools = this.toolAgent.getAvailableTools();
+                    console.log(`[DeepResearchIntegration] Available tools for streaming: ${availableTools.join(', ')}`);
+
+                    if (availableTools.length === 0) {
+                        console.warn('[DeepResearchIntegration] No tools available for streaming');
+                        yield {
+                            type: 'result',
+                            content: 'I understand you need help with that request, but my tool services are currently unavailable. I can still provide general information or assistance through conversation. Could you try asking in a different way, or would you like me to help with something else?',
+                            usedDeepResearch: false,
+                            usedToolAgent: false
+                        };
+                        break;
+                    }
+
+                    try {
+                        let hasValidResult = false;
+                        for await (const update of this.toolAgent.processStreaming(message)) {
+                            // Check for tool failure indicators in streaming
+                            const content = update.content?.toLowerCase() || '';
+                            if (content.includes('don\'t have the right tools') ||
+                                content.includes('tool execution failed') ||
+                                content.includes('tools are currently unavailable')) {
+                                console.warn('[DeepResearchIntegration] Tool failure detected in streaming');
+                                yield {
+                                    type: 'result',
+                                    content: 'I attempted to use my tools to help with your request, but they\'re currently experiencing issues. I can still provide general information and assistance through conversation. Would you like me to try a different approach to help you?',
+                                    usedDeepResearch: false,
+                                    usedToolAgent: false
+                                };
+                                return;
+                            }
+
+                            if (update.type === 'result' && update.content?.trim()) {
+                                hasValidResult = true;
+                            }
+
+                            yield {
+                                type: update.type as any,
+                                content: update.content,
+                                usedDeepResearch: false,
+                                usedToolAgent: true,
+                                data: update.data
+                            };
+                        }
+
+                        // If no valid result was generated, provide fallback
+                        if (!hasValidResult) {
+                            console.warn('[DeepResearchIntegration] No valid result from tool agent streaming');
+                            yield {
+                                type: 'result',
+                                content: 'I tried to help with your request using my tools, but didn\'t get a proper response. This might be due to service availability or network issues. Please try again in a moment, or rephrase your request.',
+                                usedDeepResearch: false,
+                                usedToolAgent: false
+                            };
+                        }
+
+                    } catch (streamError: any) {
+                        console.error('[DeepResearchIntegration] Tool Agent streaming error:', streamError);
+                        yield {
+                            type: 'result',
+                            content: 'I encountered an issue while trying to use my tools to help with your request. My tool services may be temporarily unavailable. I can still assist you through conversation - would you like to try asking in a different way?',
+                            usedDeepResearch: false,
+                            usedToolAgent: false
+                        };
+                    }
+                    break;
+
+                case 'direct_response':
+                default:
+                    console.log('[DeepResearchIntegration] Streaming direct response');
                     yield {
-                        ...update,
-                        usedDeepResearch: true
+                        type: 'result',
+                        content: routing.response || 'I can help you with that.',
+                        usedDeepResearch: false,
+                        usedToolAgent: false
                     };
-                }
-            } else {
-                console.log('[DeepResearchIntegration] Streaming direct LLM response');
-                
-                // Stream the direct response
-                yield {
-                    type: 'result',
-                    content: routingDecision as string,
-                    usedDeepResearch: false
-                };
+                    break;
             }
         } catch (error: any) {
             console.error('[DeepResearchIntegration] Error in streaming:', error);
             yield {
                 type: 'result',
                 content: `Error: ${error.message}`,
-                usedDeepResearch: false
+                usedDeepResearch: false,
+                usedToolAgent: false
             };
         }
     }

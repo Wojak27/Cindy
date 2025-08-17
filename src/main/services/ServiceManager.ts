@@ -1,7 +1,8 @@
 import { EventEmitter } from 'events';
 import { DuckDBSettingsService } from './DuckDBSettingsService';
 import { LLMProvider } from './LLMProvider';
-import { LangChainToolExecutorService } from './LangChainToolExecutorService';
+import { toolRegistry } from '../agents/tools/ToolRegistry';
+import { toolLoader } from '../agents/tools/ToolLoader';
 
 /**
  * ServiceManager - Handles dynamic loading of heavy LangChain services
@@ -14,12 +15,12 @@ export class ServiceManager extends EventEmitter {
     private llmProvider: LLMProvider | null;
 
     // Dynamic service references
-    private langChainToolExecutorService: any = null;
     private langChainMemoryService: any = null;
     private langChainCindyAgent: any = null;
+    private toolsInitialized: boolean = false;
 
     // Loading state tracking
-    private isLoadingToolExecutor = false;
+    private isLoadingToolRegistry = false;
     private isLoadingMemoryService = false;
     private isLoadingCindyAgent = false;
 
@@ -38,122 +39,85 @@ export class ServiceManager extends EventEmitter {
     }
 
     /**
-     * Dynamically load LangChain ToolExecutorService
+     * Initialize tools using ToolLoader system
      */
-    async getToolExecutorService(duckdbVectorStore?: any): Promise<any> {
-        if (this.langChainToolExecutorService) {
-            return this.langChainToolExecutorService;
+    async initializeTools(duckdbVectorStore?: any): Promise<void> {
+        if (this.toolsInitialized) {
+            return;
         }
 
-        if (this.isLoadingToolExecutor) {
+        if (this.isLoadingToolRegistry) {
             // Wait for existing load to complete
             return new Promise((resolve) => {
-                this.once('toolExecutorLoaded', resolve);
+                this.once('toolsInitialized', resolve);
             });
         }
 
-        this.isLoadingToolExecutor = true;
+        this.isLoadingToolRegistry = true;
 
         try {
-            console.log('[ServiceManager] Dynamically loading LangChainToolExecutorService...');
+            console.log('[ServiceManager] Initializing tools via ToolLoader...');
             console.log('[ServiceManager] DuckDB vector store provided:', !!duckdbVectorStore);
 
-            // If no vector store provided, try to create one
-            if (!duckdbVectorStore) {
-                console.log('[ServiceManager] No vector store provided, attempting to create one...');
-                try {
-                    const { DuckDBVectorStore } = require('./DuckDBVectorStore');
-                    const path = require('path');
-                    const { app } = require('electron');
-
-                    // Get settings for configuration
-                    const settingsData = await this.settingsService?.getAll();
-                    let databasePath = settingsData?.database?.path;
-
-                    // If no database path in settings, try to find an existing vector database
-                    if (!databasePath) {
-                        console.log('[ServiceManager] No database path in settings, checking for existing vector databases...');
-
-                        // Check common locations for existing vector databases
-                        const possiblePaths = [
-                            '/Users/karwo09/Documents/DeepResearchDocs',  // Your current path
-                            path.join(app.getPath('userData'), 'default-database'),
-                            path.join(app.getPath('documents'), 'DeepResearchDocs')
-                        ];
-
-                        for (const testPath of possiblePaths) {
-                            const testDbPath = path.join(testPath, '.vector_store', 'duckdb_vectors.db');
-                            if (require('fs').existsSync(testDbPath)) {
-                                databasePath = testPath;
-                                console.log('[ServiceManager] Found existing vector database at:', testDbPath);
-                                break;
-                            }
-                        }
-
-                        // Final fallback
-                        if (!databasePath) {
-                            databasePath = path.join(app.getPath('userData'), 'default-database');
-                            console.log('[ServiceManager] Using fallback database path:', databasePath);
-                        }
-                    }
-
-                    const llmSettings = settingsData?.llm || { provider: 'ollama' };
-                    const provider = llmSettings.provider || 'ollama';
-
-                    // Create vector store config
-                    let vectorStoreConfig: any = {
-                        databasePath: path.join(databasePath, '.vector_store', 'duckdb_vectors.db'),
-                        embeddingProvider: 'ollama',
-                        embeddingModel: 'dengcao/Qwen3-Embedding-0.6B:Q8_0',
-                        ollamaBaseUrl: 'http://localhost:11434'
-                    };
-
-                    if (provider === 'openai') {
-                        const openaiApiKey = await this.settingsService?.getApiKey();
-                        if (openaiApiKey) {
-                            vectorStoreConfig.embeddingProvider = 'openai';
-                            vectorStoreConfig.openaiApiKey = openaiApiKey;
-                            vectorStoreConfig.embeddingModel = 'text-embedding-3-small';
-                        }
-                    }
-
-                    console.log('[ServiceManager] Creating vector store with config:', {
-                        basePath: databasePath,
-                        fullDatabasePath: vectorStoreConfig.databasePath,
-                        embeddingProvider: vectorStoreConfig.embeddingProvider
-                    });
-
-                    // Verify the database file exists
-                    if (require('fs').existsSync(vectorStoreConfig.databasePath)) {
-                        console.log('[ServiceManager] ✅ Vector database file exists at:', vectorStoreConfig.databasePath);
-                    } else {
-                        console.log('[ServiceManager] ⚠️ Vector database file does not exist at:', vectorStoreConfig.databasePath);
-                        console.log('[ServiceManager] ⚠️ Search will work but may return 0 results until documents are indexed');
-                    }
-
-                    duckdbVectorStore = new DuckDBVectorStore(vectorStoreConfig);
-                    await duckdbVectorStore.initialize();
-                    console.log('[ServiceManager] ✅ Vector store created and initialized successfully');
-                } catch (vectorError) {
-                    console.error('[ServiceManager] ❌ Failed to create vector store:', vectorError.message);
-                    duckdbVectorStore = null;
+            // Get settings for tool configuration
+            const settingsData = await this.settingsService?.getAll();
+            
+            // Build tool configuration
+            const toolConfig = {
+                // Search API keys
+                braveApiKey: settingsData?.search?.braveApiKey,
+                serpApiKey: settingsData?.search?.serpApiKey,
+                tavilyApiKey: settingsData?.search?.tavilyApiKey,
+                
+                // Weather API keys
+                // accuWeatherApiKey: settingsData?.general?.accuWeatherApiKey, // TODO: add to settings
+                
+                // Vector store for document search
+                vectorStore: duckdbVectorStore,
+                
+                // Enable all tools by default
+                enabledTools: {
+                    duckduckgo: true,
+                    brave: !!settingsData?.search?.braveApiKey,
+                    wikipedia: true,
+                    serpapi: !!settingsData?.search?.serpApiKey,
+                    tavily: !!settingsData?.search?.tavilyApiKey,
+                    vector: !!duckdbVectorStore,
+                    weather: true
                 }
-            }
+            };
 
-            // Pass DuckDB vector store and settings service
-            this.langChainToolExecutorService = new LangChainToolExecutorService(duckdbVectorStore, this.settingsService);
-            await this.langChainToolExecutorService.initialize();
+            // Initialize all tools
+            await toolLoader.loadAllTools(toolConfig);
 
-            console.log('[ServiceManager] LangChainToolExecutorService loaded successfully');
-            this.emit('toolExecutorLoaded', this.langChainToolExecutorService);
+            console.log('[ServiceManager] Tools initialized successfully via ToolLoader');
+            console.log('[ServiceManager] Available tools:', toolRegistry.getToolNames());
+            
+            this.toolsInitialized = true;
+            this.emit('toolsInitialized');
 
-            return this.langChainToolExecutorService;
         } catch (error) {
-            console.error('[ServiceManager] Failed to load LangChainToolExecutorService:', error);
+            console.error('[ServiceManager] Failed to initialize tools:', error);
             throw error;
         } finally {
-            this.isLoadingToolExecutor = false;
+            this.isLoadingToolRegistry = false;
         }
+    }
+
+    /**
+     * Get tool registry (replaces getToolExecutorService)
+     */
+    async getToolRegistry(duckdbVectorStore?: any): Promise<any> {
+        await this.initializeTools(duckdbVectorStore);
+        return toolRegistry;
+    }
+
+    /**
+     * Get tools for LLM attachment (replaces getToolsForAgent)
+     */
+    async getToolsForAgent(duckdbVectorStore?: any): Promise<any[]> {
+        await this.initializeTools(duckdbVectorStore);
+        return toolRegistry.getAllToolDefinitions();
     }
 
     /**
@@ -239,7 +203,8 @@ export class ServiceManager extends EventEmitter {
 
             // Load dependencies
             const memoryService = await this.getMemoryService();
-            const toolExecutorService = await this.getToolExecutorService(duckdbVectorStore);
+            // Ensure tools are initialized for the agent
+            await this.initializeTools(duckdbVectorStore);
 
             // Dynamic import to avoid loading at startup - using new LangGraphAgent
             const { LangGraphAgent } = await import('../agents/LangGraphAgent');
@@ -250,7 +215,6 @@ export class ServiceManager extends EventEmitter {
             // Initialize thinking agent with enhanced capabilities
             this.langChainCindyAgent = new LangGraphAgent({
                 memoryService: memoryService,
-                toolExecutor: toolExecutorService,
                 config: {
                     enableStreaming: true,
                     ...agentConfig
@@ -274,12 +238,12 @@ export class ServiceManager extends EventEmitter {
      * Check if any services are loaded
      */
     getLoadedServices(): {
-        toolExecutor: boolean;
+        toolRegistry: boolean;
         memory: boolean;
         cindyAgent: boolean;
     } {
         return {
-            toolExecutor: !!this.langChainToolExecutorService,
+            toolRegistry: this.toolsInitialized,
             memory: !!this.langChainMemoryService,
             cindyAgent: !!this.langChainCindyAgent
         };
@@ -289,12 +253,12 @@ export class ServiceManager extends EventEmitter {
      * Get service instances (if loaded)
      */
     getServiceInstances(): {
-        toolExecutor: any;
+        toolRegistry: any;
         memory: any;
         cindyAgent: any;
     } {
         return {
-            toolExecutor: this.langChainToolExecutorService,
+            toolRegistry: toolRegistry,
             memory: this.langChainMemoryService,
             cindyAgent: this.langChainCindyAgent
         };
@@ -316,9 +280,7 @@ export class ServiceManager extends EventEmitter {
                 await this.langChainMemoryService.cleanup();
             }
 
-            if (this.langChainToolExecutorService && typeof this.langChainToolExecutorService.cleanup === 'function') {
-                await this.langChainToolExecutorService.cleanup();
-            }
+            // Tool registry cleanup is handled automatically
 
             // Vector store cleanup handled by DuckDBVectorStore in main.ts
         } catch (error) {
@@ -328,7 +290,7 @@ export class ServiceManager extends EventEmitter {
         // Reset all references
         this.langChainCindyAgent = null;
         this.langChainMemoryService = null;
-        this.langChainToolExecutorService = null;
+        this.toolsInitialized = false;
 
         console.log('[ServiceManager] Cleanup complete');
     }

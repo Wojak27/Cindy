@@ -6,7 +6,6 @@
 import { StateGraph } from '@langchain/langgraph';
 import { HumanMessage } from '@langchain/core/messages';
 import { LLMProvider } from '../../services/LLMProvider';
-import { LangChainToolExecutorService } from '../../services/LangChainToolExecutorService';
 import {
     AgentState,
     AgentStateAnnotation,
@@ -32,7 +31,6 @@ import { createSynthesisNode } from './nodes/SynthesisNode';
  */
 export interface DeepResearchAgentOptions {
     llmProvider: LLMProvider;
-    toolExecutor: LangChainToolExecutorService;
     config?: Partial<DeepResearchConfiguration>;
 }
 
@@ -44,13 +42,11 @@ export class DeepResearchAgent {
     private supervisorGraph: any;
     private researcherGraph: any;
     private llmProvider: LLMProvider;
-    private toolExecutor: LangChainToolExecutorService;
     private config: DeepResearchConfiguration;
     private configManager: DeepResearchConfigManager;
 
     constructor(options: DeepResearchAgentOptions) {
         this.llmProvider = options.llmProvider;
-        this.toolExecutor = options.toolExecutor;
 
         // Initialize configuration
         this.configManager = new DeepResearchConfigManager(options.config);
@@ -163,7 +159,6 @@ export class DeepResearchAgent {
         // Add researcher node
         workflow.addNode('researcher', createResearcherNode(
             this.llmProvider,
-            this.toolExecutor,
             this.config
         ));
 
@@ -338,6 +333,18 @@ Generate specific, actionable research topics (one per line) that will help comp
 
             console.log('[DeepResearchAgent] Research completed successfully');
 
+            // Check if clarification is needed
+            if (result.supervisor_messages && result.supervisor_messages.length > 0) {
+                const lastMessage = result.supervisor_messages[result.supervisor_messages.length - 1];
+                if (lastMessage._getType() === 'ai' && lastMessage.content) {
+                    // If there's no research brief but there are supervisor messages, this is likely a clarification request
+                    if (!result.research_brief) {
+                        console.log('[DeepResearchAgent] Returning clarification question');
+                        return lastMessage.content as string;
+                    }
+                }
+            }
+
             return result.final_report || 'Research completed but no final report generated.';
 
         } catch (error: any) {
@@ -375,6 +382,19 @@ Generate specific, actionable research topics (one per line) that will help comp
             yield { type: 'progress', content: 'Analyzing research requirements...', status: ResearchStatus.PLANNING };
 
             const result = await this.graph.invoke(initialState);
+
+            // Check if clarification is needed
+            if (result.supervisor_messages && result.supervisor_messages.length > 0) {
+                const lastMessage = result.supervisor_messages[result.supervisor_messages.length - 1];
+                if (lastMessage._getType() === 'ai' && lastMessage.content && !result.research_brief) {
+                    yield {
+                        type: 'result',
+                        content: lastMessage.content as string,
+                        status: ResearchStatus.CLARIFYING
+                    };
+                    return;
+                }
+            }
 
             yield { type: 'progress', content: 'Research completed, generating final report...', status: ResearchStatus.COMPLETE };
 

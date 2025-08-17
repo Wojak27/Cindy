@@ -1,6 +1,6 @@
 import { LLMProvider } from '../services/LLMProvider';
 import { LangChainMemoryService } from '../services/LangChainMemoryService';
-import { LangChainToolExecutorService } from '../services/LangChainToolExecutorService';
+import { toolRegistry } from './tools/ToolRegistry';
 import { SettingsService } from '../services/SettingsService';
 import { DeepResearchIntegration } from './research/DeepResearchIntegration';
 
@@ -10,7 +10,6 @@ import { DeepResearchIntegration } from './research/DeepResearchIntegration';
 export interface LangGraphAgentOptions {
     llmProvider: LLMProvider;
     memoryService: LangChainMemoryService;
-    toolExecutor: LangChainToolExecutorService;
     config?: any;
 }
 
@@ -21,12 +20,10 @@ export interface LangGraphAgentOptions {
 export class LangGraphAgent {
     private deepResearchIntegration: DeepResearchIntegration;
     private llmProvider: LLMProvider;
-    private toolExecutor: LangChainToolExecutorService;
     private settingsService: SettingsService | null = null;
 
     constructor(options: LangGraphAgentOptions) {
         this.llmProvider = options.llmProvider;
-        this.toolExecutor = options.toolExecutor;
 
         // Create a minimal settings service for compatibility
         this.settingsService = this.createCompatibilitySettingsService();
@@ -34,7 +31,6 @@ export class LangGraphAgent {
         // Initialize Deep Research integration
         this.deepResearchIntegration = new DeepResearchIntegration({
             llmProvider: this.llmProvider,
-            toolExecutor: this.toolExecutor,
             settingsService: this.settingsService,
             enableDeepResearch: true,
             fallbackToOriginal: true
@@ -68,10 +64,13 @@ export class LangGraphAgent {
             if (result.usedDeepResearch && result.result !== 'FALLBACK_TO_ORIGINAL') {
                 console.log(`[LangGraphAgent] Deep Research completed in ${result.processingTime}ms`);
                 return result.result;
+            } else if (result.usedToolAgent) {
+                console.log(`[LangGraphAgent] Tool Agent completed in ${result.processingTime}ms`);
+                return result.result;
             } else {
-                // For fallback cases, provide a simple response
-                console.log('[LangGraphAgent] Using fallback processing');
-                return this.createFallbackResponse(input);
+                // For direct response cases
+                console.log(`[LangGraphAgent] Direct response completed in ${result.processingTime}ms`);
+                return result.result;
             }
 
         } catch (error) {
@@ -80,23 +79,6 @@ export class LangGraphAgent {
         }
     }
 
-    /**
-     * Create a fallback response for non-research queries
-     */
-    private async createFallbackResponse(input: string): Promise<string> {
-        try {
-            // Simple LLM response for non-research queries
-            const result = await this.llmProvider.invoke([
-                { role: 'user', content: input }
-            ]);
-
-            return result.content as string || 'I can help you with that. Could you provide more details?';
-
-        } catch (error) {
-            console.error('[LangGraphAgent] Fallback processing error:', error);
-            return 'I can help you with questions and research tasks. Please let me know what you\'d like to explore!';
-        }
-    }
 
     /**
      * Process a message through Deep Research with streaming output
@@ -118,6 +100,24 @@ export class LangGraphAgent {
                         yield `📋 ${update.content}\n\n`;
                     } else if (update.type === 'result') {
                         yield update.content;
+                    }
+                } else if (update.usedToolAgent) {
+                    // Tool Agent mode
+                    console.log("[LangGraphAgent] Using Tool Agent");
+                    if (update.type === 'progress') {
+                        yield `🔧 ${update.content}\n\n`;
+                    } else if (update.type === 'tool_result') {
+                        yield `⚡ ${update.content}\n\n`;
+                    } else if (update.type === 'result') {
+                        yield update.content;
+                    } else if (update.type === 'side_view') {
+                        // Handle side view data (will be processed by renderer)
+                        if (update.data && update.data.type === 'weather') {
+                            // Include the actual weather data JSON for the renderer
+                            yield `📊 ${JSON.stringify(update.data.data)}\n\n`;
+                        } else {
+                            yield `📊 ${update.content}\n\n`;
+                        }
                     }
                 } else {
                     // Direct LLM response mode
@@ -145,7 +145,7 @@ export class LangGraphAgent {
      * Get available tools
      */
     getAvailableTools(): string[] {
-        return this.toolExecutor.getAvailableTools();
+        return toolRegistry.getAvailableTools();
     }
 
     /**

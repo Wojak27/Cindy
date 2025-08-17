@@ -172,6 +172,75 @@ export class ToolRegistry extends EventEmitter {
     }
 
     /**
+     * Execute a tool by name (compatibility with LangChainToolExecutorService)
+     */
+    async executeTool(toolName: string, parameters: any): Promise<{
+        success: boolean;
+        result?: any;
+        error?: string;
+        duration?: number;
+    }> {
+        const startTime = Date.now();
+        
+        try {
+            console.log(`[ToolRegistry] Executing tool: ${toolName} with parameters:`, parameters);
+            
+            const toolSpec = this.tools.get(toolName);
+            if (!toolSpec) {
+                console.error(`[ToolRegistry] Tool not found: ${toolName}`);
+                console.error(`[ToolRegistry] Available tools: [${Array.from(this.tools.keys()).join(', ')}]`);
+                throw new Error(`Tool not found: ${toolName}`);
+            }
+
+            // Extract the input parameter for the tool
+            let input = parameters?.input || parameters;
+            
+            // Convert object parameters to JSON string for LangChain tools that expect string input
+            if (typeof input === 'object' && input !== null && !Array.isArray(input)) {
+                input = JSON.stringify(input);
+            }
+            
+            console.log(`[ToolRegistry] Passing to tool ${toolName}:`, input, typeof input);
+            
+            // Execute the tool
+            const result = await toolSpec.tool.invoke(input);
+            const duration = Date.now() - startTime;
+            
+            console.log(`[ToolRegistry] Tool ${toolName} executed successfully in ${duration}ms`);
+            
+            return {
+                success: true,
+                result,
+                duration
+            };
+            
+        } catch (error: any) {
+            const duration = Date.now() - startTime;
+            console.error(`[ToolRegistry] Tool ${toolName} failed after ${duration}ms:`, error.message);
+            
+            return {
+                success: false,
+                error: error.message,
+                duration
+            };
+        }
+    }
+
+    /**
+     * Get available tools (compatibility alias)
+     */
+    getAvailableTools(): string[] {
+        return this.getToolNames();
+    }
+
+    /**
+     * Get tools (compatibility alias) 
+     */
+    getTools(): string[] {
+        return this.getToolNames();
+    }
+
+    /**
      * Get tools requiring authentication
      */
     getAuthRequiredTools(): ToolSpecification[] {

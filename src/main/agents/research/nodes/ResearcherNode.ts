@@ -5,17 +5,15 @@
 
 import { HumanMessage } from '@langchain/core/messages';
 import { LLMProvider } from '../../../services/LLMProvider';
-import { LangChainToolExecutorService } from '../../../services/LangChainToolExecutorService';
+import { toolRegistry } from '../../tools/ToolRegistry';
 import { ResearcherState, ResearcherOutputState } from '../DeepResearchState';
 import { DeepResearchConfiguration } from '../DeepResearchConfig';
-import { toolRegistry } from '../../tools/ToolRegistry';
 
 /**
  * Researcher node that conducts detailed research on specific topics
  */
 export function createResearcherNode(
     llmProvider: LLMProvider,
-    toolExecutor: LangChainToolExecutorService,
     config: DeepResearchConfiguration
 ) {
     return async (state: ResearcherState): Promise<ResearcherOutputState> => {
@@ -25,7 +23,6 @@ export function createResearcherNode(
             const researchResults = await conductResearchWithTools(
                 state.research_topic,
                 llmProvider,
-                toolExecutor,
                 config,
                 state.tool_call_iterations
             );
@@ -62,7 +59,6 @@ export function createResearcherNode(
 async function conductResearchWithTools(
     researchTopic: string,
     llmProvider: LLMProvider,
-    toolExecutor: LangChainToolExecutorService,
     config: DeepResearchConfiguration,
     currentIterations: number = 0
 ): Promise<{ findings: string[]; rawNotes: string[] }> {
@@ -103,7 +99,7 @@ async function conductResearchWithTools(
                     const searchTool = selectSearchTool(config, availableTools);
                     console.log(`[ResearcherNode] Using tool: ${searchTool} for query: ${query.substring(0, 50)}...`);
 
-                    const searchResult = await toolExecutor.executeTool(searchTool, { input: query });
+                    const searchResult = await toolRegistry.executeTool(searchTool, { input: query });
 
                     const resultText = typeof searchResult === 'string' ? searchResult : JSON.stringify(searchResult);
 

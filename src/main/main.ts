@@ -1207,7 +1207,7 @@ let langChainVectorStoreService: any = null; // Type as any for now
 // Dynamic loading - no static types, will be loaded on-demand
 let serviceManager: ServiceManager | null = null;
 let langChainMemoryService: any = null;
-let langChainToolExecutorService: any = null;
+let toolRegistry: any = null;
 let langChainCindyAgent: any = null;
 let wakeWordService: any = null;
 let speechToTextService: SpeechToTextService | null = null;
@@ -2045,19 +2045,19 @@ app.on('ready', async () => {
             }
 
             try {
-                console.log('🔧 DEBUG: Loading LangChain ToolExecutorService via ServiceManager');
+                console.log('🔧 DEBUG: Initializing tools via ServiceManager ToolRegistry');
                 console.log('🔧 DEBUG: DuckDB vector store available:', !!duckDBVectorStore);
                 console.log('🔧 DEBUG: Vector store being passed to ServiceManager:', {
                     exists: !!duckDBVectorStore,
                     type: duckDBVectorStore?.constructor?.name,
                     hasInitialize: typeof duckDBVectorStore?.initialize === 'function'
                 });
-                langChainToolExecutorService = await serviceManager.getToolExecutorService(duckDBVectorStore);
-                console.log('✅ DEBUG: LangChain ToolExecutorService loaded successfully');
-            } catch (toolExecutorError) {
-                console.error('❌ DEBUG: Failed to load LangChain ToolExecutorService:', toolExecutorError);
-                console.error('Continuing without tool executor service');
-                langChainToolExecutorService = null;
+                toolRegistry = await serviceManager.getToolRegistry(duckDBVectorStore);
+                console.log('✅ DEBUG: ToolRegistry initialized successfully');
+            } catch (toolRegistryError) {
+                console.error('❌ DEBUG: Failed to initialize ToolRegistry:', toolRegistryError);
+                console.error('Continuing without tool registry');
+                toolRegistry = null;
             }
 
             try {
@@ -2089,13 +2089,13 @@ app.on('ready', async () => {
 
             // Initialize Cindy Agent after LLM and tools are ready (with error handling)
             try {
-                if (!langChainCindyAgent && langChainMemoryService && langChainToolExecutorService && llmProvider) {
+                if (!langChainCindyAgent && langChainMemoryService && toolRegistry && llmProvider) {
                     console.log('🔧 DEBUG: Loading LangChain CindyAgent via ServiceManager');
                     langChainCindyAgent = await serviceManager.getCindyAgent(duckDBVectorStore);
                     console.log('✅ DEBUG: LangChain CindyAgent loaded successfully');
                 } else {
                     console.warn('⚠️ DEBUG: Skipping Cindy Agent - required services not available');
-                    console.warn(`Memory service: ${!!langChainMemoryService}, Tool executor: ${!!langChainToolExecutorService}, LLM: ${!!llmProvider}`);
+                    console.warn(`Memory service: ${!!langChainMemoryService}, Tool registry: ${!!toolRegistry}, LLM: ${!!llmProvider}`);
                 }
             } catch (agentError) {
                 console.error('❌ DEBUG: Failed to load Cindy Agent:', agentError);
@@ -2105,9 +2105,9 @@ app.on('ready', async () => {
 
             // Attach tools to the LLM for automatic tool calling (with error handling)
             try {
-                if (langChainToolExecutorService && llmProvider) {
+                if (serviceManager && llmProvider) {
                     console.log('🔧 DEBUG: Attaching tools to LLM model');
-                    const tools = langChainToolExecutorService.getToolsForAgent();
+                    const tools = await serviceManager.getToolsForAgent(duckDBVectorStore);
                     console.log(`🔧 DEBUG: Found ${tools.length} tools:`, tools.map(t => t.name));
 
                     const modelWithTools = llmProvider.withTools(tools);
@@ -2117,7 +2117,7 @@ app.on('ready', async () => {
                         console.warn('⚠️ DEBUG: Failed to attach tools - model may not support tool binding');
                     }
                 } else {
-                    console.warn('⚠️ DEBUG: Tool executor service or LLM provider not available, skipping tool attachment');
+                    console.warn('⚠️ DEBUG: ServiceManager or LLM provider not available, skipping tool attachment');
                 }
             } catch (toolAttachmentError) {
                 console.error('❌ DEBUG: Failed to attach tools to LLM:', toolAttachmentError);
@@ -2298,7 +2298,7 @@ app.on('ready', async () => {
                                     serviceManager.updateCoreServices(settingsService, llmProvider);
 
                                     // Reinitialize Cindy Agent with the new provider
-                                    if (langChainMemoryService && langChainToolExecutorService) {
+                                    if (langChainMemoryService && toolRegistry) {
                                         console.log('🔄 Reinitializing Cindy Agent with new provider');
                                         console.log('🔄 Clearing old Cindy Agent instance');
                                         langChainCindyAgent = null; // Clear old instance first

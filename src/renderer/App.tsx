@@ -16,6 +16,7 @@ import useDocumentDetection from './hooks/useDocumentDetection';
 import ModernSettingsPanel from './components/ModernSettingsPanel';
 import ModernDatabasePanel from './components/ModernDatabasePanel';
 import ChatDocumentPanel from './components/ChatDocumentPanel';
+import WeatherPanel from './components/WeatherPanel';
 import ThemeToggle from './components/ThemeToggle';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { getSettings, setCurrentConversationId } from '../store/actions';
@@ -69,6 +70,8 @@ const App: React.FC = () => {
     const [currentTTSMessage, setCurrentTTSMessage] = useState<string | null>(null);
     const [isInputExpanded, setIsInputExpanded] = useState(false);
     const [activeHashtags, setActiveHashtags] = useState<string[]>([]);
+    const [weatherData, setWeatherData] = useState<any>(null);
+    const [showWeatherPanel, setShowWeatherPanel] = useState(false);
     const audioContext = useRef<AudioContext | null>(null);
     const sounds = useRef<Record<string, AudioBuffer>>({});
     const streamController = useRef<AbortController | null>(null);
@@ -652,6 +655,30 @@ const App: React.FC = () => {
                 if (processedTools.displayContent) {
                     dispatch({ type: 'APPEND_TO_LAST_ASSISTANT_MESSAGE', payload: processedTools.displayContent });
                 }
+
+                // Check for side view data (weather) in streaming updates
+                if (data.chunk.includes('📊 ')) {
+                    console.log('🌤️ Side view data detected in chunk:', data.chunk);
+                    
+                    // Try to extract JSON from the side view marker  
+                    const jsonMatch = data.chunk.match(/📊 (.+)/);
+                    if (jsonMatch) {
+                        const sideViewContent = jsonMatch[1].trim();
+                        
+                        // Try to parse as JSON (for direct weather data)
+                        try {
+                            const parsedData = JSON.parse(sideViewContent);
+                            if (parsedData.location && parsedData.temperature) {
+                                console.log('🌤️ Received weather data:', parsedData);
+                                setWeatherData(parsedData);
+                                setShowWeatherPanel(true);
+                            }
+                        } catch (parseError) {
+                            // Not JSON, might be just a marker like "Weather information"
+                            console.log('🌤️ Side view marker detected (not JSON):', sideViewContent);
+                        }
+                    }
+                }
             }
         };
 
@@ -801,6 +828,18 @@ const App: React.FC = () => {
             console.log('Backend user-message event received (should not happen):', data.message);
         };
 
+        const handleSideViewData = (_: any, data: { sideViewData: any, conversationId: string }) => {
+            if (data.conversationId === currentConversationIdRef.current && data.sideViewData) {
+                console.log('🌤️ Received side view data:', data.sideViewData);
+                
+                // Check if this is weather data
+                if (data.sideViewData.type === 'weather' && data.sideViewData.data) {
+                    setWeatherData(data.sideViewData.data);
+                    setShowWeatherPanel(true);
+                }
+            }
+        };
+
         ipcRenderer.on('stream-chunk', handleStreamChunk);
         ipcRenderer.on('stream-complete', handleStreamComplete);
         ipcRenderer.on('stream-error', handleStreamError);
@@ -810,6 +849,7 @@ const App: React.FC = () => {
 
         ipcRenderer.on('tool-execution-update', handleToolExecutionUpdate);
         ipcRenderer.on('user-message', handleUserMessage);
+        ipcRenderer.on('side-view-data', handleSideViewData);
 
         // Cleanup listeners on unmount
         return () => {
@@ -818,6 +858,7 @@ const App: React.FC = () => {
             ipcRenderer.off('stream-error', handleStreamError);
             ipcRenderer.off('tool-execution-update', handleToolExecutionUpdate);
             ipcRenderer.off('user-message', handleUserMessage);
+            ipcRenderer.off('side-view-data', handleSideViewData);
             if (streamController.current) {
                 streamController.current.abort();
             }
@@ -1527,6 +1568,17 @@ const App: React.FC = () => {
                             </div>
                         )}
                     </div>
+
+                    {/* Weather panel - shows as overlay when weather data is available */}
+                    {showWeatherPanel && weatherData && (
+                        <WeatherPanel
+                            weatherData={weatherData}
+                            onClose={() => {
+                                setShowWeatherPanel(false);
+                                setWeatherData(null);
+                            }}
+                        />
+                    )}
 
                     <div ref={settingsSidebarRef} className={`settings-sidebar-container ${showSettings ? 'open' : ''}`}>
                         <ModernSettingsPanel />

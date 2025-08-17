@@ -12,6 +12,7 @@ import { createWikipediaSearchTool } from './search/WikipediaSearchTool';
 import { createSerpAPISearchTool } from './search/SerpAPISearchTool';
 import { createTavilySearchTool } from './search/TavilySearchTool';
 import { createVectorSearchTool } from './vector/VectorSearchTool';
+import { createAccuWeatherTool } from './weather/AccuWeatherTool';
 
 /**
  * Tool configuration interface for initialization
@@ -21,17 +22,20 @@ export interface ToolConfiguration {
     braveApiKey?: string;
     serpApiKey?: string;
     tavilyApiKey?: string;
-    
+
+    // Weather API keys
+    accuWeatherApiKey?: string;
+
     // Vector store instance
     vectorStore?: any;
-    
+
     // Tool-specific settings
     searchSettings?: {
         preferredProvider?: string;
         maxResults?: number;
         timeout?: number;
     };
-    
+
     // Enable/disable specific tools
     enabledTools?: {
         duckduckgo?: boolean;
@@ -40,6 +44,7 @@ export interface ToolConfiguration {
         serpapi?: boolean;
         tavily?: boolean;
         vector?: boolean;
+        weather?: boolean;
     };
 }
 
@@ -51,7 +56,7 @@ export class ToolLoader {
     private initialized: boolean = false;
     private loadedTools: Set<string> = new Set();
 
-    private constructor() {}
+    private constructor() { }
 
     /**
      * Get singleton instance
@@ -68,26 +73,29 @@ export class ToolLoader {
      */
     async loadAllTools(config: ToolConfiguration = {}): Promise<void> {
         console.log('[ToolLoader] Starting tool registration process...');
-        
+
         const enabledTools = config.enabledTools || {};
         const registeredTools: string[] = [];
         const failedTools: string[] = [];
 
         // Load search tools
         await this.loadSearchTools(config, enabledTools, registeredTools, failedTools);
-        
+
         // Load vector tools
         await this.loadVectorTools(config, enabledTools, registeredTools, failedTools);
-        
+
+        // Load weather tools
+        await this.loadWeatherTools(config, enabledTools, registeredTools, failedTools);
+
         // Log results
         console.log(`[ToolLoader] ✅ Successfully registered ${registeredTools.length} tools:`, registeredTools);
         if (failedTools.length > 0) {
             console.log(`[ToolLoader] ⚠️  Failed to register ${failedTools.length} tools:`, failedTools);
         }
-        
+
         this.initialized = true;
         console.log('[ToolLoader] Tool loading complete');
-        
+
         // Emit event to notify that tools are loaded
         toolRegistry.emit('tools-loaded', {
             registered: registeredTools,
@@ -169,9 +177,9 @@ export class ToolLoader {
         // Tavily Search
         if (enabledTools.tavily !== false && config.tavilyApiKey) {
             try {
-                const spec = createTavilySearchTool({ 
+                const spec = createTavilySearchTool({
                     apiKey: config.tavilyApiKey,
-                    maxResults: config.searchSettings?.maxResults 
+                    maxResults: config.searchSettings?.maxResults
                 });
                 if (spec && !this.loadedTools.has(spec.name)) {
                     toolRegistry.registerTool(spec);
@@ -206,6 +214,32 @@ export class ToolLoader {
             } catch (error: any) {
                 console.error('[ToolLoader] Failed to load vector search:', error.message);
                 failedTools.push('search_documents');
+            }
+        }
+    }
+
+    /**
+     * Load weather tools
+     */
+    private async loadWeatherTools(
+        config: ToolConfiguration,
+        enabledTools: any,
+        registeredTools: string[],
+        failedTools: string[]
+    ): Promise<void> {
+        // AccuWeather Tool (works with mock data when no API key)
+        if (enabledTools.weather !== false) {
+            try {
+                const spec = createAccuWeatherTool("7FW644HhxLVHH7r5bVYchwTPle2jo0sC");
+                // const spec = createAccuWeatherTool(config.accuWeatherApiKey);
+                if (spec && !this.loadedTools.has(spec.name)) {
+                    toolRegistry.registerTool(spec);
+                    this.loadedTools.add(spec.name);
+                    registeredTools.push(spec.name);
+                }
+            } catch (error: any) {
+                console.error('[ToolLoader] Failed to load AccuWeather tool:', error.message);
+                failedTools.push('weather');
             }
         }
     }
@@ -247,9 +281,9 @@ export class ToolLoader {
 
                 case 'tavily_search':
                     if (config.tavilyApiKey) {
-                        const spec = createTavilySearchTool({ 
+                        const spec = createTavilySearchTool({
                             apiKey: config.tavilyApiKey,
-                            maxResults: config.searchSettings?.maxResults 
+                            maxResults: config.searchSettings?.maxResults
                         });
                         if (spec) {
                             toolRegistry.registerTool(spec);
@@ -267,6 +301,16 @@ export class ToolLoader {
                             this.loadedTools.add(spec.name);
                             return true;
                         }
+                    }
+                    break;
+
+                case 'weather':
+                    const spec = createAccuWeatherTool("7FW644HhxLVHH7r5bVYchwTPle2jo0sC");
+                    // const spec = createAccuWeatherTool(config.accuWeatherApiKey);
+                    if (spec) {
+                        toolRegistry.registerTool(spec);
+                        this.loadedTools.add(spec.name);
+                        return true;
                     }
                     break;
 
