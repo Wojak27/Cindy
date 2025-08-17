@@ -178,14 +178,57 @@ export class DeepResearchIntegration {
     }
 
     /**
-     * Determine if a message should use Deep Research
+     * Determine if a message should use Deep Research using LLM decision making
+     * Returns true for Deep Research, or a direct response string for simple queries
      */
-    shouldUseDeepResearch(message: string): boolean {
-        return true;
+    async shouldUseDeepResearch(message: string): Promise<boolean | string> {
+        try {
+            const routingPrompt = `You are an intelligent routing agent that decides whether a user message requires comprehensive Deep Research or can be answered with a simple, direct response.
+
+DEEP RESEARCH should be used for:
+- Complex questions requiring multiple sources and comprehensive analysis
+- Research requests about topics, trends, or detailed information
+- Comparative analysis or multi-faceted investigations
+- Questions that benefit from structured research methodology
+- Requests for in-depth reports or comprehensive overviews
+
+SIMPLE RESPONSE should be used for:
+- Basic factual questions with straightforward answers
+- Simple calculations or conversions
+- Common knowledge queries
+- Personal assistance requests (scheduling, reminders, etc.)
+- Technical questions with clear, direct answers
+- Casual conversation or greetings
+
+User Message: "${message}"
+
+If this requires Deep Research, respond with exactly: "USE_DEEP_RESEARCH"
+
+If this can be answered simply, provide a helpful, direct response (2-3 sentences maximum) that answers the user's question.`;
+
+            const result = await this.llmProvider.invoke([
+                { role: 'user', content: routingPrompt }
+            ]);
+
+            const response = (result.content as string).trim();
+
+            if (response === 'USE_DEEP_RESEARCH') {
+                console.log('[DeepResearchIntegration] LLM routing decision: Deep Research');
+                return true;
+            } else {
+                console.log('[DeepResearchIntegration] LLM routing decision: Direct response');
+                return response;
+            }
+
+        } catch (error) {
+            console.error('[DeepResearchIntegration] Error in LLM routing decision:', error);
+            // Fallback to Deep Research on error
+            return true;
+        }
     }
 
     /**
-     * Process a message using Deep Research or fallback
+     * Process a message using Deep Research or direct response
      */
     async processMessage(message: string): Promise<{
         result: string;
@@ -195,7 +238,9 @@ export class DeepResearchIntegration {
         const startTime = Date.now();
 
         try {
-            if (this.shouldUseDeepResearch(message)) {
+            const routingDecision = await this.shouldUseDeepResearch(message);
+
+            if (routingDecision === true) {
                 console.log('[DeepResearchIntegration] Using Deep Research for message');
 
                 const result = await this.deepResearchAgent.processResearch(message);
@@ -206,12 +251,11 @@ export class DeepResearchIntegration {
                     processingTime: Date.now() - startTime
                 };
             } else {
-                console.log('[DeepResearchIntegration] Using standard processing');
+                console.log('[DeepResearchIntegration] Using direct LLM response');
 
-                // For non-research messages, we could integrate with the original agent
-                // For now, return a simple response indicating this should use the original system
+                // Return the direct response from the LLM routing decision
                 return {
-                    result: 'FALLBACK_TO_ORIGINAL',
+                    result: routingDecision as string,
                     usedDeepResearch: false,
                     processingTime: Date.now() - startTime
                 };
@@ -238,7 +282,7 @@ export class DeepResearchIntegration {
     }
 
     /**
-     * Stream Deep Research with progress updates
+     * Stream Deep Research with progress updates or direct response
      */
     async *streamMessage(message: string): AsyncGenerator<{
         type: 'progress' | 'result';
@@ -246,19 +290,33 @@ export class DeepResearchIntegration {
         usedDeepResearch: boolean;
         status?: string;
     }> {
-        if (this.shouldUseDeepResearch(message)) {
-            console.log('[DeepResearchIntegration] Streaming Deep Research');
+        try {
+            const routingDecision = await this.shouldUseDeepResearch(message);
 
-            for await (const update of this.deepResearchAgent.streamResearch(message)) {
+            if (routingDecision === true) {
+                console.log('[DeepResearchIntegration] Streaming Deep Research');
+
+                for await (const update of this.deepResearchAgent.streamResearch(message)) {
+                    yield {
+                        ...update,
+                        usedDeepResearch: true
+                    };
+                }
+            } else {
+                console.log('[DeepResearchIntegration] Streaming direct LLM response');
+                
+                // Stream the direct response
                 yield {
-                    ...update,
-                    usedDeepResearch: true
+                    type: 'result',
+                    content: routingDecision as string,
+                    usedDeepResearch: false
                 };
             }
-        } else {
+        } catch (error: any) {
+            console.error('[DeepResearchIntegration] Error in streaming:', error);
             yield {
                 type: 'result',
-                content: 'FALLBACK_TO_ORIGINAL',
+                content: `Error: ${error.message}`,
                 usedDeepResearch: false
             };
         }

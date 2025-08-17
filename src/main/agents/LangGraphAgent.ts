@@ -108,35 +108,21 @@ export class LangGraphAgent {
             console.log(`📥 INPUT: "${input}"`);
             console.log("═".repeat(80));
 
-            // Check if this should use Deep Research streaming
-            if (this.deepResearchIntegration.shouldUseDeepResearch(input)) {
-                console.log("[LangGraphAgent] Using Deep Research streaming");
+            // Stream processing through Deep Research integration
+            console.log("[LangGraphAgent] Processing through Deep Research integration");
 
-                yield "<think>Processing your request with Deep Research capabilities...</think>\n\n";
-
-                for await (const update of this.deepResearchIntegration.streamMessage(input)) {
-                    if (update.usedDeepResearch && update.content !== 'FALLBACK_TO_ORIGINAL') {
-                        // Format Deep Research updates
-                        if (update.type === 'progress') {
-                            yield `📋 ${update.content}\n\n`;
-                        } else if (update.type === 'result') {
-                            yield update.content;
-                        }
-                    } else {
-                        // Fallback to simple streaming
-
-                        for await (const fallbackChunk of this.streamFallbackResponse(input)) {
-                            yield fallbackChunk;
-                        }
-                        return;
+            for await (const update of this.deepResearchIntegration.streamMessage(input)) {
+                if (update.usedDeepResearch) {
+                    // Deep Research mode
+                    if (update.type === 'progress') {
+                        yield `📋 ${update.content}\n\n`;
+                    } else if (update.type === 'result') {
+                        yield update.content;
                     }
-                }
-            } else {
-                // Use standard processing for non-research queries
-                console.log("[LangGraphAgent] Using standard streaming");
-
-                for await (const chunk of this.streamFallbackResponse(input)) {
-                    yield chunk;
+                } else {
+                    // Direct LLM response mode
+                    console.log("[LangGraphAgent] Using direct LLM response");
+                    yield update.content;
                 }
             }
 
@@ -147,33 +133,6 @@ export class LangGraphAgent {
             yield `\n❌ **Error:** I encountered an issue while processing your request: ${(error as Error).message}`;
         }
     }
-
-    /**
-     * Stream fallback response for non-research queries
-     */
-    private async *streamFallbackResponse(input: string): AsyncGenerator<string> {
-        try {
-            // Simple LLM response with simulated streaming
-            const result = await this.llmProvider.invoke([
-                { role: 'user', content: input }
-            ]);
-
-            const response = result.content as string || 'I can help you with that. Could you provide more details?';
-
-            // Simulate streaming by chunking the response
-            const chunkSize = 50;
-            for (let i = 0; i < response.length; i += chunkSize) {
-                yield response.slice(i, i + chunkSize);
-                // Small delay to simulate streaming
-                await new Promise(resolve => setTimeout(resolve, 20));
-            }
-
-        } catch (error) {
-            console.error('[LangGraphAgent] Fallback streaming error:', error);
-            yield 'I can help you with questions and research tasks. Please let me know what you\'d like to explore!';
-        }
-    }
-
 
     /**
      * Get the current provider being used
