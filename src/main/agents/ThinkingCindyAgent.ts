@@ -52,16 +52,16 @@ export class ThinkingCindyAgent {
      */
     async *processStreaming(input: string, context?: AgentContext): AsyncGenerator<string> {
         // Convert AgentContext to LangGraphAgentContext
-        const langGraphContext = context ? {
-            conversationId: context.conversationId,
-            userId: context.userId,
-            sessionId: context.sessionId,
-            timestamp: context.timestamp,
-            preferences: context.preferences
-        } : undefined;
+        // const langGraphContext = context ? {
+        //     conversationId: context.conversationId,
+        //     userId: context.userId,
+        //     sessionId: context.sessionId,
+        //     timestamp: context.timestamp,
+        //     preferences: context.preferences
+        // } : undefined;
 
         // Delegate to LangGraphAgent
-        yield* this.langGraphAgent.processStreaming(input, langGraphContext);
+        yield* this.langGraphAgent.processStreaming(input);
     }
 
     // Expose thinking steps for debugging/transparency

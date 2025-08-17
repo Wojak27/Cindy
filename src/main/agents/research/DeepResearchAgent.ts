@@ -420,4 +420,40 @@ Generate specific, actionable research topics (one per line) that will help comp
     getConfigManager(): DeepResearchConfigManager {
         return this.configManager;
     }
+
+    /**
+     * Get the main graph for visualization
+     */
+    getMainGraph(): any {
+        return this.graph;
+    }
+
+    /**
+     * Get the supervisor graph for visualization
+     */
+    getSupervisorGraph(): any {
+        return this.supervisorGraph;
+    }
+
+    /**
+     * Get the researcher graph for visualization
+     */
+    getResearcherGraph(): any {
+        return this.researcherGraph;
+    }
+
+    /**
+     * Get all graphs for visualization
+     */
+    getAllGraphs(): {
+        main: any;
+        supervisor: any;
+        researcher: any;
+    } {
+        return {
+            main: this.graph,
+            supervisor: this.supervisorGraph,
+            researcher: this.researcherGraph
+        };
+    }
 }
