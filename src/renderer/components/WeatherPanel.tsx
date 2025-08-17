@@ -47,7 +47,7 @@ interface WeatherData {
         metric: number;
         imperial: number;
     };
-    uv_index: number;
+    uv_index: number | string;
     is_day: boolean;
     observation_time: string;
     source: string;
@@ -237,7 +237,7 @@ const WeatherPanel: React.FC<WeatherPanelProps> = ({ weatherData, onClose }) => 
                                 </Typography>
                             </Box>
                             <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                                {weatherData.uv_index} {weatherData.uv_index <= 2 ? '(Low)' : weatherData.uv_index <= 5 ? '(Moderate)' : weatherData.uv_index <= 7 ? '(High)' : '(Very High)'}
+                                {weatherData.uv_index} {typeof weatherData.uv_index === 'number' ? (weatherData.uv_index <= 2 ? '(Low)' : weatherData.uv_index <= 5 ? '(Moderate)' : weatherData.uv_index <= 7 ? '(High)' : '(Very High)') : ''}
                             </Typography>
                         </Card>
                 </Box>

@@ -269,9 +269,22 @@ Provide a natural, helpful response that addresses the user's request using the 
      */
     private formatWeatherForSideView(weatherResult: any, params: any): any {
         try {
-            // Parse weather result if it's a string
+            console.log('[ToolAgent] formatWeatherForSideView - raw result:', weatherResult);
+            console.log('[ToolAgent] formatWeatherForSideView - params:', params);
+            
+            // Handle ToolRegistry result format: { success: true, result: "JSON_STRING", duration: ... }
             let weatherData = weatherResult;
-            if (typeof weatherResult === 'string') {
+            
+            if (weatherResult.success && weatherResult.result) {
+                // Extract the actual weather data from ToolRegistry response
+                try {
+                    weatherData = JSON.parse(weatherResult.result);
+                    console.log('[ToolAgent] Parsed weather data from ToolRegistry result:', weatherData);
+                } catch (parseError) {
+                    console.error('[ToolAgent] Failed to parse weather result:', parseError);
+                    weatherData = weatherResult.result;
+                }
+            } else if (typeof weatherResult === 'string') {
                 try {
                     weatherData = JSON.parse(weatherResult);
                 } catch {
