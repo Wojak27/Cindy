@@ -2,7 +2,6 @@ import { LLMProvider } from '../services/LLMProvider';
 import { LangChainMemoryService as MemoryService } from '../services/LangChainMemoryService';
 import { LangChainToolExecutorService as ToolExecutorService } from '../services/LangChainToolExecutorService';
 import { LangGraphAgent } from './LangGraphAgent';
-import { AgentContext as LangGraphAgentContext } from './state/AgentState';
 
 interface AgentContext {
     conversationId: string;
@@ -53,14 +52,14 @@ export class ThinkingCindyAgent {
      */
     async *processStreaming(input: string, context?: AgentContext): AsyncGenerator<string> {
         // Convert AgentContext to LangGraphAgentContext
-        const langGraphContext: LangGraphAgentContext = context ? {
+        const langGraphContext = context ? {
             conversationId: context.conversationId,
             userId: context.userId,
             sessionId: context.sessionId,
             timestamp: context.timestamp,
             preferences: context.preferences
         } : undefined;
-        
+
         // Delegate to LangGraphAgent
         yield* this.langGraphAgent.processStreaming(input, langGraphContext);
     }

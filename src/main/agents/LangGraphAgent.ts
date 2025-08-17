@@ -1,12 +1,8 @@
-import { StateGraph } from '@langchain/langgraph';
-import { AgentState, AgentStateAnnotation, AgentContext, createInitialState } from './state/AgentState';
-import { createAnalyzeInputNode } from './nodes/AnalyzeInputNode';
-import { createPlanningNode } from './nodes/PlanningNode';
-import { createToolExecutionNode } from './nodes/ToolExecutionNode';
-import { createSynthesisNode } from './nodes/SynthesisNode';
 import { LLMProvider } from '../services/LLMProvider';
 import { LangChainMemoryService } from '../services/LangChainMemoryService';
 import { LangChainToolExecutorService } from '../services/LangChainToolExecutorService';
+import { SettingsService } from '../services/SettingsService';
+import { DeepResearchIntegration } from './research/DeepResearchIntegration';
 
 /**
  * Configuration options for the LangGraphAgent
@@ -19,92 +15,64 @@ export interface LangGraphAgentOptions {
 }
 
 /**
- * LangGraph-based implementation of the Cindy Agent.
- * This is a proper graph-based agent with nodes and edges for each phase of processing.
+ * Deep Research-enhanced LangGraph Agent.
+ * Intelligent routing between Deep Research capabilities and standard processing.
  */
 export class LangGraphAgent {
-    private graph: any;
+    private deepResearchIntegration: DeepResearchIntegration;
     private llmProvider: LLMProvider;
-    private memoryService: LangChainMemoryService;
     private toolExecutor: LangChainToolExecutorService;
+    private settingsService: SettingsService | null = null;
 
     constructor(options: LangGraphAgentOptions) {
         this.llmProvider = options.llmProvider;
-        this.memoryService = options.memoryService;
         this.toolExecutor = options.toolExecutor;
 
-        // Build the graph
-        this.graph = this.buildGraph();
+        // Create a minimal settings service for compatibility
+        this.settingsService = this.createCompatibilitySettingsService();
 
-        console.log('[LangGraphAgent] Initialized with LangGraph architecture');
+        // Initialize Deep Research integration
+        this.deepResearchIntegration = new DeepResearchIntegration({
+            llmProvider: this.llmProvider,
+            toolExecutor: this.toolExecutor,
+            settingsService: this.settingsService,
+            enableDeepResearch: true,
+            fallbackToOriginal: true
+        });
+
+        console.log('[LangGraphAgent] Initialized with Deep Research architecture');
         console.log('[LangGraphAgent] Using provider:', this.llmProvider.getCurrentProvider());
     }
 
     /**
-     * Build the state graph
+     * Create a compatibility settings service for Deep Research integration
      */
-    private buildGraph() {
-        // Create the graph builder with our state annotation
-        const workflow = new StateGraph(AgentStateAnnotation as any);
-
-        // Add nodes
-        workflow.addNode('analyze_input', createAnalyzeInputNode(this.llmProvider));
-        workflow.addNode('planning', createPlanningNode(this.llmProvider, this.toolExecutor));
-        workflow.addNode('tool_execution', createToolExecutionNode(this.toolExecutor));
-        workflow.addNode('synthesis', createSynthesisNode(this.llmProvider, this.memoryService));
-
-        // Add edges
-        workflow.addEdge('__start__' as any, 'analyze_input' as any);
-
-        // Conditional routing after analyze_input
-        workflow.addConditionalEdges(
-            'analyze_input' as any,
-            (state: AgentState) => {
-                // If direct response, skip to synthesis
-                if (state.directResponse) {
-                    return 'synthesis';
-                }
-                // Otherwise, go to planning
-                return 'planning';
-            }
-        );
-
-        // Planning always goes to tool execution if there are tools, otherwise synthesis
-        workflow.addConditionalEdges(
-            'planning' as any,
-            (state: AgentState) => {
-                if (state.plan && state.plan.steps && state.plan.steps.length > 0) {
-                    return 'tool_execution';
-                }
-                return 'synthesis';
-            }
-        );
-
-        // Tool execution always goes to synthesis
-        workflow.addEdge('tool_execution' as any, 'synthesis' as any);
-
-        // Synthesis goes to end
-        workflow.addEdge('synthesis' as any, '__end__' as any);
-
-        // Compile the graph
-        return workflow.compile();
+    private createCompatibilitySettingsService(): SettingsService {
+        // Return a minimal settings service that provides default values
+        return {
+            getCurrentProvider: () => this.llmProvider.getCurrentProvider(),
+            // Add other minimal methods as needed for compatibility
+        } as any;
     }
 
     /**
-     * Process a message through the graph (non-streaming)
+     * Process a message through the Deep Research system (non-streaming)
      */
-    async process(input: string, context?: AgentContext): Promise<string> {
+    async process(input: string, context?: any): Promise<string> {
         try {
-            console.log('[LangGraphAgent] Processing input:', input);
+            console.log('[LangGraphAgent] Processing input with Deep Research routing:', input);
 
-            // Create initial state
-            const initialState = createInitialState(input, context);
+            // Use Deep Research integration for intelligent processing
+            const result = await this.deepResearchIntegration.processMessage(input);
 
-            // Run the graph
-            const result = await this.graph.invoke(initialState);
-
-            console.log('[LangGraphAgent] Processing complete');
-            return result.finalResponse || 'I encountered an issue processing your request.';
+            if (result.usedDeepResearch && result.result !== 'FALLBACK_TO_ORIGINAL') {
+                console.log(`[LangGraphAgent] Deep Research completed in ${result.processingTime}ms`);
+                return result.result;
+            } else {
+                // For fallback cases, provide a simple response
+                console.log('[LangGraphAgent] Using fallback processing');
+                return this.createFallbackResponse(input, context);
+            }
 
         } catch (error) {
             console.error('[LangGraphAgent] Processing error:', error);
@@ -113,166 +81,96 @@ export class LangGraphAgent {
     }
 
     /**
-     * Process a message through the graph with streaming output
+     * Create a fallback response for non-research queries
      */
-    /**
-  * Process a message through the graph with streaming output
-  */
-    async *processStreaming(input: string, context?: AgentContext): AsyncGenerator<string> {
-        // ---------- helpers ----------
-        const isAsyncIterable = (v: any): v is AsyncIterable<unknown> =>
-            v != null && typeof v[Symbol.asyncIterator] === "function";
-
-        const isIterable = (v: any): v is Iterable<unknown> =>
-            v != null && typeof v[Symbol.iterator] === "function";
-
-        const isNodeReadable = (v: any): v is NodeJS.ReadableStream =>
-            v && typeof v.on === "function" && typeof v.read === "function";
-
-        const chunkText = function* (text: string, size = 256) {
-            for (let i = 0; i < text.length; i += size) yield text.slice(i, i + size);
-        };
-
-        const stringify = (x: any) => {
-            if (x == null) return "";
-            if (typeof x === "string") return x;
-            if (typeof x === "object") {
-                // common shapes: {output}, {text}, {content}, {response}
-                for (const k of ["output", "text", "content", "response", "finalResponse"]) {
-                    if (k in x && (typeof (x as any)[k] === "string" || typeof (x as any)[k] === "number"))
-                        return String((x as any)[k]);
-                }
-                try { return JSON.stringify(x); } catch { return String(x); }
-            }
-            return String(x);
-        };
-
-        const createInitialState = (inp: string, ctx?: AgentContext) => ({
-            input: inp,
-            ...(ctx ?? {})
-        });
-
-        // ---------- implementation ----------
+    private async createFallbackResponse(input: string, context?: any): Promise<string> {
         try {
-            console.log("\n🎬 [LangGraphAgent] STARTING STREAMING PROCESS");
+            // Simple LLM response for non-research queries
+            const result = await this.llmProvider.invoke([
+                { role: 'user', content: input }
+            ]);
+
+            return result.content as string || 'I can help you with that. Could you provide more details?';
+
+        } catch (error) {
+            console.error('[LangGraphAgent] Fallback processing error:', error);
+            return 'I can help you with questions and research tasks. Please let me know what you\'d like to explore!';
+        }
+    }
+
+    /**
+     * Process a message through Deep Research with streaming output
+     */
+    async *processStreaming(input: string, context?: any): AsyncGenerator<string> {
+        try {
+            console.log("\n🎬 [LangGraphAgent] STARTING DEEP RESEARCH STREAMING");
             console.log("═".repeat(80));
             console.log(`📥 INPUT: "${input}"`);
             console.log("═".repeat(80));
 
-            const initialState = createInitialState(input, context);
+            // Check if this should use Deep Research streaming
+            if (this.deepResearchIntegration.shouldUseDeepResearch(input)) {
+                console.log("[LangGraphAgent] Using Deep Research streaming");
 
-            // Prefer a real async-iterable stream() if present
-            const streamFn = (this as any)?.graph?.stream
-                ? (this as any).graph.stream.bind((this as any).graph)
-                : undefined;
+                yield "<think>Processing your request with Deep Research capabilities...</think>\n\n";
 
-            if (streamFn) {
-                const streamRes = streamFn(initialState);
-
-                // Case A: true async iterable
-                if (isAsyncIterable(streamRes)) {
-                    let finalResponse = "";
-                    for await (const chunk of streamRes as AsyncIterable<any>) {
-                        const text = stringify(chunk);
-                        if (text) {
-                            yield text;
-                            finalResponse += text;
+                for await (const update of this.deepResearchIntegration.streamMessage(input)) {
+                    if (update.usedDeepResearch && update.content !== 'FALLBACK_TO_ORIGINAL') {
+                        // Format Deep Research updates
+                        if (update.type === 'progress') {
+                            yield `📋 ${update.content}\n\n`;
+                        } else if (update.type === 'result') {
+                            yield update.content;
                         }
-                    }
-                    return;
-                }
+                    } else {
+                        // Fallback to simple streaming
 
-                // Case B: Node Readable (some libs return Readable)
-                if (isNodeReadable(streamRes)) {
-                    let finalResponse = "";
-                    for await (const chunk of streamRes as AsyncIterable<any>) {
-                        const text = Buffer.isBuffer(chunk) ? chunk.toString("utf8") : stringify(chunk);
-                        if (text) {
-                            yield text;
-                            finalResponse += text;
+                        for await (const fallbackChunk of this.streamFallbackResponse(input, context)) {
+                            yield fallbackChunk;
                         }
+                        return;
                     }
-                    return;
                 }
+            } else {
+                // Use standard processing for non-research queries
+                console.log("[LangGraphAgent] Using standard streaming");
 
-                // Case C: sync iterable
-                if (isIterable(streamRes)) {
-                    let finalResponse = "";
-                    for (const chunk of streamRes as Iterable<any>) {
-                        const text = stringify(chunk);
-                        if (text) {
-                            // not async, but we can still yield
-                            yield text;
-                            finalResponse += text;
-                        }
-                    }
-                    return;
+                for await (const chunk of this.streamFallbackResponse(input, context)) {
+                    yield chunk;
                 }
-
-                // If we got here, .stream() exists but isn't iterable -> fall back
-                console.warn("[LangGraphAgent] .stream() returned a non-iterable; falling back to invoke()");
             }
-
-            // Try LangGraph-style streamEvents() if available (events carry tokens/final outputs)
-            const streamEventsFn = (this as any)?.graph?.streamEvents
-                ? (this as any).graph.streamEvents.bind((this as any).graph)
-                : undefined;
-
-            if (streamEventsFn) {
-                // Many LangGraph impls support filtering by event types; if yours differs, adjust here
-                const events = streamEventsFn(initialState, { version: "v2" });
-                if (isAsyncIterable(events)) {
-                    let finalResponse = "";
-                    for await (const ev of events as AsyncIterable<any>) {
-                        // Heuristics: emit token-like payloads first
-                        // Common fields: ev.data?.chunk, ev.data?.delta, ev.data?.token, ev.data?.text
-                        const maybePieces = [
-                            ev?.data?.chunk,
-                            ev?.data?.delta,
-                            ev?.data?.token,
-                            ev?.data?.text,
-                            ev?.output
-                        ];
-                        for (const piece of maybePieces) {
-                            const text = stringify(piece);
-                            if (text) {
-                                yield text;
-                                finalResponse += text;
-                                break;
-                            }
-                        }
-                        // Some frameworks mark a final event; if needed, you can detect it here
-                    }
-                    return;
-                }
-                console.warn("[LangGraphAgent] .streamEvents() returned non-iterable; falling back to invoke()");
-            }
-
-            // FINAL FALLBACK: non-streaming run + simulated streaming
-            const invokeFn = (this as any)?.graph?.invoke
-                ? (this as any).graph.invoke.bind((this as any).graph)
-                : undefined;
-
-            if (!invokeFn) {
-                throw new Error("Graph has neither stream/streamEvents nor invoke available.");
-            }
-
-            const result = await invokeFn(initialState);
-            const text = stringify(result);
-            if (!text) {
-                console.warn("[LangGraphAgent] invoke() returned empty payload, emitting JSON:");
-                yield JSON.stringify(result ?? {});
-                return;
-            }
-
-            // simulate streaming by chunking the text
-            for (const chunk of chunkText(text, 256)) yield chunk;
 
         } catch (error) {
             console.log("\n❌ [LangGraphAgent] Streaming process error");
             console.log("═".repeat(80));
             console.error("[LangGraphAgent] Streaming error:", error);
             yield `\n❌ **Error:** I encountered an issue while processing your request: ${(error as Error).message}`;
+        }
+    }
+
+    /**
+     * Stream fallback response for non-research queries
+     */
+    private async *streamFallbackResponse(input: string, context?: any): AsyncGenerator<string> {
+        try {
+            // Simple LLM response with simulated streaming
+            const result = await this.llmProvider.invoke([
+                { role: 'user', content: input }
+            ]);
+
+            const response = result.content as string || 'I can help you with that. Could you provide more details?';
+
+            // Simulate streaming by chunking the response
+            const chunkSize = 50;
+            for (let i = 0; i < response.length; i += chunkSize) {
+                yield response.slice(i, i + chunkSize);
+                // Small delay to simulate streaming
+                await new Promise(resolve => setTimeout(resolve, 20));
+            }
+
+        } catch (error) {
+            console.error('[LangGraphAgent] Fallback streaming error:', error);
+            yield 'I can help you with questions and research tasks. Please let me know what you\'d like to explore!';
         }
     }
 
@@ -289,5 +187,55 @@ export class LangGraphAgent {
      */
     getAvailableTools(): string[] {
         return this.toolExecutor.getAvailableTools();
+    }
+
+    /**
+     * Update settings and propagate to Deep Research integration
+     */
+    async updateSettings(): Promise<void> {
+        try {
+            await this.deepResearchIntegration.updateSettings();
+            console.log('[LangGraphAgent] Settings updated successfully');
+        } catch (error) {
+            console.error('[LangGraphAgent] Error updating settings:', error);
+        }
+    }
+
+    /**
+     * Get enhanced status information
+     */
+    getStatus(): {
+        provider: string;
+        availableTools: string[];
+        deepResearchStatus: any;
+    } {
+        return {
+            provider: this.getCurrentProvider(),
+            availableTools: this.getAvailableTools(),
+            deepResearchStatus: this.deepResearchIntegration.getStatus()
+        };
+    }
+
+    /**
+     * Enable or disable Deep Research capabilities
+     */
+    setDeepResearchEnabled(enabled: boolean): void {
+        this.deepResearchIntegration.setEnabled(enabled);
+        console.log(`[LangGraphAgent] Deep Research ${enabled ? 'enabled' : 'disabled'}`);
+    }
+
+    /**
+     * Set fallback behavior for when Deep Research fails
+     */
+    setFallbackEnabled(enabled: boolean): void {
+        this.deepResearchIntegration.setFallbackEnabled(enabled);
+        console.log(`[LangGraphAgent] Fallback to standard processing ${enabled ? 'enabled' : 'disabled'}`);
+    }
+
+    /**
+     * Get the Deep Research integration (for advanced configuration)
+     */
+    getDeepResearchIntegration(): DeepResearchIntegration {
+        return this.deepResearchIntegration;
     }
 }
