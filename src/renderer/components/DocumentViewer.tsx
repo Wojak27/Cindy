@@ -44,24 +44,8 @@ import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
-// Add Promise.withResolvers polyfill for Node.js 18 compatibility
-if (!(Promise as any).withResolvers) {
-    (Promise as any).withResolvers = function <T>() {
-        let resolve!: (value: T | PromiseLike<T>) => void;
-        let reject!: (reason?: any) => void;
-        const promise = new Promise<T>((res, rej) => {
-            resolve = res;
-            reject = rej;
-        });
-        return { promise, resolve, reject };
-    };
-}
-
 // Configure pdfjs worker for Electron
-// Use CDN with dynamic version matching for best compatibility
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
-console.log(`PDF.js worker configured with version ${pdfjs.version}`);
-
+// Use local bundled worker for better compatibility and security
 interface IndexedFile {
     path: string;
     name: string;
@@ -97,8 +81,18 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ fileUri, fileName }) => {
 
     const onDocumentLoadError = (error: Error) => {
         setLoading(false);
-        setError(error.message);
-        console.error('PDF load error:', error);
+        let errorMessage = error.message;
+
+        // Provide helpful error messages for common PDF.js worker issues
+        if (error.message.includes('Setting up fake worker failed')) {
+            errorMessage = 'PDF worker failed to initialize. This may be due to security restrictions or network issues.';
+        } else if (error.message.includes('worker')) {
+            errorMessage = 'PDF worker error. Please check your internet connection or try refreshing the page.';
+        }
+
+        setError(errorMessage);
+        console.error('[PDF.js] Document load error:', error);
+        console.error('[PDF.js] Worker source:', pdfjs.GlobalWorkerOptions.workerSrc);
     };
 
     const goToPrevPage = () => {
@@ -123,11 +117,11 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ fileUri, fileName }) => {
 
     if (error) {
         return (
-            <Box sx={{ 
-                display: 'flex', 
+            <Box sx={{
+                display: 'flex',
                 flexDirection: 'column',
-                justifyContent: 'center', 
-                alignItems: 'center', 
+                justifyContent: 'center',
+                alignItems: 'center',
                 height: '100%',
                 gap: 2
             }}>
@@ -138,8 +132,8 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ fileUri, fileName }) => {
                 <Typography variant="body2" color="text.secondary">
                     {error}
                 </Typography>
-                <Button 
-                    variant="outlined" 
+                <Button
+                    variant="outlined"
                     onClick={() => {
                         const link = document.createElement('a');
                         link.href = fileUri;
@@ -156,11 +150,11 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ fileUri, fileName }) => {
     return (
         <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
             {/* PDF Controls */}
-            <Box sx={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: 1, 
-                p: 1, 
+            <Box sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                p: 1,
                 borderBottom: `1px solid ${theme.palette.divider}`,
                 backgroundColor: theme.palette.background.paper,
                 flexShrink: 0
@@ -173,7 +167,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ fileUri, fileName }) => {
                         Next
                     </Button>
                 </ButtonGroup>
-                
+
                 <Typography variant="body2" sx={{ mx: 2 }}>
                     Page {pageNumber} of {numPages}
                 </Typography>
@@ -191,27 +185,27 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ fileUri, fileName }) => {
                 </ButtonGroup>
 
                 <Box sx={{ flexGrow: 1 }} />
-                
+
                 <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
                     {fileName}
                 </Typography>
             </Box>
 
             {/* PDF Content */}
-            <Box sx={{ 
-                flex: 1, 
-                overflow: 'auto', 
-                display: 'flex', 
+            <Box sx={{
+                flex: 1,
+                overflow: 'auto',
+                display: 'flex',
                 justifyContent: 'center',
                 alignItems: 'flex-start',
                 p: 2,
                 backgroundColor: theme.palette.grey[100]
             }}>
                 {loading && (
-                    <Box sx={{ 
-                        display: 'flex', 
-                        flexDirection: 'column', 
-                        alignItems: 'center', 
+                    <Box sx={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
                         gap: 2,
                         mt: 4
                     }}>
@@ -221,7 +215,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ fileUri, fileName }) => {
                         </Typography>
                     </Box>
                 )}
-                
+
                 <Document
                     file={fileUri}
                     onLoadSuccess={onDocumentLoadSuccess}
@@ -248,31 +242,31 @@ const SimpleDocumentViewer: React.FC<{
     textContent?: string;
 }> = ({ fileUri, fileName, mimeType, textContent }) => {
     const theme = useTheme();
-    
+
     if (mimeType.startsWith('image/')) {
         return (
             <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-                <img 
-                    src={fileUri} 
+                <img
+                    src={fileUri}
                     alt={fileName}
-                    style={{ 
-                        maxWidth: '100%', 
-                        maxHeight: '100%', 
-                        objectFit: 'contain' 
+                    style={{
+                        maxWidth: '100%',
+                        maxHeight: '100%',
+                        objectFit: 'contain'
                     }}
                 />
             </Box>
         );
     }
-    
+
     if (mimeType === 'application/pdf') {
         return <PDFViewer fileUri={fileUri} fileName={fileName} />;
     }
-    
+
     if (mimeType.startsWith('text/') || mimeType === 'application/json') {
         return (
             <Box sx={{ height: '100%', width: '100%', overflow: 'auto' }}>
-                <Typography variant="body2" component="pre" sx={{ 
+                <Typography variant="body2" component="pre" sx={{
                     whiteSpace: 'pre-wrap',
                     fontFamily: 'monospace',
                     fontSize: '0.875rem',
@@ -287,14 +281,14 @@ const SimpleDocumentViewer: React.FC<{
             </Box>
         );
     }
-    
+
     // Fallback for unsupported file types
     return (
-        <Box sx={{ 
-            display: 'flex', 
+        <Box sx={{
+            display: 'flex',
             flexDirection: 'column',
-            justifyContent: 'center', 
-            alignItems: 'center', 
+            justifyContent: 'center',
+            alignItems: 'center',
             height: '100%',
             gap: 2
         }}>
@@ -305,8 +299,8 @@ const SimpleDocumentViewer: React.FC<{
             <Typography variant="body2" color="text.secondary">
                 File type: {mimeType}
             </Typography>
-            <Button 
-                variant="outlined" 
+            <Button
+                variant="outlined"
                 onClick={() => {
                     const link = document.createElement('a');
                     link.href = fileUri;
@@ -440,12 +434,12 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ databasePath }) => {
 
         try {
             const fileType = getFileType(file.name);
-            
+
             // Handle text files differently to avoid blob URL fetch issues
             if (fileType.startsWith('text/') || fileType === 'application/json') {
                 const result = await ipcRenderer.invoke('read-file-buffer', file.path);
                 console.log('[DocumentViewer] Text file IPC result:', { success: result.success, error: result.error, hasData: !!result.data });
-                
+
                 if (result.success) {
                     // Decode base64 text content directly
                     const textContent = atob(result.data);
@@ -471,13 +465,13 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ databasePath }) => {
     const handleClosePreview = () => {
         setPreviewOpen(false);
         setSelectedFile(null);
-        
+
         // Clean up blob URL to prevent memory leaks
         if (documentUri) {
             URL.revokeObjectURL(documentUri);
             setDocumentUri(null);
         }
-        
+
         setTextContent(null);
         setPreviewError(null);
         setLoadingPreview(false);
@@ -489,7 +483,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ databasePath }) => {
             console.log('[DocumentViewer] Requesting file buffer for:', file.path);
             const result = await ipcRenderer.invoke('read-file-buffer', file.path);
             console.log('[DocumentViewer] IPC result:', { success: result.success, error: result.error, hasData: !!result.data });
-            
+
             if (result.success) {
                 // Create blob URL from base64 data
                 const byteCharacters = atob(result.data);
@@ -514,70 +508,70 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ databasePath }) => {
     const renderFileCard = (file: IndexedFile) => (
         <Card
             key={file.path}
-                sx={{
-                    height: '100%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    transition: 'transform 0.2s ease-in-out',
-                    '&:hover': {
-                        transform: 'translateY(-2px)',
-                        boxShadow: theme.shadows[4],
-                    },
-                }}
-            >
-                <CardContent sx={{ flexGrow: 1, pb: 1 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                        {getFileIcon(file.name)}
-                        <Typography
-                            variant="subtitle2"
-                            sx={{
-                                ml: 1,
-                                fontWeight: 600,
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                                flex: 1,
-                            }}
-                            title={file.name}
-                        >
-                            {file.name}
-                        </Typography>
-                    </Box>
-                    
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                        <SizeIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
-                        <Typography variant="caption" color="text.secondary">
-                            {formatFileSize(file.size)}
-                        </Typography>
-                    </Box>
-                    
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                        <TimeIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
-                        <Typography variant="caption" color="text.secondary">
-                            {formatDate(file.mtime)}
-                        </Typography>
-                    </Box>
-                    
-                    <Chip
-                        label={`${file.chunks} chunks`}
-                        size="small"
-                        variant="outlined"
-                        sx={{ fontSize: '0.7rem' }}
-                    />
-                </CardContent>
-                
-                <CardActions sx={{ pt: 0 }}>
-                    <Button
-                        size="small"
-                        startIcon={<ViewIcon />}
-                        onClick={() => handlePreview(file)}
-                        variant="contained"
-                        fullWidth
+            sx={{
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                transition: 'transform 0.2s ease-in-out',
+                '&:hover': {
+                    transform: 'translateY(-2px)',
+                    boxShadow: theme.shadows[4],
+                },
+            }}
+        >
+            <CardContent sx={{ flexGrow: 1, pb: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                    {getFileIcon(file.name)}
+                    <Typography
+                        variant="subtitle2"
+                        sx={{
+                            ml: 1,
+                            fontWeight: 600,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            flex: 1,
+                        }}
+                        title={file.name}
                     >
-                        View
-                    </Button>
-                </CardActions>
-            </Card>
+                        {file.name}
+                    </Typography>
+                </Box>
+
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                    <SizeIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
+                    <Typography variant="caption" color="text.secondary">
+                        {formatFileSize(file.size)}
+                    </Typography>
+                </Box>
+
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                    <TimeIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
+                    <Typography variant="caption" color="text.secondary">
+                        {formatDate(file.mtime)}
+                    </Typography>
+                </Box>
+
+                <Chip
+                    label={`${file.chunks} chunks`}
+                    size="small"
+                    variant="outlined"
+                    sx={{ fontSize: '0.7rem' }}
+                />
+            </CardContent>
+
+            <CardActions sx={{ pt: 0 }}>
+                <Button
+                    size="small"
+                    startIcon={<ViewIcon />}
+                    onClick={() => handlePreview(file)}
+                    variant="contained"
+                    fullWidth
+                >
+                    View
+                </Button>
+            </CardActions>
+        </Card>
     );
 
     // Render file list item (list view)
@@ -659,7 +653,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ databasePath }) => {
                         {files.length} document{files.length !== 1 ? 's' : ''} indexed
                     </Typography>
                 </Box>
-                
+
                 <ButtonGroup variant="outlined" size="small">
                     <Tooltip title="Grid View">
                         <Button
@@ -742,14 +736,14 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ databasePath }) => {
                         <CloseIcon />
                     </IconButton>
                 </DialogTitle>
-                
+
                 <DialogContent sx={{ p: 0, overflow: 'hidden' }}>
                     {loadingPreview ? (
-                        <Box sx={{ 
-                            display: 'flex', 
+                        <Box sx={{
+                            display: 'flex',
                             flexDirection: 'column',
-                            justifyContent: 'center', 
-                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            alignItems: 'center',
                             height: 400,
                             gap: 2
                         }}>
@@ -759,11 +753,11 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ databasePath }) => {
                             </Typography>
                         </Box>
                     ) : previewError ? (
-                        <Box sx={{ 
-                            display: 'flex', 
+                        <Box sx={{
+                            display: 'flex',
                             flexDirection: 'column',
-                            justifyContent: 'center', 
-                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            alignItems: 'center',
                             height: 400,
                             gap: 2,
                             p: 3
@@ -771,7 +765,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ databasePath }) => {
                             <Alert severity="error" sx={{ mb: 2 }}>
                                 {previewError}
                             </Alert>
-                            <Button 
+                            <Button
                                 onClick={() => selectedFile && handlePreview(selectedFile)}
                                 variant="outlined"
                             >
@@ -780,7 +774,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ databasePath }) => {
                         </Box>
                     ) : selectedFile && (documentUri || textContent) ? (
                         <Box sx={{ height: '100%', width: '100%', p: 2 }}>
-                            <SimpleDocumentViewer 
+                            <SimpleDocumentViewer
                                 fileUri={documentUri}
                                 fileName={selectedFile.name}
                                 mimeType={getFileType(selectedFile.name)}
@@ -788,10 +782,10 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ databasePath }) => {
                             />
                         </Box>
                     ) : (
-                        <Box sx={{ 
-                            display: 'flex', 
-                            justifyContent: 'center', 
-                            alignItems: 'center', 
+                        <Box sx={{
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center',
                             height: 400
                         }}>
                             <Typography variant="body2" color="text.secondary">
@@ -800,7 +794,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ databasePath }) => {
                         </Box>
                     )}
                 </DialogContent>
-                
+
                 <DialogActions>
                     <Button onClick={handleClosePreview}>
                         Close

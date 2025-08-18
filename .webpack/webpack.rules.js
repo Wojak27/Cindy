@@ -9,4 +9,12 @@ module.exports = [
       },
     },
   },
+  // Handle PDF.js worker files
+  {
+    test: /pdf\.worker\.(min\.)?js$/,
+    type: 'asset/resource',
+    generator: {
+      filename: 'workers/[name][ext]',
+    },
+  },
 ];
