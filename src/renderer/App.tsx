@@ -15,8 +15,7 @@ import SoundReactiveBlob from './components/SoundReactiveBlob';
 import useDocumentDetection from './hooks/useDocumentDetection';
 import ModernSettingsPanel from './components/ModernSettingsPanel';
 import ModernDatabasePanel from './components/ModernDatabasePanel';
-import ChatDocumentPanel from './components/ChatDocumentPanel';
-import WeatherPanel from './components/WeatherPanel';
+import ChatSidePanel, { WidgetType, WeatherData, MapData, IndexedFile } from './components/ChatSidePanel';
 import ThemeToggle from './components/ThemeToggle';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { getSettings, setCurrentConversationId } from '../store/actions';
@@ -70,8 +69,9 @@ const App: React.FC = () => {
     const [currentTTSMessage, setCurrentTTSMessage] = useState<string | null>(null);
     const [isInputExpanded, setIsInputExpanded] = useState(false);
     const [activeHashtags, setActiveHashtags] = useState<string[]>([]);
-    const [weatherData, setWeatherData] = useState<any>(null);
-    const [showWeatherPanel, setShowWeatherPanel] = useState(false);
+    const [sidePanelWidgetType, setSidePanelWidgetType] = useState<WidgetType | null>(null);
+    const [sidePanelData, setSidePanelData] = useState<WeatherData | MapData | IndexedFile | null>(null);
+    const [showSidePanel, setShowSidePanel] = useState(false);
     const audioContext = useRef<AudioContext | null>(null);
     const sounds = useRef<Record<string, AudioBuffer>>({});
     const streamController = useRef<AbortController | null>(null);
@@ -555,7 +555,10 @@ const App: React.FC = () => {
     };
 
     const handleShowDocument = (document: any) => {
-        dispatch(showDocument(document));
+        setSidePanelWidgetType('document');
+        setSidePanelData(document as IndexedFile);
+        setShowSidePanel(true);
+        dispatch(hideDocument()); // Hide old document panel state
     };
 
     // Load documents when component mounts or database path changes
@@ -670,8 +673,14 @@ const App: React.FC = () => {
                             const parsedData = JSON.parse(sideViewContent);
                             if (parsedData.location && parsedData.temperature) {
                                 console.log('🌤️ Received weather data:', parsedData);
-                                setWeatherData(parsedData);
-                                setShowWeatherPanel(true);
+                                setSidePanelWidgetType('weather');
+                                setSidePanelData(parsedData as WeatherData);
+                                setShowSidePanel(true);
+                            } else if (parsedData.locations && Array.isArray(parsedData.locations)) {
+                                console.log('🗺️ Received map data:', parsedData);
+                                setSidePanelWidgetType('map');
+                                setSidePanelData(parsedData as MapData);
+                                setShowSidePanel(true);
                             }
                         } catch (parseError) {
                             // Not JSON, might be just a marker like "Weather information"
@@ -832,10 +841,15 @@ const App: React.FC = () => {
             if (data.conversationId === currentConversationIdRef.current && data.sideViewData) {
                 console.log('🌤️ Received side view data:', data.sideViewData);
                 
-                // Check if this is weather data
+                // Check if this is weather data or map data
                 if (data.sideViewData.type === 'weather' && data.sideViewData.data) {
-                    setWeatherData(data.sideViewData.data);
-                    setShowWeatherPanel(true);
+                    setSidePanelWidgetType('weather');
+                    setSidePanelData(data.sideViewData.data as WeatherData);
+                    setShowSidePanel(true);
+                } else if (data.sideViewData.type === 'map' && data.sideViewData.data) {
+                    setSidePanelWidgetType('map');
+                    setSidePanelData(data.sideViewData.data as MapData);
+                    setShowSidePanel(true);
                 }
             }
         };
@@ -1074,10 +1088,13 @@ const App: React.FC = () => {
                         </IconButton>
 
                         <IconButton
-                            className={`document-button ${showDocumentPanel ? 'active' : ''}`}
+                            className={`document-button ${showSidePanel ? 'active' : ''}`}
+                            disabled={!showSidePanel && availableDocuments.length === 0}
                             onClick={() => {
-                                if (showDocumentPanel) {
-                                    dispatch(hideDocument());
+                                if (showSidePanel) {
+                                    setShowSidePanel(false);
+                                    setSidePanelWidgetType(null);
+                                    setSidePanelData(null);
                                 } else if (availableDocuments.length > 0) {
                                     handleShowDocument(availableDocuments[0]);
                                 } else {
@@ -1086,8 +1103,11 @@ const App: React.FC = () => {
                                     // Could also show a toast notification here
                                 }
                             }}
-                            aria-label={showDocumentPanel ? "Hide document" : "Show retrieved files"}
+                            aria-label={showSidePanel ? "Hide side panel" : availableDocuments.length > 0 ? "Show retrieved files" : "No data available - use AI to generate weather/maps or index documents"}
                             size="small"
+                            sx={{
+                                opacity: (!showSidePanel && availableDocuments.length === 0) ? 0.3 : 1
+                            }}
                         >
                             <DocumentIcon fontSize="small" />
                         </IconButton>
@@ -1106,13 +1126,13 @@ const App: React.FC = () => {
                     <div className="chat-container" style={{
                         display: 'flex',
                         height: '100%',
-                        gap: showDocumentPanel ? '12px' : '0'
+                        gap: showSidePanel ? '12px' : '0'
                     }}>
                         {/* Chat area - adjust width when document panel is open */}
                         <div
                             className="chat-messages-container"
                             style={{
-                                flex: showDocumentPanel ? '1 1 60%' : '1 1 100%',
+                                flex: showSidePanel ? '1 1 60%' : '1 1 100%',
                                 minWidth: 0,
                                 display: 'flex',
                                 flexDirection: 'column',
@@ -1552,8 +1572,8 @@ const App: React.FC = () => {
                             )}
                         </div>
 
-                        {/* Document panel - shows when a document is selected */}
-                        {showDocumentPanel && currentDocument && (
+                        {/* Side panel - shows when widget data is available */}
+                        {showSidePanel && sidePanelWidgetType && sidePanelData && (
                             <div style={{
                                 flex: '1 1 40%',
                                 minWidth: '300px',
@@ -1561,24 +1581,19 @@ const App: React.FC = () => {
                                 height: '100%',
                                 overflow: 'hidden',
                             }}>
-                                <ChatDocumentPanel
-                                    document={currentDocument}
-                                    onClose={() => dispatch(hideDocument())}
+                                <ChatSidePanel
+                                    widgetType={sidePanelWidgetType}
+                                    data={sidePanelData}
+                                    onClose={() => {
+                                        setShowSidePanel(false);
+                                        setSidePanelWidgetType(null);
+                                        setSidePanelData(null);
+                                    }}
                                 />
                             </div>
                         )}
                     </div>
 
-                    {/* Weather panel - shows as overlay when weather data is available */}
-                    {showWeatherPanel && weatherData && (
-                        <WeatherPanel
-                            weatherData={weatherData}
-                            onClose={() => {
-                                setShowWeatherPanel(false);
-                                setWeatherData(null);
-                            }}
-                        />
-                    )}
 
                     <div ref={settingsSidebarRef} className={`settings-sidebar-container ${showSettings ? 'open' : ''}`}>
                         <ModernSettingsPanel />

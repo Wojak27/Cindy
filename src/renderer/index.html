@@ -3,11 +3,8 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self' 'unsafe-inline' data: blob:; script-src 'self' 'unsafe-eval' http://localhost:3004; worker-src 'self' blob: http://localhost:3004; connect-src 'self' http://localhost:11434 http://localhost:3004; img-src 'self' data: blob:; frame-src 'self' blob:;">
-    <title>Cindy - Voice Research Assistant</title>
     <script>
-        // Inline polyfill for Promise.withResolvers to ensure it's available immediately
+        // Critical polyfill - must load before ANY other scripts including webpack
         if (typeof Promise.withResolvers === 'undefined') {
             Promise.withResolvers = function() {
                 let resolve, reject;
@@ -17,9 +14,12 @@
                 });
                 return { promise, resolve, reject };
             };
-            console.log('[HTML Polyfill] Promise.withResolvers polyfilled inline');
+            console.log('[Critical Polyfill] Promise.withResolvers polyfilled in HTML');
         }
     </script>
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self' 'unsafe-inline' data: blob:; script-src 'self' 'unsafe-eval' http://localhost:3004; worker-src 'self' blob: http://localhost:3004; connect-src 'self' http://localhost:11434 http://localhost:3004; img-src 'self' data: blob:; frame-src 'self' blob:;">
+    <title>Cindy - Voice Research Assistant</title>
 </head>
 
 <body>

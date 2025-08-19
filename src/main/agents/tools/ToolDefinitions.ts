@@ -90,7 +90,8 @@ export enum ToolCategory {
     UTILITY = 'utility',
     ANALYSIS = 'analysis',
     GENERATION = 'generation',
-    WEATHER = 'weather'
+    WEATHER = 'weather',
+    MAPS = 'maps'
 }
 
 /**

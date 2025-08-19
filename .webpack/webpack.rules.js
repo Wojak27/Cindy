@@ -17,4 +17,12 @@ module.exports = [
       filename: 'workers/[name][ext]',
     },
   },
+  // Handle image files (for Leaflet and other assets)
+  {
+    test: /\.(png|jpe?g|gif|svg|ico)$/i,
+    type: 'asset/resource',
+    generator: {
+      filename: 'images/[name][ext]',
+    },
+  },
 ];

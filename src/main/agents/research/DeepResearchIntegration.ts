@@ -199,9 +199,10 @@ DEEP RESEARCH - For complex research requiring comprehensive analysis:
 
 TOOL AGENT - For specific actions that require tools:
 - Weather inquiries (current conditions, forecasts)
+- Map displays and location visualization ("show me where", "display on map", "where is [location]")
 - Quick web searches for specific facts
 - Tool-based calculations or conversions
-- Location-based queries
+- Location coordinates and geographical queries requiring visual maps
 - Real-time data requests
 
 DIRECT RESPONSE - For simple questions requiring immediate answers:
@@ -214,11 +215,14 @@ User Message: "${message}"
 
 CRITICAL: You MUST respond with exactly one of these three options. No other format is acceptable:
 - "ROUTE_DEEP_RESEARCH" - for comprehensive research requests
-- "ROUTE_TOOL_AGENT" - for tool-based actions (weather, searches, etc.)  
+- "ROUTE_TOOL_AGENT" - for tool-based actions (weather, maps, searches, etc.)  
 - "ROUTE_DIRECT" followed by your direct response - for simple questions
 
 Examples:
 - "what's the weather in Paris?" → "ROUTE_TOOL_AGENT"
+- "Please show me where Paris is" → "ROUTE_TOOL_AGENT"
+- "Display Tokyo on a map" → "ROUTE_TOOL_AGENT"  
+- "Where is London? Show it to me" → "ROUTE_TOOL_AGENT"
 - "research AI trends in healthcare" → "ROUTE_DEEP_RESEARCH"  
 - "hello, how are you?" → "ROUTE_DIRECT Hello! I'm here to help you with questions, research, and various tasks. How can I assist you today?"
 

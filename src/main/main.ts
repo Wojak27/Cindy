@@ -1536,6 +1536,17 @@ app.on('ready', async () => {
     // Initialize ServiceManager for dynamic loading of heavy services
     serviceManager = new ServiceManager(settingsService, llmProvider);
     console.log('🔧 DEBUG: ServiceManager initialized for dynamic service loading');
+    
+    // Initialize tools immediately to ensure maps tool is available
+    setTimeout(async () => {
+        try {
+            console.log('🔧 DEBUG: Early tool initialization...');
+            await serviceManager?.initializeTools();
+            console.log('✅ DEBUG: Early tool initialization completed');
+        } catch (error) {
+            console.error('❌ DEBUG: Early tool initialization failed:', error);
+        }
+    }, 1000);
 
     // Skip speech and wake word services for testing
     console.log('🔧 DEBUG: Minimal services initialization completed');

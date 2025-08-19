@@ -1,3 +1,6 @@
+// Load polyfills before anything else
+import './polyfills';
+
 // Ensure TTSWorker IPC listener is registered as early as possible
 import React from 'react';
 import ReactDOM from 'react-dom/client';

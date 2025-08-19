@@ -13,6 +13,7 @@ import { createSerpAPISearchTool } from './search/SerpAPISearchTool';
 import { createTavilySearchTool } from './search/TavilySearchTool';
 import { createVectorSearchTool } from './vector/VectorSearchTool';
 import { createAccuWeatherTool } from './weather/AccuWeatherTool';
+import { createMapsDisplayTool } from './maps/MapsDisplayTool';
 
 /**
  * Tool configuration interface for initialization
@@ -45,6 +46,7 @@ export interface ToolConfiguration {
         tavily?: boolean;
         vector?: boolean;
         weather?: boolean;
+        maps?: boolean;
     };
 }
 
@@ -86,6 +88,9 @@ export class ToolLoader {
 
         // Load weather tools
         await this.loadWeatherTools(config, enabledTools, registeredTools, failedTools);
+
+        // Load maps tools
+        await this.loadMapsTools(config, enabledTools, registeredTools, failedTools);
 
         // Log results
         console.log(`[ToolLoader] ✅ Successfully registered ${registeredTools.length} tools:`, registeredTools);
@@ -245,6 +250,31 @@ export class ToolLoader {
     }
 
     /**
+     * Load maps tools
+     */
+    private async loadMapsTools(
+        config: ToolConfiguration,
+        enabledTools: any,
+        registeredTools: string[],
+        failedTools: string[]
+    ): Promise<void> {
+        // Maps Display Tool (always available, no API key required)
+        if (enabledTools.maps !== false) {
+            try {
+                const spec = createMapsDisplayTool();
+                if (spec && !this.loadedTools.has(spec.name)) {
+                    toolRegistry.registerTool(spec);
+                    this.loadedTools.add(spec.name);
+                    registeredTools.push(spec.name);
+                }
+            } catch (error: any) {
+                console.error('[ToolLoader] Failed to load Maps Display tool:', error.message);
+                failedTools.push('display_map');
+            }
+        }
+    }
+
+    /**
      * Reload specific tool with new configuration
      */
     async reloadTool(toolName: string, config: Partial<ToolConfiguration>): Promise<boolean> {
@@ -310,6 +340,15 @@ export class ToolLoader {
                     if (spec) {
                         toolRegistry.registerTool(spec);
                         this.loadedTools.add(spec.name);
+                        return true;
+                    }
+                    break;
+
+                case 'display_map':
+                    const mapSpec = createMapsDisplayTool();
+                    if (mapSpec) {
+                        toolRegistry.registerTool(mapSpec);
+                        this.loadedTools.add(mapSpec.name);
                         return true;
                     }
                     break;

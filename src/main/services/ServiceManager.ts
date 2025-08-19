@@ -83,7 +83,8 @@ export class ServiceManager extends EventEmitter {
                     serpapi: !!settingsData?.search?.serpApiKey,
                     tavily: !!settingsData?.search?.tavilyApiKey,
                     vector: !!duckdbVectorStore,
-                    weather: true
+                    weather: true,
+                    maps: true
                 }
             };
 
