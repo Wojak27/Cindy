@@ -78,12 +78,13 @@ export interface MapData {
 }
 
 interface ChatSidePanelProps {
-    widgetType: WidgetType;
+    widgetType: WidgetType | null;
     data: IndexedFile | WeatherData | MapData | null;
+    conversationWidgets: Array<{ type: WidgetType; data: any; timestamp: number }>;
     onClose: () => void;
 }
 
-const ChatSidePanel: React.FC<ChatSidePanelProps> = ({ widgetType, data, onClose }) => {
+const ChatSidePanel: React.FC<ChatSidePanelProps> = ({ widgetType, data, conversationWidgets, onClose }) => {
     const theme = useTheme();
     const [activeTab, setActiveTab] = useState<number>(0);
     const [widgets, setWidgets] = useState<Array<{ type: WidgetType; data: any }>>([]);
@@ -96,30 +97,29 @@ const ChatSidePanel: React.FC<ChatSidePanelProps> = ({ widgetType, data, onClose
     };
 
     useEffect(() => {
-        // Add new widget to the list when data changes
-        if (data) {
-            const newWidget = { type: widgetType, data };
-            setWidgets(prev => {
-                // Check if widget already exists using safe stringify
-                const exists = prev.some(w => 
-                    w.type === widgetType && 
-                    safeStringify(w.data) === safeStringify(data)
-                );
-                if (!exists) {
-                    return [...prev, newWidget];
-                }
-                return prev;
-            });
-            // Switch to the new widget
-            setActiveTab(widgets.length);
+        // Initialize local widgets from conversation widgets
+        const localWidgets = (conversationWidgets || []).map(w => ({ type: w.type, data: w.data }));
+        setWidgets(localWidgets);
+        
+        // If a specific widget is passed, find its index and set as active
+        if (widgetType && data) {
+            const targetIndex = localWidgets.findIndex(w => 
+                w.type === widgetType && 
+                safeStringify(w.data) === safeStringify(data)
+            );
+            if (targetIndex >= 0) {
+                setActiveTab(targetIndex);
+            }
         }
-    }, [widgetType, data]);
+    }, [conversationWidgets, widgetType, data]);
 
     const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
         setActiveTab(newValue);
     };
 
     const handleCloseWidget = (index: number) => {
+        // Note: For now, we only close individual widgets locally
+        // The parent component manages the conversation widgets persistence
         setWidgets(prev => prev.filter((_, i) => i !== index));
         if (widgets.length === 1) {
             onClose();
@@ -170,7 +170,7 @@ const ChatSidePanel: React.FC<ChatSidePanelProps> = ({ widgetType, data, onClose
         }
     };
 
-    if (!data && widgets.length === 0) {
+    if (widgets.length === 0) {
         return null;
     }
 

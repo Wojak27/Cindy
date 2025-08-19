@@ -72,6 +72,8 @@ const App: React.FC = () => {
     const [sidePanelWidgetType, setSidePanelWidgetType] = useState<WidgetType | null>(null);
     const [sidePanelData, setSidePanelData] = useState<WeatherData | MapData | IndexedFile | null>(null);
     const [showSidePanel, setShowSidePanel] = useState(false);
+    const [conversationWidgets, setConversationWidgets] = useState<Array<{ type: WidgetType; data: any; timestamp: number }>>([]);
+    const [isLoadingHistory, setIsLoadingHistory] = useState(false);
     const audioContext = useRef<AudioContext | null>(null);
     const sounds = useRef<Record<string, AudioBuffer>>({});
     const streamController = useRef<AbortController | null>(null);
@@ -107,6 +109,8 @@ const App: React.FC = () => {
 
         const loadConversationHistory = async () => {
             if (!currentConversationId) return;
+            
+            setIsLoadingHistory(true);
 
             try {
                 // Get ALL messages without any filtering (duplicates, ordering fixes, etc.)
@@ -199,6 +203,8 @@ const App: React.FC = () => {
                 console.error('🚨 DEBUG: Failed to load conversation history:', error);
                 dispatch({ type: 'CLEAR_MESSAGES' });
                 dispatch({ type: 'CLEAR_THINKING_BLOCKS' });
+            } finally {
+                setIsLoadingHistory(false);
             }
         };
 
@@ -245,14 +251,14 @@ const App: React.FC = () => {
         }
     }, []);
 
-    // Auto-scroll to bottom when new messages are added
+    // Auto-scroll to bottom when new messages are added (but not when loading history)
     useEffect(() => {
-        if (chatMessagesRef.current && messages.length > 0) {
+        if (chatMessagesRef.current && messages.length > 0 && !isLoadingHistory) {
             const scrollContainer = chatMessagesRef.current;
             // Scroll to bottom smoothly
             scrollContainer.scrollTop = scrollContainer.scrollHeight;
         }
-    }, [messages.length]);
+    }, [messages.length, isLoadingHistory]);
 
     // Initialize audio context for recording activation sound only
     useEffect(() => {
@@ -555,6 +561,25 @@ const App: React.FC = () => {
     };
 
     const handleShowDocument = (document: any) => {
+        const newWidget = {
+            type: 'document' as WidgetType,
+            data: document as IndexedFile,
+            timestamp: Date.now()
+        };
+        
+        // Add to conversation widgets history
+        setConversationWidgets(prev => {
+            // Check if widget already exists to avoid duplicates
+            const exists = prev.some(w => 
+                w.type === 'document' && 
+                (w.data as IndexedFile).path === (document as IndexedFile).path
+            );
+            if (!exists) {
+                return [...prev, newWidget];
+            }
+            return prev;
+        });
+        
         setSidePanelWidgetType('document');
         setSidePanelData(document as IndexedFile);
         setShowSidePanel(true);
@@ -843,10 +868,48 @@ const App: React.FC = () => {
                 
                 // Check if this is weather data or map data
                 if (data.sideViewData.type === 'weather' && data.sideViewData.data) {
+                    const newWidget = {
+                        type: 'weather' as WidgetType,
+                        data: data.sideViewData.data as WeatherData,
+                        timestamp: Date.now()
+                    };
+                    
+                    // Add to conversation widgets history
+                    setConversationWidgets(prev => {
+                        // Check if widget already exists to avoid duplicates
+                        const exists = prev.some(w => 
+                            w.type === 'weather' && 
+                            JSON.stringify(w.data) === JSON.stringify(newWidget.data)
+                        );
+                        if (!exists) {
+                            return [...prev, newWidget];
+                        }
+                        return prev;
+                    });
+                    
                     setSidePanelWidgetType('weather');
                     setSidePanelData(data.sideViewData.data as WeatherData);
                     setShowSidePanel(true);
                 } else if (data.sideViewData.type === 'map' && data.sideViewData.data) {
+                    const newWidget = {
+                        type: 'map' as WidgetType,
+                        data: data.sideViewData.data as MapData,
+                        timestamp: Date.now()
+                    };
+                    
+                    // Add to conversation widgets history
+                    setConversationWidgets(prev => {
+                        // Check if widget already exists to avoid duplicates
+                        const exists = prev.some(w => 
+                            w.type === 'map' && 
+                            JSON.stringify(w.data) === JSON.stringify(newWidget.data)
+                        );
+                        if (!exists) {
+                            return [...prev, newWidget];
+                        }
+                        return prev;
+                    });
+                    
                     setSidePanelWidgetType('map');
                     setSidePanelData(data.sideViewData.data as MapData);
                     setShowSidePanel(true);
@@ -1062,12 +1125,24 @@ const App: React.FC = () => {
                                     // Reset token handlers for new conversation
                                     thinkingTokenHandler.reset();
                                     toolTokenHandler.reset();
+                                    // Clear conversation widgets for the new conversation
+                                    setConversationWidgets([]);
+                                    // Close side panel if it's open
+                                    setShowSidePanel(false);
+                                    setSidePanelWidgetType(null);
+                                    setSidePanelData(null);
                                 } catch (error) {
                                     console.error('Failed to create new conversation:', error);
                                     // Fallback to local ID generation if IPC fails
                                     const fallbackId = Date.now().toString();
                                     setCurrentConversationId(fallbackId);
                                     dispatch({ type: 'CLEAR_MESSAGES' });
+                                    // Clear conversation widgets for the new conversation
+                                    setConversationWidgets([]);
+                                    // Close side panel if it's open
+                                    setShowSidePanel(false);
+                                    setSidePanelWidgetType(null);
+                                    setSidePanelData(null);
                                 }
                             }}
                             aria-label="New chat"
@@ -1089,24 +1164,35 @@ const App: React.FC = () => {
 
                         <IconButton
                             className={`document-button ${showSidePanel ? 'active' : ''}`}
-                            disabled={!showSidePanel && availableDocuments.length === 0}
+                            disabled={!showSidePanel && conversationWidgets.length === 0 && availableDocuments.length === 0}
                             onClick={() => {
                                 if (showSidePanel) {
                                     setShowSidePanel(false);
                                     setSidePanelWidgetType(null);
                                     setSidePanelData(null);
+                                } else if (conversationWidgets.length > 0) {
+                                    // Show all conversation widgets - start with the most recent one
+                                    const mostRecent = conversationWidgets[conversationWidgets.length - 1];
+                                    setSidePanelWidgetType(mostRecent.type);
+                                    setSidePanelData(mostRecent.data);
+                                    setShowSidePanel(true);
                                 } else if (availableDocuments.length > 0) {
+                                    // Fallback to showing a document widget if no conversation widgets exist
                                     handleShowDocument(availableDocuments[0]);
                                 } else {
-                                    // If no documents, show message to user to index documents first
-                                    console.log('No documents available. Please index documents from the database panel first.');
-                                    // Could also show a toast notification here
+                                    // If no widgets or documents, show message to user
+                                    console.log('No widgets or documents available. Use AI to generate weather/maps or index documents from the database panel.');
                                 }
                             }}
-                            aria-label={showSidePanel ? "Hide side panel" : availableDocuments.length > 0 ? "Show retrieved files" : "No data available - use AI to generate weather/maps or index documents"}
+                            aria-label={
+                                showSidePanel ? "Hide side panel" : 
+                                conversationWidgets.length > 0 ? `Show ${conversationWidgets.length} widget${conversationWidgets.length > 1 ? 's' : ''}` :
+                                availableDocuments.length > 0 ? "Show retrieved files" : 
+                                "No data available - use AI to generate weather/maps or index documents"
+                            }
                             size="small"
                             sx={{
-                                opacity: (!showSidePanel && availableDocuments.length === 0) ? 0.3 : 1
+                                opacity: (!showSidePanel && conversationWidgets.length === 0 && availableDocuments.length === 0) ? 0.3 : 1
                             }}
                         >
                             <DocumentIcon fontSize="small" />
@@ -1573,7 +1659,7 @@ const App: React.FC = () => {
                         </div>
 
                         {/* Side panel - shows when widget data is available */}
-                        {showSidePanel && sidePanelWidgetType && sidePanelData && (
+                        {showSidePanel && (
                             <div style={{
                                 flex: '1 1 40%',
                                 minWidth: '300px',
@@ -1584,6 +1670,7 @@ const App: React.FC = () => {
                                 <ChatSidePanel
                                     widgetType={sidePanelWidgetType}
                                     data={sidePanelData}
+                                    conversationWidgets={conversationWidgets}
                                     onClose={() => {
                                         setShowSidePanel(false);
                                         setSidePanelWidgetType(null);
