@@ -1252,6 +1252,10 @@ const createWindow = async (): Promise<void> => {
         });
 
         console.log('🔧 DEBUG: BrowserWindow created successfully!');
+        
+        // Make mainWindow globally accessible for tools like MapsDisplayTool
+        (global as any).mainWindow = mainWindow;
+        console.log('🔧 DEBUG: MainWindow assigned to global scope');
 
         // Show the window once it's ready
         mainWindow.once('ready-to-show', () => {

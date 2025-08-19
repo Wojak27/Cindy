@@ -67,6 +67,11 @@ export class ToolAgent {
                         sideViewData = this.formatWeatherForSideView(result, toolCall.params);
                     }
 
+                    // Check if this is maps data for side view
+                    if (toolCall.tool === 'display_map' && result) {
+                        sideViewData = this.formatMapsForSideView(result, toolCall.params);
+                    }
+
                 } catch (toolError) {
                     console.error(`[ToolAgent] Tool execution failed for ${toolCall.tool}:`, toolError);
                     toolResults.push({
@@ -143,6 +148,16 @@ export class ToolAgent {
                         };
                     }
 
+                    // Check if this is maps data for side view
+                    if (toolCall.tool === 'display_map' && result) {
+                        sideViewData = this.formatMapsForSideView(result, toolCall.params);
+                        yield {
+                            type: 'side_view',
+                            content: 'Map location',
+                            data: sideViewData
+                        };
+                    }
+
                     yield {
                         type: 'tool_result',
                         content: `${toolCall.tool} completed`,
@@ -189,6 +204,17 @@ Tool descriptions:
 - weather: Get current weather information for a location (params: { location: "city, country" })
 - web_search: Search the web for information (params: { input: "search query" })
 - wikipedia_search: Search Wikipedia (params: { input: "search query" })
+- display_map: Display locations on an interactive map (params: { input: JSON string with locations array, e.g., '{"locations": [{"name": "Paris", "latitude": 48.8566, "longitude": 2.3522}]}' })
+
+IMPORTANT: For location-related questions that ask "where is", "show me where", or request visual location information, ALWAYS use display_map as the PRIMARY tool. Use wikipedia_search or web_search as SECONDARY tools only if additional information is needed.
+
+For display_map tool, you MUST provide the input as a JSON string containing a locations array with name, latitude, and longitude. Use your knowledge of major world locations to provide approximate coordinates. If you don't know exact coordinates, use reasonable approximations for well-known places.
+
+Examples:
+- "Please show me where Paris is" → use display_map with { "input": '{"locations": [{"name": "Paris", "latitude": 48.8566, "longitude": 2.3522}]}' }
+- "Where is Tokyo located?" → use display_map with { "input": '{"locations": [{"name": "Tokyo", "latitude": 35.6762, "longitude": 139.6503}]}' }
+- "Show me the location of London" → use display_map with { "input": '{"locations": [{"name": "London", "latitude": 51.5074, "longitude": -0.1278}]}' }
+- "What's the weather in Paris?" → use weather with { "location": "Paris, France" }
 
 Based on the user request, determine which tools to use. Respond in JSON format:
 {
@@ -310,6 +336,103 @@ Provide a natural, helpful response that addresses the user's request using the 
                 type: 'weather',
                 title: 'Weather Information',
                 data: { error: 'Failed to format weather data' },
+                timestamp: new Date().toISOString()
+            };
+        }
+    }
+
+    /**
+     * Format maps data for side view display
+     */
+    private formatMapsForSideView(mapsResult: any, params: any): any {
+        try {
+            console.log('[ToolAgent] formatMapsForSideView - raw result:', mapsResult);
+            console.log('[ToolAgent] formatMapsForSideView - params:', params);
+            
+            let mapsData = null;
+            
+            // Handle ToolRegistry result format: { success: true, result: "TEXT_RESPONSE", duration: ... }
+            if (mapsResult.success && mapsResult.result) {
+                const resultText = mapsResult.result;
+                
+                // Look for the stream marker in the text response: 📊 {JSON_DATA}
+                const streamMarkerMatch = resultText.match(/📊\s*(\{.*\})/);
+                
+                if (streamMarkerMatch && streamMarkerMatch[1]) {
+                    try {
+                        mapsData = JSON.parse(streamMarkerMatch[1]);
+                        console.log('[ToolAgent] Extracted maps data from stream marker:', mapsData);
+                    } catch (parseError) {
+                        console.error('[ToolAgent] Failed to parse stream marker JSON:', parseError);
+                    }
+                }
+                
+                // If no stream marker found, try to extract data from params
+                if (!mapsData && params.input) {
+                    try {
+                        const inputData = JSON.parse(params.input);
+                        mapsData = inputData;
+                        console.log('[ToolAgent] Using input data as fallback:', mapsData);
+                    } catch (parseError) {
+                        console.error('[ToolAgent] Failed to parse input params:', parseError);
+                    }
+                }
+                
+                // Final fallback: create basic structure from response
+                if (!mapsData) {
+                    // Extract location name from input if available
+                    let locationName = 'Unknown Location';
+                    if (params.input) {
+                        try {
+                            const inputData = JSON.parse(params.input);
+                            if (inputData.locations && inputData.locations[0] && inputData.locations[0].name) {
+                                locationName = inputData.locations[0].name;
+                            }
+                        } catch {
+                            // Ignore parsing errors for fallback
+                        }
+                    }
+                    
+                    mapsData = {
+                        locations: [{
+                            name: locationName,
+                            latitude: 0,
+                            longitude: 0,
+                            description: 'Location data not available'
+                        }],
+                        center: { latitude: 0, longitude: 0 },
+                        zoom: 2
+                    };
+                }
+            }
+
+            // Determine location name for title
+            let locationName = 'Location';
+            if (mapsData && mapsData.locations && mapsData.locations[0] && mapsData.locations[0].name) {
+                locationName = mapsData.locations[0].name;
+            }
+
+            return {
+                type: 'map',
+                title: `Map of ${locationName}`,
+                data: mapsData,
+                timestamp: new Date().toISOString()
+            };
+
+        } catch (error) {
+            console.error('[ToolAgent] Error formatting maps for side view:', error);
+            return {
+                type: 'map',
+                title: 'Map Location',
+                data: { 
+                    error: 'Failed to format maps data',
+                    locations: [{
+                        name: 'Error',
+                        latitude: 0,
+                        longitude: 0,
+                        description: 'Unable to load map data'
+                    }]
+                },
                 timestamp: new Date().toISOString()
             };
         }

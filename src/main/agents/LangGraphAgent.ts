@@ -115,6 +115,9 @@ export class LangGraphAgent {
                         if (update.data && update.data.type === 'weather') {
                             // Include the actual weather data JSON for the renderer
                             yield `📊 ${JSON.stringify(update.data.data)}\n\n`;
+                        } else if (update.data && update.data.type === 'map') {
+                            // Include the actual map data JSON for the renderer
+                            yield `📊 ${JSON.stringify(update.data.data)}\n\n`;
                         } else {
                             yield `📊 ${update.content}\n\n`;
                         }
