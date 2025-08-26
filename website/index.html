@@ -1,278 +1,91 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description"
-        content="Cindy is an always-on, cross-platform voice memory assistant that helps you remember everything through natural voice conversations.">
-    <meta name="keywords" content="voice assistant, memory assistant, AI assistant, voice memory, knowledge tool">
-    <meta name="author" content="Cindy Team">
-    <meta name="robots" content="index, follow">
-
-    <!-- Open Graph / Facebook -->
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://cindy-ai.com/">
-    <meta property="og:title" content="Cindy - Voice Research Assistant">
-    <meta property="og:description"
-        content="Your always-on voice memory assistant that helps you remember everything through natural conversations.">
-    <meta property="og:image" content="https://cindy-ai.com/assets/og-image.png">
-
-    <!-- Twitter -->
-    <meta property="twitter:card" content="summary_large_image">
-    <meta property="twitter:url" content="https://cindy-ai.com/">
-    <meta property="twitter:title" content="Cindy - Voice Research Assistant">
-    <meta property="twitter:description"
-        content="Your always-on voice memory assistant that helps you remember everything through natural conversations.">
-    <meta property="twitter:image" content="https://cindy-ai.com/assets/og-image.png">
-
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
-        rel="stylesheet">
-    <title>Cindy - Voice Memory Assistant</title>
-    <link rel="stylesheet" href="styles.css">
-    <link rel="icon" href="assets/favicon.ico" type="image/x-icon">
-    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-    <link rel="manifest" href="manifest.json">
-    <!-- Simple GDPR popup will be handled in CSS and JS -->
-    <script src="js/main.js" defer></script>
-</head>
-
-<body class="landing-page">
-    <header class="hero" role="banner">
-        <div class="container">
-            <nav class="main-nav">
-                <div class="container">
-                    <a href="index.html" class="nav-logo" aria-label="Cindy Home">Cindy</a>
-                    <button class="nav-toggle" aria-label="Toggle navigation">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                    </button>
-                    <ul class="nav-links">
-                        <li><a href="index.html">Home</a></li>
-                        <li><a href="product.html">Product</a></li>
-                        <li><a href="download.html">Download</a></li>
-                        <li><a href="about.html">About</a></li>
-                        <li><a href="blog.html">Blog</a></li>
-                        <li><a href="pricing.html">Pricing</a></li>
-                        <li><a href="contact.html">Contact</a></li>
-                    </ul>
-                </div>
-            </nav>
-            <div class="hero-content">
-                <h1>Supercharge Your Memory</h1>
-                <p>Cindy is your AI memory partner that listens, understands, and organizes your knowledge
-                    through natural voice conversations. Get answers, summaries, and insights in seconds.</p>
-                <div class="cta-buttons">
-                    <a href="download.html" class="btn btn-primary btn-cta" aria-label="Start free research trial">Start
-                        Researching Free</a>
-                    <a href="product.html" class="btn btn-secondary" aria-label="Learn how Cindy works">See How It
-                        Works</a>
-                </div>
-            </div>
-            <div class="chat-bubbles">
-                <div class="chat-bubble bubble-1">Remembering...</div>
-                <div class="chat-bubble bubble-2">Organizing memories...</div>
-                <div class="chat-bubble bubble-3">Connecting knowledge...</div>
-            </div>
-        </div>
-    </header>
-
-    <main>
-        <section id="features" class="features" role="region" aria-label="Features">
-            <div class="container">
-                <h2>Why People Love Cindy</h2>
-                <div class="features-grid">
-                    <div class="feature-card">
-                        <div class="feature-icon">🗣️</div>
-                        <h3>Conversational Intelligence</h3>
-                        <p>Engage in natural dialogues with your AI research assistant. Ask follow-up questions and dive
-                            deeper into topics without starting over.</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">🔗</div>
-                        <h3>Seamless Integration</h3>
-                        <p>Works across macOS, Windows, and Linux with cloud sync. Import information from your local
-                            drive, Outlook, Gmail calendar, and other sources. Access your research and knowledge vault
-                            from any device.</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">🔒</div>
-                        <h3>Privacy by Design</h3>
-                        <p>Full control over your data with optional offline mode. Choose between cloud processing or
-                            completely local operation with open-source models.</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">📚</div>
-                        <h3>Personal Memory Vault</h3>
-                        <p>Build your private knowledge library that learns from your interests. Cindy automatically
-                            organizes and connects your memories for future reference.</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">🔍</div>
-                        <h3>Comprehensive Research</h3>
-                        <p>Get detailed reports with verified sources and proper citations. Cindy analyzes multiple
-                            sources to provide balanced, comprehensive insights.</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">⏰</div>
-                        <h3>Automated Research</h3>
-                        <p>Schedule recurring research tasks and receive curated summaries at your preferred time. Never
-                            miss important updates in your field.</p>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <section class="how-it-works" role="region" aria-label="How It Works">
-            <div class="container">
-                <h2>Simple Workflow, Powerful Results</h2>
-                <div class="workflow-examples">
-                    <div class="workflow-card">
-                        <div class="workflow-icon">📧</div>
-                        <h3>Email Summarization</h3>
-                        <div class="workflow-example">
-                            <span class="workflow-command">"Summarize my unread emails"</span>
-                            <span class="arrow">→</span>
-                            <span class="workflow-result">Get concise overview of important messages</span>
-                        </div>
-                    </div>
-                    <div class="workflow-card">
-                        <div class="workflow-icon">🧠</div>
-                        <h3>Memory Saving</h3>
-                        <div class="workflow-example">
-                            <span class="workflow-command">"Remember this meeting about Q3 goals"</span>
-                            <span class="arrow">→</span>
-                            <span class="workflow-result">Automatically saves and organizes key points</span>
-                        </div>
-                    </div>
-                    <div class="workflow-card">
-                        <div class="workflow-icon">📊</div>
-                        <h3>Memory Graphs</h3>
-                        <div class="workflow-example">
-                            <span class="workflow-command">"Show connections between AI research papers"</span>
-                            <span class="arrow">→</span>
-                            <span class="workflow-result">Visual knowledge map with relationships</span>
-                        </div>
-                    </div>
-                    <div class="workflow-card">
-                        <div class="workflow-icon">📚</div>
-                        <h3>Zotero Integration</h3>
-                        <div class="workflow-example">
-                            <span class="workflow-command">"Add this research to my 'Machine Learning'
-                                collection"</span>
-                            <span class="arrow">→</span>
-                            <span class="workflow-result">Syncs with Zotero library</span>
-                        </div>
-                    </div>
-                    <div class="workflow-card">
-                        <div class="workflow-icon">📅</div>
-                        <h3>Outlook Integration</h3>
-                        <div class="workflow-example">
-                            <span class="workflow-command">"Schedule a follow-up about the budget proposal"</span>
-                            <span class="arrow">→</span>
-                            <span class="workflow-result">Creates calendar event in Outlook</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <section id="download" class="download" role="region" aria-label="Download">
-            <div class="container">
-                <h2>Get Cindy Today</h2>
-                <p>Download Cindy for your platform and start your journey to better memory and knowledge.</p>
-                <div class="download-buttons">
-                    <a href="#" class="download-btn mac" aria-label="Download Cindy for macOS">
-                        <div class="btn-icon">
-                            <img style="height: 100px;" src="assets/icons/apple-173-svgrepo-com.svg" alt="macOS"
-                                class="platform-icon">
-                        </div>
-                        <div class="btn-text">
-                            <span class="btn-label">Download for</span>
-                            <span class="btn-platform">macOS</span>
-                        </div>
-                    </a>
-                    <a href="#" class="download-btn windows" aria-label="Download Cindy for Windows">
-                        <div class="btn-icon">
-                            <img style="height: 100px;" src="assets/icons/microsoft-windows-22-logo-svgrepo-com.svg"
-                                alt="Windows" class="platform-icon">
-                        </div>
-                        <div class="btn-text">
-                            <span class="btn-label">Download for</span>
-                            <span class="btn-platform">Windows</span>
-                        </div>
-                    </a>
-                    <a href="#" class="download-btn linux" aria-label="Download Cindy for Linux">
-                        <div class="btn-icon">
-                            <img style="height: 100px;" src="assets/icons/linux-svgrepo-com.svg" alt="Linux"
-                                class="platform-icon">
-                        </div>
-                        <div class="btn-text">
-                            <span class="btn-label">Download for</span>
-                            <span class="btn-platform">Linux</span>
-                        </div>
-                    </a>
-                </div>
-            </div>
-        </section>
-    </main>
-
-    <footer role="contentinfo">
-        <div class="container">
-            <div class="footer-content">
-                <div class="footer-logo">
-                    <h3>Cindy</h3>
-                    <p>Always-on voice memory assistant</p>
-                </div>
-                <div class="footer-links">
-                    <div class="footer-column">
-                        <h4>Product</h4>
-                        <ul>
-                            <li><a href="index.html#features">Features</a></li>
-                            <li><a href="index.html#download">Download</a></li>
-                            <li><a href="pricing.html">Pricing</a></li>
-                            <li><a href="product.html#roadmap">Roadmap</a></li>
-                        </ul>
-                    </div>
-                    <div class="footer-column">
-                        <h4>Resources</h4>
-                        <ul>
-                            <li><a href="product.html">Documentation</a></li>
-                            <li><a href="blog.html">Blog</a></li>
-                            <li><a href="download.html">Download</a></li>
-                            <li><a href="contact.html">Support</a></li>
-                        </ul>
-                    </div>
-                    <div class="footer-column">
-                        <h4>Company</h4>
-                        <ul>
-                            <li><a href="about.html">About</a></li>
-                            <li><a href="contact.html">Contact</a></li>
-                            <li><a href="privacy.html">Privacy</a></li>
-                            <li><a href="terms.html">Terms</a></li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-            <div class="footer-bottom">
-                <p>&copy; 2025 Cindy Voice Assistant. All rights reserved.</p>
-            </div>
-        </div>
-        <!-- Cookie Consent Banner -->
-        <div id="cookie-consent-banner" class="cookie-consent-banner hidden">
-            <div class="cookie-content">
-                <div class="cookie-text">
-                    <h3>🍪 We use cookies</h3>
-                    <p>We use cookies to enhance your experience, analyze site usage, and improve our services. By continuing to use our site, you consent to our use of cookies as described in our <a href="privacy.html" target="_blank">Privacy Policy</a>.</p>
-                </div>
-                <div class="cookie-buttons">
-                    <button id="cookie-decline" class="cookie-btn cookie-btn-decline">Decline</button>
-                    <button id="cookie-accept" class="cookie-btn cookie-btn-accept">Accept All</button>
-                </div>
-            </div>
-        </div>
-    </footer>
-</body>
-
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cindy - AI Memory Partner Voice Assistant</title>
+    <meta name="description" content="Meet Cindy, your AI-powered voice assistant that understands, remembers, and evolves with you. Experience the future of human-computer interaction with complete privacy and local processing." />
+    <meta name="keywords" content="AI assistant, voice assistant, local LLM, privacy, open source, wake word, speech recognition, ollama" />
+    
+    <!-- Open Graph -->
+    <meta property="og:title" content="Cindy - AI Memory Partner Voice Assistant" />
+    <meta property="og:description" content="Your AI-powered voice assistant that understands, remembers, and evolves with you. Experience the future of human-computer interaction with complete privacy." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://getcindy.app" />
+    
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Cindy - AI Memory Partner Voice Assistant" />
+    <meta name="twitter:description" content="Your AI-powered voice assistant that understands, remembers, and evolves with you. Experience the future of human-computer interaction with complete privacy." />
+    
+    <!-- Theme -->
+    <meta name="theme-color" content="#0ea5e9" />
+    
+    <!-- Preconnect to external domains -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    
+    <!-- Font loading optimization -->
+    <style>
+      /* Critical CSS for font loading */
+      body {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+        margin: 0;
+        padding: 0;
+        background: #0f172a;
+        color: white;
+      }
+      
+      /* Loading screen */
+      #loading-screen {
+        position: fixed;
+        inset: 0;
+        background: linear-gradient(135deg, #0f172a 0%, #581c87 50%, #0f172a 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+      }
+      
+      .loading-blob {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: linear-gradient(45deg, #3b82f6, #8b5cf6);
+        animation: pulse 2s ease-in-out infinite;
+      }
+      
+      @keyframes pulse {
+        0%, 100% { transform: scale(1); opacity: 0.8; }
+        50% { transform: scale(1.2); opacity: 1; }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Loading Screen -->
+    <div id="loading-screen">
+      <div class="loading-blob"></div>
+    </div>
+    
+    <div id="root"></div>
+    
+    <!-- Remove loading screen when React loads -->
+    <script>
+      window.addEventListener('DOMContentLoaded', () => {
+        setTimeout(() => {
+          const loadingScreen = document.getElementById('loading-screen');
+          if (loadingScreen) {
+            loadingScreen.style.opacity = '0';
+            loadingScreen.style.transition = 'opacity 0.5s ease';
+            setTimeout(() => {
+              loadingScreen.remove();
+            }, 500);
+          }
+        }, 1000); // Show loading for at least 1 second
+      });
+    </script>
+    
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>
