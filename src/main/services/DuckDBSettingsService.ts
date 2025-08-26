@@ -154,6 +154,24 @@ export interface Settings {
         surname: string;
         hasCompletedSetup: boolean;
     };
+
+    // Connector settings
+    connectors?: {
+        oauth?: {
+            gmail?: {
+                clientId: string;
+                clientSecret: string;
+            };
+            outlook?: {
+                clientId: string;
+                clientSecret: string;
+            };
+            mendeley?: {
+                clientId: string;
+                clientSecret: string;
+            };
+        };
+    };
 }
 
 export class DuckDBSettingsService extends EventEmitter {
@@ -457,6 +475,77 @@ export class DuckDBSettingsService extends EventEmitter {
         }
     }
 
+    // OAuth credential management methods
+    async getOAuthCredentials(provider: 'gmail' | 'outlook' | 'mendeley'): Promise<{ clientId: string; clientSecret: string } | null> {
+        try {
+            const clientId = await keytar.getPassword(this.SERVICE_NAME, `${provider}_client_id`);
+            const clientSecret = await keytar.getPassword(this.SERVICE_NAME, `${provider}_client_secret`);
+            
+            if (clientId && clientSecret) {
+                return { clientId, clientSecret };
+            }
+            
+            // Fallback to settings
+            const connectorSettings = await this.get('connectors');
+            const oauthSettings = connectorSettings?.oauth?.[provider];
+            return oauthSettings || null;
+        } catch (error) {
+            console.warn(`[DuckDBSettingsService] Failed to get ${provider} OAuth credentials:`, error);
+            return null;
+        }
+    }
+
+    async setOAuthCredentials(provider: 'gmail' | 'outlook' | 'mendeley', clientId: string, clientSecret: string): Promise<void> {
+        try {
+            // Store securely in keychain
+            await keytar.setPassword(this.SERVICE_NAME, `${provider}_client_id`, clientId);
+            await keytar.setPassword(this.SERVICE_NAME, `${provider}_client_secret`, clientSecret);
+            
+            // Update settings with placeholder to indicate credentials exist
+            const connectorSettings = await this.get('connectors');
+            const updatedSettings = {
+                ...connectorSettings,
+                oauth: {
+                    ...connectorSettings?.oauth,
+                    [provider]: {
+                        clientId: '***',
+                        clientSecret: '***'
+                    }
+                }
+            };
+            
+            await this.set('connectors', updatedSettings);
+            console.log(`[DuckDBSettingsService] Stored ${provider} OAuth credentials securely`);
+        } catch (error) {
+            console.error(`[DuckDBSettingsService] Failed to set ${provider} OAuth credentials:`, error);
+            throw error;
+        }
+    }
+
+    async deleteOAuthCredentials(provider: 'gmail' | 'outlook' | 'mendeley'): Promise<void> {
+        try {
+            // Remove from keychain
+            await keytar.deletePassword(this.SERVICE_NAME, `${provider}_client_id`);
+            await keytar.deletePassword(this.SERVICE_NAME, `${provider}_client_secret`);
+            
+            // Update settings to remove placeholder
+            const connectorSettings = await this.get('connectors');
+            const updatedSettings = {
+                ...connectorSettings,
+                oauth: {
+                    ...connectorSettings?.oauth,
+                    [provider]: undefined
+                }
+            };
+            
+            await this.set('connectors', updatedSettings);
+            console.log(`[DuckDBSettingsService] Deleted ${provider} OAuth credentials`);
+        } catch (error) {
+            console.error(`[DuckDBSettingsService] Failed to delete ${provider} OAuth credentials:`, error);
+            throw error;
+        }
+    }
+
     async validatePath(path: string): Promise<{ valid: boolean; message?: string }> {
         const fs = await import('fs').then(m => m.promises);
         try {
@@ -594,6 +683,14 @@ export class DuckDBSettingsService extends EventEmitter {
                     enabled: true,
                     requestsPerMinute: 10,
                     cooldownSeconds: 5
+                }
+            },
+
+            connectors: {
+                oauth: {
+                    gmail: undefined,
+                    outlook: undefined,
+                    mendeley: undefined
                 }
             }
         };

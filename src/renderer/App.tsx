@@ -113,10 +113,26 @@ const App: React.FC = () => {
             setIsLoadingHistory(true);
 
             try {
+                // Check conversation health first
+                const health = await ipcRenderer.invoke('get-conversation-health', currentConversationId);
+                console.log('🏥 [DEBUG] Conversation health:', health);
+                
                 // Get ALL messages without any filtering (duplicates, ordering fixes, etc.)
                 // To use filtered messages (with cleanup), change to: 'load-conversation'
                 const messages = await ipcRenderer.invoke('load-all-conversation-messages', currentConversationId);
                 console.log('📝 Loading ALL unfiltered messages:', messages.length, 'messages found');
+                
+                // Log health information if conversation is incomplete
+                if (health && !health.isComplete) {
+                    console.warn('⚠️ [DEBUG] Incomplete conversation detected:', {
+                        conversationId: currentConversationId,
+                        totalMessages: health.totalMessages,
+                        userMessages: health.userMessages,
+                        assistantMessages: health.assistantMessages,
+                        missingResponses: health.missingResponseCount,
+                        lastMessageRole: health.lastMessageRole
+                    });
+                }
 
                 // Clear current messages, thinking blocks, and tool calls
                 dispatch({ type: 'CLEAR_MESSAGES' });
@@ -139,6 +155,26 @@ const App: React.FC = () => {
 
                 // Load all processed messages at once to prevent duplication
                 dispatch({ type: 'LOAD_MESSAGES', payload: updatedMessages });
+
+                // Add informational message for incomplete conversations (only if not already shown)
+                if (health && !health.isComplete && health.missingResponseCount > 0) {
+                    // Check if we've already shown the notice for this conversation
+                    const hasNoticeAlready = updatedMessages.some((msg: any) => 
+                        msg.role === 'system' && msg.content.includes('Incomplete Conversation Notice')
+                    );
+                    
+                    if (!hasNoticeAlready) {
+                        const incompleteMessage = {
+                            id: `incomplete-notice-${Date.now()}`,
+                            conversationId: currentConversationId,
+                            role: 'system' as const,
+                            content: `⚠️ **Incomplete Conversation Notice**\n\nThis conversation appears to be missing ${health.missingResponseCount} AI response${health.missingResponseCount > 1 ? 's' : ''}. This can happen if the app was closed while AI was responding, or due to connection issues.\n\n**What you can do:**\n• Continue chatting normally - new messages will work fine\n• Start a new conversation for a fresh start\n• Your previous messages are preserved and safe\n\n*This is just a one-time notice for older conversations.*`,
+                            timestamp: Date.now(),
+                            isSystemNotice: true
+                        };
+                        dispatch({ type: 'ADD_MESSAGE', payload: incompleteMessage });
+                    }
+                }
 
                 // Find and scroll to latest human message after a short delay
                 setTimeout(async () => {
@@ -684,28 +720,33 @@ const App: React.FC = () => {
                     dispatch({ type: 'APPEND_TO_LAST_ASSISTANT_MESSAGE', payload: processedTools.displayContent });
                 }
 
-                // Check for side view data (weather) in streaming updates
+                // Check for side view data (weather/map) in streaming updates
                 if (data.chunk.includes('📊 ')) {
-                    console.log('🌤️ Side view data detected in chunk:', data.chunk);
+                    console.log('📊 [DEBUG] Side view marker detected in chunk:', data.chunk);
                     
                     // Try to extract JSON from the side view marker  
                     const jsonMatch = data.chunk.match(/📊 (.+)/);
                     if (jsonMatch) {
                         const sideViewContent = jsonMatch[1].trim();
+                        console.log('📊 [DEBUG] Extracted side view content:', sideViewContent);
                         
-                        // Try to parse as JSON (for direct weather data)
+                        // Try to parse as JSON (for weather/map data)
                         try {
                             const parsedData = JSON.parse(sideViewContent);
+                            console.log('📊 [DEBUG] Parsed side view data:', parsedData);
+                            
                             if (parsedData.location && parsedData.temperature) {
-                                console.log('🌤️ Received weather data:', parsedData);
+                                console.log('🌤️ [DEBUG] Received weather data via stream:', parsedData);
                                 setSidePanelWidgetType('weather');
                                 setSidePanelData(parsedData as WeatherData);
                                 setShowSidePanel(true);
                             } else if (parsedData.locations && Array.isArray(parsedData.locations)) {
-                                console.log('🗺️ Received map data:', parsedData);
+                                console.log('🗺️ [DEBUG] Received map data via stream:', parsedData);
                                 setSidePanelWidgetType('map');
                                 setSidePanelData(parsedData as MapData);
                                 setShowSidePanel(true);
+                            } else {
+                                console.log('📊 [DEBUG] Unknown side view data format:', parsedData);
                             }
                         } catch (parseError) {
                             // Not JSON, might be just a marker like "Weather information"
@@ -863,8 +904,15 @@ const App: React.FC = () => {
         };
 
         const handleSideViewData = (_: any, data: { sideViewData: any, conversationId: string }) => {
+            console.log('📥 [DEBUG] Received side-view-data IPC:', {
+                receivedConversationId: data.conversationId,
+                currentConversationId: currentConversationIdRef.current,
+                sideViewData: data.sideViewData,
+                conversationMatch: data.conversationId === currentConversationIdRef.current
+            });
+            
             if (data.conversationId === currentConversationIdRef.current && data.sideViewData) {
-                console.log('🌤️ Received side view data:', data.sideViewData);
+                console.log('🌤️ Processing side view data for current conversation:', data.sideViewData);
                 
                 // Check if this is weather data or map data
                 if (data.sideViewData.type === 'weather' && data.sideViewData.data) {
@@ -891,6 +939,12 @@ const App: React.FC = () => {
                     setSidePanelData(data.sideViewData.data as WeatherData);
                     setShowSidePanel(true);
                 } else if (data.sideViewData.type === 'map' && data.sideViewData.data) {
+                    console.log('🗺️ [DEBUG] Processing map data:', {
+                        type: data.sideViewData.type,
+                        mapData: data.sideViewData.data,
+                        locationsCount: data.sideViewData.data?.locations?.length
+                    });
+                    
                     const newWidget = {
                         type: 'map' as WidgetType,
                         data: data.sideViewData.data as MapData,
@@ -905,11 +959,14 @@ const App: React.FC = () => {
                             JSON.stringify(w.data) === JSON.stringify(newWidget.data)
                         );
                         if (!exists) {
+                            console.log('🗺️ [DEBUG] Adding map widget to conversation history');
                             return [...prev, newWidget];
                         }
+                        console.log('🗺️ [DEBUG] Map widget already exists, skipping duplicate');
                         return prev;
                     });
                     
+                    console.log('🗺️ [DEBUG] Setting up map in side panel');
                     setSidePanelWidgetType('map');
                     setSidePanelData(data.sideViewData.data as MapData);
                     setShowSidePanel(true);

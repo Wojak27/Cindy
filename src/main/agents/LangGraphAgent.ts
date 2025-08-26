@@ -83,7 +83,7 @@ export class LangGraphAgent {
     /**
      * Process a message through Deep Research with streaming output
      */
-    async *processStreaming(input: string): AsyncGenerator<string> {
+    async *processStreaming(input: string, context?: any): AsyncGenerator<string> {
         try {
             console.log("\n🎬 [LangGraphAgent] STARTING DEEP RESEARCH STREAMING");
             console.log("═".repeat(80));

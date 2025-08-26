@@ -376,6 +376,15 @@ body:not([data-theme="dark"]) .message * {
     justify-content: flex-start;
 }
 
+.message.system {
+    background: rgba(255, 193, 7, 0.1);
+    justify-content: center;
+    border-left: 4px solid #ffc107;
+    margin: 16px 20px;
+    padding: 12px 16px;
+    border-radius: 8px;
+}
+
 /* User message container alignment - override earlier rules */
 .message.user .message-content {
     display: flex;
@@ -391,6 +400,11 @@ body:not([data-theme="dark"]) .message * {
 
 [data-theme="dark"] .message.assistant {
     background: #2f2f2f;
+}
+
+[data-theme="dark"] .message.system {
+    background: rgba(255, 193, 7, 0.15);
+    border-left-color: #ffcc33;
 }
 
 /* Remove avatar completely */

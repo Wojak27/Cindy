@@ -45,6 +45,8 @@ interface MapsWidgetProps {
 }
 
 const MapsWidget: React.FC<MapsWidgetProps> = ({ mapData }) => {
+    console.log('🗺️ [MapsWidget] Received mapData:', mapData);
+    
     const theme = useTheme();
     const mapContainerRef = useRef<HTMLDivElement>(null);
     const mapRef = useRef<L.Map | null>(null);

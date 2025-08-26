@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { updateSettings, toggleSettings } from '../../store/actions';
 import LLMProviderCard from './LLMProviderCard';
+import ConnectorIntegrations from './ConnectorIntegrations';
 import {
     Box,
     Typography,
@@ -830,12 +831,17 @@ const ModernSettingsPanel: React.FC = () => {
                     {/* Integrations Tab */}
                     <TabPanel value={tabValue} index={1}>
                         <Box sx={{ px: 3 }}>
-                            <Typography variant="h6" gutterBottom fontWeight={600}>
-                                Web Search & Browsers
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                                Configure search providers and API keys for enhanced web search capabilities. Only configured providers will appear in the dropdown.
-                            </Typography>
+                            {/* Email & Reference Connectors */}
+                            <ConnectorIntegrations onSettingsChange={setHasUnsavedChanges} />
+                            
+                            <Box sx={{ mt: 4 }}>
+                                <Typography variant="h6" gutterBottom fontWeight={600}>
+                                    Web Search & Browsers
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                                    Configure search providers and API keys for enhanced web search capabilities. Only configured providers will appear in the dropdown.
+                                </Typography>
+                            </Box>
 
                             <Card sx={{ mb: 3 }}>
                                 <CardContent>

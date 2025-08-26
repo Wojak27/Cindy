@@ -73,14 +73,16 @@ Input should be a JSON string with the following format:
             // Emit the side view data through IPC if available
             try {
                 const mainWindow = (global as any).mainWindow;
+                const conversationId = (global as any).currentConversationId || 'default';
                 console.log('[MapsDisplayTool] Attempting to send side-view-data via IPC');
                 console.log('[MapsDisplayTool] Main window available:', !!mainWindow);
+                console.log('[MapsDisplayTool] Conversation ID:', conversationId);
                 console.log('[MapsDisplayTool] Side view data:', sideViewData);
                 
                 if (mainWindow) {
                     mainWindow.webContents.send('side-view-data', {
                         sideViewData,
-                        conversationId: 'default' // TODO: Get actual conversation ID
+                        conversationId
                     });
                     console.log('[MapsDisplayTool] ✅ Successfully sent side-view-data via IPC');
                 } else {

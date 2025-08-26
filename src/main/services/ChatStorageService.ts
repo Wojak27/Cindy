@@ -216,7 +216,7 @@ export class ChatStorageService {
         const row = await (this.db! as any).get(
             `SELECT id, conversationId, role, content, timestamp
            FROM messages
-           WHERE conversationId = ? 
+           WHERE conversationId = ? AND role = 'user'
            ORDER BY timestamp DESC, id DESC`,
             [conversationId]
         );
@@ -230,6 +230,110 @@ export class ChatStorageService {
             content: row.content,
             timestamp: row.timestamp
         } as ChatMessage;
+    }
+
+    /**
+     * Detect conversations that may have missing AI responses
+     * Returns conversation IDs that have orphaned user messages
+     */
+    async getIncompleteConversations(): Promise<string[]> {
+        if (!this.db) await this.initialize();
+
+        console.log('🔧 DEBUG: Checking for incomplete conversations...');
+
+        // Find conversations where the last message is from user (indicating missing AI response)
+        const query = `
+            WITH conversation_last_messages AS (
+                SELECT 
+                    conversationId,
+                    role,
+                    timestamp,
+                    ROW_NUMBER() OVER (PARTITION BY conversationId ORDER BY timestamp DESC, id DESC) as row_num
+                FROM messages
+            ),
+            user_ending_conversations AS (
+                SELECT conversationId
+                FROM conversation_last_messages 
+                WHERE row_num = 1 AND role = 'user'
+            ),
+            conversation_stats AS (
+                SELECT 
+                    conversationId,
+                    COUNT(*) as total_messages,
+                    SUM(CASE WHEN role = 'user' THEN 1 ELSE 0 END) as user_messages,
+                    SUM(CASE WHEN role = 'assistant' THEN 1 ELSE 0 END) as assistant_messages
+                FROM messages
+                GROUP BY conversationId
+            )
+            SELECT DISTINCT uec.conversationId
+            FROM user_ending_conversations uec
+            JOIN conversation_stats cs ON uec.conversationId = cs.conversationId
+            WHERE cs.user_messages > cs.assistant_messages
+            AND cs.total_messages > 1
+        `;
+
+        const rows = await (this.db! as any).all(query);
+        const incompleteConversations = rows.map(row => row.conversationId);
+
+        console.log('🔧 DEBUG: Found', incompleteConversations.length, 'incomplete conversations:', incompleteConversations);
+        return incompleteConversations;
+    }
+
+    /**
+     * Get conversation health stats for a specific conversation
+     */
+    async getConversationHealth(conversationId: string): Promise<{
+        isComplete: boolean;
+        totalMessages: number;
+        userMessages: number;
+        assistantMessages: number;
+        lastMessageRole: 'user' | 'assistant' | null;
+        missingResponseCount: number;
+    }> {
+        if (!this.db) await this.initialize();
+
+        const query = `
+            SELECT 
+                COUNT(*) as total_messages,
+                SUM(CASE WHEN role = 'user' THEN 1 ELSE 0 END) as user_messages,
+                SUM(CASE WHEN role = 'assistant' THEN 1 ELSE 0 END) as assistant_messages
+            FROM messages 
+            WHERE conversationId = ?
+        `;
+
+        const lastMessageQuery = `
+            SELECT role 
+            FROM messages 
+            WHERE conversationId = ?
+            ORDER BY timestamp DESC, id DESC 
+            LIMIT 1
+        `;
+
+        const statsRow = await (this.db! as any).get(query, [conversationId]);
+        const lastMessageRow = await (this.db! as any).get(lastMessageQuery, [conversationId]);
+
+        const totalMessages = statsRow?.total_messages || 0;
+        const userMessages = statsRow?.user_messages || 0;
+        const assistantMessages = statsRow?.assistant_messages || 0;
+        const lastMessageRole = lastMessageRow?.role || null;
+
+        // Calculate missing responses: ideally user_messages should equal assistant_messages
+        const missingResponseCount = Math.max(0, userMessages - assistantMessages);
+        
+        // Conversation is complete if:
+        // 1. Has messages
+        // 2. User messages <= assistant messages (no orphaned user messages)
+        // 3. If there are messages, the pattern should be balanced
+        const isComplete = totalMessages > 0 && missingResponseCount === 0;
+
+        return {
+            isComplete,
+            totalMessages,
+            userMessages,
+            assistantMessages,
+            lastMessageRole: lastMessageRole as 'user' | 'assistant' | null,
+            missingResponseCount
+        };
     }
 
 

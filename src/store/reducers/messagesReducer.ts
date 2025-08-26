@@ -8,6 +8,7 @@ const initialState = {
   thinkingBlocks: [],
   toolCalls: [],
   currentConversationId: uuidv4(), // Unique ID for the current conversation
+  currentAssistantIdByConversation: {}, // Track current assistant message ID per conversation
 };
 
 const messagesReducer = (state = initialState, action: any) => {
@@ -360,6 +361,16 @@ const messagesReducer = (state = initialState, action: any) => {
         toolCalls: state.toolCalls.filter(call =>
           !call.id.startsWith('incomplete-tool-')
         )
+      };
+
+    case 'SET_CURRENT_ASSISTANT_ID':
+      // Track the current assistant message ID for a conversation
+      return {
+        ...state,
+        currentAssistantIdByConversation: {
+          ...state.currentAssistantIdByConversation,
+          [action.payload.conversationId]: action.payload.messageId
+        }
       };
 
     default:

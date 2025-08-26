@@ -57,8 +57,8 @@ export class ThinkingCindyAgent {
         //     preferences: context.preferences
         // } : undefined;
 
-        // Delegate to LangGraphAgent
-        yield* this.langGraphAgent.processStreaming(input);
+        // Delegate to LangGraphAgent with context
+        yield* this.langGraphAgent.processStreaming(input, context);
     }
 
     // Expose thinking steps for debugging/transparency

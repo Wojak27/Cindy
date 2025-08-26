@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, nativeImage, NativeImage, ipcMain, desktopCapturer } from 'electron';
+import { app, BrowserWindow, Menu, nativeImage, NativeImage, ipcMain, desktopCapturer, shell } from 'electron';
 import * as path from 'path';
 import * as os from 'os';
 import { CindyMenu } from './menu';
@@ -15,6 +15,7 @@ import { SpeechToTextService } from './services/SpeechToTextService';
 import RealTimeTranscriptionService from './services/RealTimeTranscriptionService';
 import { LinkPreviewService } from './services/LinkPreviewService';
 import { TextToSpeechService } from './services/TextToSpeechService';
+import { ConnectorManagerService } from './services/ConnectorManagerService';
 
 import installExtension, {
     REDUX_DEVTOOLS,
@@ -1174,6 +1175,172 @@ const setupTTSIPC = () => {
     console.log('🔧 DEBUG: TTS IPC handlers setup complete');
 };
 
+// Function to set up Connector-related IPC handlers
+const setupConnectorIPC = () => {
+    console.log('🔧 DEBUG: Setting up Connector IPC handlers');
+
+    // Remove any existing handlers first
+    const handlersToRemove = [
+        'connector-get-status',
+        'connector-start-oauth',
+        'connector-configure-zotero',
+        'connector-disconnect',
+        'connector-test',
+        'connector-get-connected'
+    ];
+
+    handlersToRemove.forEach(handler => {
+        try {
+            ipcMain.removeHandler(handler);
+        } catch (error) {
+            console.debug(`No existing handler for ${handler} to remove`);
+        }
+    });
+
+    // Get connector status
+    ipcMain.handle('connector-get-status', async () => {
+        try {
+            if (!connectorManagerService) {
+                return { success: false, error: 'ConnectorManagerService not available' };
+            }
+
+            const status = connectorManagerService.getConnectorStatus();
+            return { success: true, data: status };
+        } catch (error: any) {
+            console.error('[IPC] Error getting connector status:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // OAuth credential management handlers
+    ipcMain.handle('settings-get-oauth-credentials', async (event, provider: string) => {
+        try {
+            if (!settingsService) {
+                return { success: false, error: 'Settings service not available' };
+            }
+            const credentials = await (settingsService as any).getOAuthCredentials(provider);
+            return credentials;
+        } catch (error: any) {
+            console.error(`[IPC] Error getting OAuth credentials for ${provider}:`, error);
+            return null;
+        }
+    });
+
+    ipcMain.handle('settings-set-oauth-credentials', async (event, provider: string, clientId: string, clientSecret: string) => {
+        try {
+            if (!settingsService) {
+                return { success: false, error: 'Settings service not available' };
+            }
+            await (settingsService as any).setOAuthCredentials(provider, clientId, clientSecret);
+            return { success: true };
+        } catch (error: any) {
+            console.error(`[IPC] Error setting OAuth credentials for ${provider}:`, error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('settings-delete-oauth-credentials', async (event, provider: string) => {
+        try {
+            if (!settingsService) {
+                return { success: false, error: 'Settings service not available' };
+            }
+            await (settingsService as any).deleteOAuthCredentials(provider);
+            return { success: true };
+        } catch (error: any) {
+            console.error(`[IPC] Error deleting OAuth credentials for ${provider}:`, error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // Start OAuth flow for a connector
+    ipcMain.handle('connector-start-oauth', async (event, provider: string, oauthConfig?: any) => {
+        try {
+            if (!connectorManagerService) {
+                return { success: false, error: 'ConnectorManagerService not available' };
+            }
+
+            const authUrl = await connectorManagerService.startOAuthFlow(provider as any, oauthConfig);
+            return { success: true, data: { authUrl } };
+        } catch (error: any) {
+            console.error(`[IPC] Error starting OAuth for ${provider}:`, error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // Configure Zotero with API key
+    ipcMain.handle('connector-configure-zotero', async (event, apiKey: string, userId: string, workspaceId?: string) => {
+        try {
+            if (!connectorManagerService) {
+                return { success: false, error: 'ConnectorManagerService not available' };
+            }
+
+            await connectorManagerService.configureZotero(apiKey, userId, workspaceId);
+            return { success: true };
+        } catch (error: any) {
+            console.error('[IPC] Error configuring Zotero:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // Disconnect a connector
+    ipcMain.handle('connector-disconnect', async (event, provider: string) => {
+        try {
+            if (!connectorManagerService) {
+                return { success: false, error: 'ConnectorManagerService not available' };
+            }
+
+            await connectorManagerService.disconnectConnector(provider as any);
+            return { success: true };
+        } catch (error: any) {
+            console.error(`[IPC] Error disconnecting ${provider}:`, error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // Test a connector
+    ipcMain.handle('connector-test', async (event, provider: string) => {
+        try {
+            if (!connectorManagerService) {
+                return { success: false, error: 'ConnectorManagerService not available' };
+            }
+
+            const result = await connectorManagerService.testConnector(provider as any);
+            return result;
+        } catch (error: any) {
+            console.error(`[IPC] Error testing ${provider}:`, error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // Get connected connectors for tool loading
+    ipcMain.handle('connector-get-connected', async () => {
+        try {
+            if (!connectorManagerService) {
+                return { success: false, error: 'ConnectorManagerService not available' };
+            }
+
+            const connectors = connectorManagerService.getConnectedConnectors();
+            return { success: true, data: connectors };
+        } catch (error: any) {
+            console.error('[IPC] Error getting connected connectors:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // Open external URL in default browser
+    ipcMain.handle('shell-open-external', async (event, url: string) => {
+        try {
+            await shell.openExternal(url);
+            return { success: true };
+        } catch (error: any) {
+            console.error('[IPC] Error opening external URL:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    console.log('🔧 DEBUG: Connector IPC handlers setup complete');
+};
+
 async function waitForDevServer(maxRetries = 10, delay = 1000): Promise<boolean> {
     for (let i = 0; i < maxRetries; i++) {
         try {
@@ -1214,6 +1381,7 @@ let speechToTextService: SpeechToTextService | null = null;
 let realTimeTranscriptionService: RealTimeTranscriptionService | null = null;
 let linkPreviewService: LinkPreviewService | null = null;
 let textToSpeechService: TextToSpeechService | null = null;
+let connectorManagerService: ConnectorManagerService | null = null;
 
 const createWindow = async (): Promise<void> => {
     console.log('🔧 DEBUG: Creating simplified window for testing');
@@ -1443,6 +1611,7 @@ app.on('ready', async () => {
     setupSettingsIPC();
     setupDatabaseIPC();
     setupTTSIPC();
+    setupConnectorIPC();
 
     // Skip LLM services for now - will initialize them later
     console.log('🔧 DEBUG: Skipping LLM services initialization for startup speed');
@@ -1537,6 +1706,20 @@ app.on('ready', async () => {
         }
     }
 
+    // Initialize ConnectorManagerService
+    if (!connectorManagerService) {
+        try {
+            console.log('🔧 DEBUG: Initializing ConnectorManagerService...');
+            connectorManagerService = new ConnectorManagerService();
+            await connectorManagerService.initialize();
+            console.log('🔧 DEBUG: ConnectorManagerService initialized successfully');
+        } catch (error) {
+            console.error('🚨 DEBUG: Failed to initialize ConnectorManagerService:', error);
+            // Continue without connector manager service
+            connectorManagerService = null;
+        }
+    }
+
     // Initialize ServiceManager for dynamic loading of heavy services
     serviceManager = new ServiceManager(settingsService, llmProvider);
     console.log('🔧 DEBUG: ServiceManager initialized for dynamic service loading');
@@ -1545,7 +1728,12 @@ app.on('ready', async () => {
     setTimeout(async () => {
         try {
             console.log('🔧 DEBUG: Early tool initialization...');
-            await serviceManager?.initializeTools();
+            
+            // Get connected connectors for tool loading
+            const connectors = connectorManagerService?.getConnectedConnectors() || {};
+            console.log('🔧 DEBUG: Connected connectors for tool loading:', Object.keys(connectors));
+            
+            await serviceManager?.initializeTools(duckDBVectorStore, connectors);
             console.log('✅ DEBUG: Early tool initialization completed');
         } catch (error) {
             console.error('❌ DEBUG: Early tool initialization failed:', error);
@@ -2559,6 +2747,9 @@ app.on('ready', async () => {
                 let assistantContent = '';
 
                 try {
+                    // Set current conversation ID globally for tools to access
+                    (global as any).currentConversationId = conversationId;
+                    
                     // Use streaming processing from the agent
                     for await (const chunk of langChainCindyAgent.processStreaming(message, agentContext)) {
                         assistantContent += chunk;
@@ -2584,6 +2775,23 @@ app.on('ready', async () => {
 
                     console.log('🔧 DEBUG: Sending stream-complete event for conversation:', conversationId);
                     event.sender.send('stream-complete', { conversationId });
+                    
+                    // Save assistant message to backend storage
+                    if (chatStorageService && assistantContent.trim()) {
+                        try {
+                            const assistantMessage = {
+                                conversationId,
+                                role: 'assistant' as const,
+                                content: assistantContent,
+                                timestamp: Date.now()
+                            };
+                            await chatStorageService.saveMessage(assistantMessage);
+                            console.log('🔧 DEBUG: Assistant message saved to backend storage');
+                        } catch (saveError) {
+                            console.error('🚨 DEBUG: Failed to persist assistant message:', saveError);
+                        }
+                    }
+                    
                     return assistantContent;
 
                 } catch (agentError) {
@@ -2709,6 +2917,36 @@ app.on('ready', async () => {
         } catch (error) {
             console.error('Main process - load-all-conversation-messages: error loading messages:', error);
             return [];
+        }
+    });
+
+    // IPC handler for checking incomplete conversations
+    ipcMain.handle('get-incomplete-conversations', async () => {
+        console.log('Main process - get-incomplete-conversations IPC called');
+        try {
+            if (!chatStorageService) {
+                console.error('Main process - get-incomplete-conversations: chatStorageService not available');
+                return [];
+            }
+            return await chatStorageService.getIncompleteConversations();
+        } catch (error) {
+            console.error('Main process - get-incomplete-conversations: error:', error);
+            return [];
+        }
+    });
+
+    // IPC handler for getting conversation health
+    ipcMain.handle('get-conversation-health', async (_, conversationId: string) => {
+        console.log('Main process - get-conversation-health IPC called for:', conversationId);
+        try {
+            if (!chatStorageService) {
+                console.error('Main process - get-conversation-health: chatStorageService not available');
+                return null;
+            }
+            return await chatStorageService.getConversationHealth(conversationId);
+        } catch (error) {
+            console.error('Main process - get-conversation-health: error:', error);
+            return null;
         }
     });
 

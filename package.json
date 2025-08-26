@@ -68,12 +68,14 @@
         "electron-squirrel-startup": "^1.0.1",
         "electron-store": "^10.1.0",
         "faiss-node": "^0.5.1",
+        "googleapis": "^150.0.0",
         "keytar": "^7.9.0",
         "kokoro-js": "^1.2.1",
         "langchain": "^0.3.30",
         "leaflet": "^1.9.4",
         "mammoth": "^1.10.0",
         "marked": "^16.1.2",
+        "@microsoft/microsoft-graph-client": "^3.0.7",
         "microsoft-cognitiveservices-speech-sdk": "^1.32.0",
         "node-cron": "^3.0.2",
         "node-polyfill-webpack-plugin": "^4.1.0",
@@ -92,7 +94,9 @@
         "sqlite3": "^5.1.7",
         "three": "^0.179.1",
         "whisper-node": "^1.1.1",
-        "word-extractor": "^1.0.4"
+        "word-extractor": "^1.0.4",
+        "zod": "^3.22.4",
+        "zotero-api-client": "^0.4.0"
     },
     "devDependencies": {
         "@types/auto-launch": "^5.0.5",

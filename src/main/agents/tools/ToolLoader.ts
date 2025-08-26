@@ -14,6 +14,12 @@ import { createTavilySearchTool } from './search/TavilySearchTool';
 import { createVectorSearchTool } from './vector/VectorSearchTool';
 import { createAccuWeatherTool } from './weather/AccuWeatherTool';
 import { createMapsDisplayTool } from './maps/MapsDisplayTool';
+import { createEmailSearchTool } from './connectors/EmailSearchTool';
+import { createReferenceSearchTool } from './connectors/ReferenceSearchTool';
+import { GmailConnector } from '../../connectors/GmailConnector';
+import { OutlookConnector } from '../../connectors/OutlookConnector';
+import { ZoteroConnector } from '../../connectors/ZoteroConnector';
+import { MendeleyConnector } from '../../connectors/MendeleyConnector';
 
 /**
  * Tool configuration interface for initialization
@@ -29,6 +35,14 @@ export interface ToolConfiguration {
 
     // Vector store instance
     vectorStore?: any;
+
+    // Connector instances
+    connectors?: {
+        gmail?: GmailConnector;
+        outlook?: OutlookConnector;
+        zotero?: ZoteroConnector;
+        mendeley?: MendeleyConnector;
+    };
 
     // Tool-specific settings
     searchSettings?: {
@@ -47,6 +61,8 @@ export interface ToolConfiguration {
         vector?: boolean;
         weather?: boolean;
         maps?: boolean;
+        email?: boolean;
+        references?: boolean;
     };
 }
 
@@ -91,6 +107,9 @@ export class ToolLoader {
 
         // Load maps tools
         await this.loadMapsTools(config, enabledTools, registeredTools, failedTools);
+
+        // Load connector tools
+        await this.loadConnectorTools(config, enabledTools, registeredTools, failedTools);
 
         // Log results
         console.log(`[ToolLoader] ✅ Successfully registered ${registeredTools.length} tools:`, registeredTools);
@@ -275,6 +294,72 @@ export class ToolLoader {
     }
 
     /**
+     * Load connector tools
+     */
+    private async loadConnectorTools(
+        config: ToolConfiguration,
+        enabledTools: any,
+        registeredTools: string[],
+        failedTools: string[]
+    ): Promise<void> {
+        const connectors = config.connectors || {};
+
+        // Email Search Tool
+        if (enabledTools.email !== false && (connectors.gmail || connectors.outlook)) {
+            try {
+                const emailConnectors: { gmail?: GmailConnector; outlook?: OutlookConnector } = {};
+                
+                if (connectors.gmail && connectors.gmail.isConnected()) {
+                    emailConnectors.gmail = connectors.gmail;
+                }
+                if (connectors.outlook && connectors.outlook.isConnected()) {
+                    emailConnectors.outlook = connectors.outlook;
+                }
+
+                if (Object.keys(emailConnectors).length > 0) {
+                    const spec = createEmailSearchTool(emailConnectors);
+                    if (spec && !this.loadedTools.has(spec.name)) {
+                        toolRegistry.registerTool(spec);
+                        this.loadedTools.add(spec.name);
+                        registeredTools.push(spec.name);
+                        console.log(`[ToolLoader] Email search tool loaded with ${Object.keys(emailConnectors).join(', ')} connector(s)`);
+                    }
+                }
+            } catch (error: any) {
+                console.error('[ToolLoader] Failed to load Email Search tool:', error.message);
+                failedTools.push('email_search');
+            }
+        }
+
+        // Reference Search Tool
+        if (enabledTools.references !== false && (connectors.zotero || connectors.mendeley)) {
+            try {
+                const refConnectors: { zotero?: ZoteroConnector; mendeley?: MendeleyConnector } = {};
+                
+                if (connectors.zotero && connectors.zotero.isConnected()) {
+                    refConnectors.zotero = connectors.zotero;
+                }
+                if (connectors.mendeley && connectors.mendeley.isConnected()) {
+                    refConnectors.mendeley = connectors.mendeley;
+                }
+
+                if (Object.keys(refConnectors).length > 0) {
+                    const spec = createReferenceSearchTool(refConnectors);
+                    if (spec && !this.loadedTools.has(spec.name)) {
+                        toolRegistry.registerTool(spec);
+                        this.loadedTools.add(spec.name);
+                        registeredTools.push(spec.name);
+                        console.log(`[ToolLoader] Reference search tool loaded with ${Object.keys(refConnectors).join(', ')} connector(s)`);
+                    }
+                }
+            } catch (error: any) {
+                console.error('[ToolLoader] Failed to load Reference Search tool:', error.message);
+                failedTools.push('reference_search');
+            }
+        }
+    }
+
+    /**
      * Reload specific tool with new configuration
      */
     async reloadTool(toolName: string, config: Partial<ToolConfiguration>): Promise<boolean> {
@@ -350,6 +435,50 @@ export class ToolLoader {
                         toolRegistry.registerTool(mapSpec);
                         this.loadedTools.add(mapSpec.name);
                         return true;
+                    }
+                    break;
+
+                case 'email_search':
+                    if (config.connectors && (config.connectors.gmail || config.connectors.outlook)) {
+                        const emailConnectors: { gmail?: GmailConnector; outlook?: OutlookConnector } = {};
+                        
+                        if (config.connectors.gmail && config.connectors.gmail.isConnected()) {
+                            emailConnectors.gmail = config.connectors.gmail;
+                        }
+                        if (config.connectors.outlook && config.connectors.outlook.isConnected()) {
+                            emailConnectors.outlook = config.connectors.outlook;
+                        }
+
+                        if (Object.keys(emailConnectors).length > 0) {
+                            const spec = createEmailSearchTool(emailConnectors);
+                            if (spec) {
+                                toolRegistry.registerTool(spec);
+                                this.loadedTools.add(spec.name);
+                                return true;
+                            }
+                        }
+                    }
+                    break;
+
+                case 'reference_search':
+                    if (config.connectors && (config.connectors.zotero || config.connectors.mendeley)) {
+                        const refConnectors: { zotero?: ZoteroConnector; mendeley?: MendeleyConnector } = {};
+                        
+                        if (config.connectors.zotero && config.connectors.zotero.isConnected()) {
+                            refConnectors.zotero = config.connectors.zotero;
+                        }
+                        if (config.connectors.mendeley && config.connectors.mendeley.isConnected()) {
+                            refConnectors.mendeley = config.connectors.mendeley;
+                        }
+
+                        if (Object.keys(refConnectors).length > 0) {
+                            const spec = createReferenceSearchTool(refConnectors);
+                            if (spec) {
+                                toolRegistry.registerTool(spec);
+                                this.loadedTools.add(spec.name);
+                                return true;
+                            }
+                        }
                     }
                     break;
 

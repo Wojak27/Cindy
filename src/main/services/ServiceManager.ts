@@ -41,7 +41,7 @@ export class ServiceManager extends EventEmitter {
     /**
      * Initialize tools using ToolLoader system
      */
-    async initializeTools(duckdbVectorStore?: any): Promise<void> {
+    async initializeTools(duckdbVectorStore?: any, connectorInstances?: any): Promise<void> {
         if (this.toolsInitialized) {
             return;
         }
@@ -75,6 +75,9 @@ export class ServiceManager extends EventEmitter {
                 // Vector store for document search
                 vectorStore: duckdbVectorStore,
                 
+                // Connector instances for email and reference tools
+                connectors: connectorInstances || {},
+                
                 // Enable all tools by default
                 enabledTools: {
                     duckduckgo: true,
@@ -84,7 +87,10 @@ export class ServiceManager extends EventEmitter {
                     tavily: !!settingsData?.search?.tavilyApiKey,
                     vector: !!duckdbVectorStore,
                     weather: true,
-                    maps: true
+                    maps: true,
+                    // Email and reference connectors
+                    email: !!(connectorInstances?.gmail || connectorInstances?.outlook),
+                    reference: !!(connectorInstances?.zotero || connectorInstances?.mendeley)
                 }
             };
 
@@ -108,16 +114,16 @@ export class ServiceManager extends EventEmitter {
     /**
      * Get tool registry (replaces getToolExecutorService)
      */
-    async getToolRegistry(duckdbVectorStore?: any): Promise<any> {
-        await this.initializeTools(duckdbVectorStore);
+    async getToolRegistry(duckdbVectorStore?: any, connectorInstances?: any): Promise<any> {
+        await this.initializeTools(duckdbVectorStore, connectorInstances);
         return toolRegistry;
     }
 
     /**
      * Get tools for LLM attachment (replaces getToolsForAgent)
      */
-    async getToolsForAgent(duckdbVectorStore?: any): Promise<any[]> {
-        await this.initializeTools(duckdbVectorStore);
+    async getToolsForAgent(duckdbVectorStore?: any, connectorInstances?: any): Promise<any[]> {
+        await this.initializeTools(duckdbVectorStore, connectorInstances);
         return toolRegistry.getAllToolDefinitions();
     }
 
@@ -204,7 +210,7 @@ export class ServiceManager extends EventEmitter {
 
             // Load dependencies
             const memoryService = await this.getMemoryService();
-            // Ensure tools are initialized for the agent
+            // Ensure tools are initialized for the agent (connectors will be passed when available)
             await this.initializeTools(duckdbVectorStore);
 
             // Dynamic import to avoid loading at startup - using new LangGraphAgent
