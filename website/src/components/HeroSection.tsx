@@ -91,68 +91,87 @@ export default function HeroSection({ hideBlob = false }: HeroSectionProps) {
                         </motion.div>
                     </div>
 
-                    {/* Interactive Blob Space - Blob is now rendered globally in App.tsx */}
-                    {!hideBlob && (
-                        <div className="relative">
+                    {/* Blob Area - The blob is positioned globally but we need space for floating elements */}
+                    <div className="relative lg:flex lg:items-center lg:justify-center">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ duration: 1, delay: 0.5 }}
+                            className="relative w-96 h-96 flex items-center justify-center"
+                        >
+                            {/* Floating Elements that orbit around the blob space */}
                             <motion.div
-                                initial={{ opacity: 0, scale: 0.8 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                transition={{ duration: 1, delay: 0.5 }}
-                                className="relative flex items-center justify-center"
+                                animate={{ 
+                                    rotate: 360,
+                                    y: [0, -20, 0]
+                                }}
+                                transition={{ 
+                                    rotate: { duration: 20, repeat: Infinity, ease: "linear" },
+                                    y: { duration: 4, repeat: Infinity, ease: "easeInOut" }
+                                }}
+                                className="absolute -top-8 -right-8 w-16 h-16 bg-gradient-to-br from-primary-400 to-secondary-400 rounded-full flex items-center justify-center shadow-lg"
                             >
-                                {/* Blob Space - blob rendered globally */}
-                                <div className="relative w-96 h-96 flex items-center justify-center">
-                                    {/* Floating Elements */}
-                                    <motion.div
-                                        animate={{ 
-                                            rotate: 360,
-                                            y: [0, -20, 0]
-                                        }}
-                                        transition={{ 
-                                            rotate: { duration: 20, repeat: Infinity, ease: "linear" },
-                                            y: { duration: 4, repeat: Infinity, ease: "easeInOut" }
-                                        }}
-                                        className="absolute -top-8 -right-8 w-16 h-16 bg-gradient-to-br from-primary-400 to-secondary-400 rounded-full flex items-center justify-center shadow-lg"
-                                    >
-                                        <Mic className="text-white" size={24} />
-                                    </motion.div>
-
-                                    <motion.div
-                                        animate={{ 
-                                            rotate: -360,
-                                            y: [0, 15, 0]
-                                        }}
-                                        transition={{ 
-                                            rotate: { duration: 15, repeat: Infinity, ease: "linear" },
-                                            y: { duration: 3, repeat: Infinity, ease: "easeInOut", delay: 1 }
-                                        }}
-                                        className="absolute -bottom-8 -left-8 w-12 h-12 bg-gradient-to-br from-secondary-400 to-primary-400 rounded-full flex items-center justify-center shadow-lg"
-                                    >
-                                        <Brain className="text-white" size={18} />
-                                    </motion.div>
-
-                                    <motion.div
-                                        animate={{ 
-                                            rotate: 360,
-                                            x: [0, 25, 0]
-                                        }}
-                                        transition={{ 
-                                            rotate: { duration: 25, repeat: Infinity, ease: "linear" },
-                                            x: { duration: 5, repeat: Infinity, ease: "easeInOut", delay: 2 }
-                                        }}
-                                        className="absolute top-1/2 -right-12 w-10 h-10 bg-gradient-to-br from-primary-500 to-secondary-500 rounded-full flex items-center justify-center shadow-lg"
-                                    >
-                                        <Zap className="text-white" size={16} />
-                                    </motion.div>
-                                </div>
+                                <Mic className="text-white" size={24} />
                             </motion.div>
-                        </div>
-                    )}
-                    {hideBlob && (
-                        <div className="relative w-96 h-96 flex items-center justify-center">
-                            {/* Space for the globally positioned blob */}
-                        </div>
-                    )}
+
+                            <motion.div
+                                animate={{ 
+                                    rotate: -360,
+                                    y: [0, 15, 0]
+                                }}
+                                transition={{ 
+                                    rotate: { duration: 15, repeat: Infinity, ease: "linear" },
+                                    y: { duration: 3, repeat: Infinity, ease: "easeInOut", delay: 1 }
+                                }}
+                                className="absolute -bottom-8 -left-8 w-12 h-12 bg-gradient-to-br from-secondary-400 to-primary-400 rounded-full flex items-center justify-center shadow-lg"
+                            >
+                                <Brain className="text-white" size={18} />
+                            </motion.div>
+
+                            <motion.div
+                                animate={{ 
+                                    rotate: 360,
+                                    x: [0, 25, 0]
+                                }}
+                                transition={{ 
+                                    rotate: { duration: 25, repeat: Infinity, ease: "linear" },
+                                    x: { duration: 5, repeat: Infinity, ease: "easeInOut", delay: 2 }
+                                }}
+                                className="absolute top-1/2 -left-12 w-10 h-10 bg-gradient-to-br from-primary-500 to-secondary-500 rounded-full flex items-center justify-center shadow-lg"
+                            >
+                                <Zap className="text-white" size={16} />
+                            </motion.div>
+
+                            {/* Add more floating elements for visual balance */}
+                            <motion.div
+                                animate={{ 
+                                    rotate: -360,
+                                    y: [0, 10, 0],
+                                    x: [0, -15, 0]
+                                }}
+                                transition={{ 
+                                    rotate: { duration: 18, repeat: Infinity, ease: "linear" },
+                                    y: { duration: 3.5, repeat: Infinity, ease: "easeInOut", delay: 0.5 },
+                                    x: { duration: 4.5, repeat: Infinity, ease: "easeInOut", delay: 1.5 }
+                                }}
+                                className="absolute top-8 left-8 w-8 h-8 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full opacity-80"
+                            />
+
+                            <motion.div
+                                animate={{ 
+                                    rotate: 360,
+                                    y: [0, -12, 0],
+                                    x: [0, 18, 0]
+                                }}
+                                transition={{ 
+                                    rotate: { duration: 22, repeat: Infinity, ease: "linear" },
+                                    y: { duration: 4.2, repeat: Infinity, ease: "easeInOut", delay: 1.8 },
+                                    x: { duration: 3.8, repeat: Infinity, ease: "easeInOut", delay: 0.8 }
+                                }}
+                                className="absolute bottom-16 right-16 w-6 h-6 bg-gradient-to-br from-purple-400 to-pink-500 rounded-full opacity-70"
+                            />
+                        </motion.div>
+                    </div>
                 </div>
 
                 {/* Scroll Indicator */}

@@ -30,24 +30,29 @@ export default function App() {
             {/* Navigation */}
             <Navigation />
             
-            {/* Single Blob that transitions from center to floating */}
+            {/* Single Blob that transitions from hero to top-right */}
             <motion.div
-                className="fixed pointer-events-none z-40"
+                className="fixed pointer-events-none"
                 animate={{
-                    x: isFloating ? window.innerWidth - 200 : window.innerWidth / 2 - 175,
-                    y: isFloating ? 80 : window.innerHeight / 2 - 175,
-                    scale: isFloating ? 0.4 : 1,
-                    opacity: isFloating ? 0.7 : 1
+                    x: isFloating 
+                        ? Math.max(window.innerWidth - 180, window.innerWidth * 0.85) // Top-right, responsive
+                        : window.innerWidth > 1024 
+                            ? window.innerWidth / 2 + 120 // Right of text on desktop
+                            : window.innerWidth / 2 - 175, // Center on mobile
+                    y: isFloating ? 15 : window.innerHeight / 2 - 175, // Very top when floating
+                    scale: isFloating ? 0.3 : window.innerWidth > 1024 ? 1 : 0.8, // Smaller on mobile
+                    opacity: isFloating ? 0.5 : 1
                 }}
                 transition={{ 
-                    duration: 1.2, 
-                    ease: [0.4, 0.0, 0.2, 1],
+                    duration: 1.4, 
+                    ease: [0.25, 0.1, 0.25, 1],
                     type: "spring",
-                    stiffness: 100,
-                    damping: 20
+                    stiffness: 80,
+                    damping: 25
                 }}
                 style={{
                     filter: isFloating ? 'blur(0.5px)' : 'none',
+                    zIndex: isFloating ? 30 : 10,
                 }}
             >
                 <SoundReactiveBlob 
