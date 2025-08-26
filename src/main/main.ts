@@ -2874,6 +2874,156 @@ app.on('ready', async () => {
         }
     });
 
+    // IPC handler for agent graph generation
+    ipcMain.handle('agent:mermaid', async () => {
+        console.log('Main process - agent:mermaid IPC called');
+        try {
+            // Check if LLM provider is available first
+            if (!llmProvider || !serviceManager) {
+                console.log('Main process - agent:mermaid: LLM provider not ready yet, showing initialization diagram');
+                return `
+graph TD
+    Init[Application Starting] --> LLM[Initializing LLM Provider]
+    LLM --> Agent[Loading LangGraph Agent]
+    Agent --> Ready[Agent Ready]
+    Ready --> Graph[Click Refresh to Load Agent Graph]
+    
+    style Init fill:#e1f5fe
+    style LLM fill:#fff3e0
+    style Agent fill:#e8f5e8
+    style Ready fill:#f3e5f5
+    style Graph fill:#fce4ec
+`;
+            }
+
+            // Try to get the LangGraph agent from service manager
+            let langChainCindyAgent;
+            try {
+                langChainCindyAgent = await serviceManager.getCindyAgent(duckDBVectorStore);
+            } catch (error) {
+                console.log('Main process - agent:mermaid: Agent not ready yet, error:', error.message);
+                return `
+graph TD
+    Starting[Agent Initialization in Progress] --> Provider[LLM Provider: ${llmProvider?.getCurrentProvider() || 'Loading...'}]
+    Provider --> Tools[Loading Tools & Services]
+    Tools --> Memory[Initializing Memory Service]
+    Memory --> AgentLoad[Loading LangGraph Agent]
+    AgentLoad --> Complete[Click Refresh When Ready]
+    
+    Complete --> Note["The agent is still loading...\\nThis usually takes 10-30 seconds"]
+    
+    style Starting fill:#fff3e0
+    style Provider fill:#e8f5e8
+    style Tools fill:#e3f2fd
+    style Memory fill:#f3e5f5
+    style AgentLoad fill:#fce4ec
+    style Complete fill:#e8f5e8
+    style Note fill:#fff8e1
+`;
+            }
+            
+            if (!langChainCindyAgent) {
+                console.warn('Main process - agent:mermaid: LangGraphAgent not available after initialization attempt');
+                return `
+graph TD
+    Issue[Agent Loading Issue] --> Check[Check Application Logs]
+    Check --> Retry[Click Refresh to Retry]
+    Retry --> Settings[Verify LLM Settings]
+    
+    style Issue fill:#ffebee
+    style Check fill:#fff3e0
+    style Retry fill:#e8f5e8
+    style Settings fill:#f3e5f5
+`;
+            }
+
+            // Check if the agent has Deep Research integration with a graph
+            const deepResearchIntegration = langChainCindyAgent.getDeepResearchIntegration();
+            if (deepResearchIntegration) {
+                try {
+                    const deepResearchAgent = deepResearchIntegration.getDeepResearchAgent();
+                    if (deepResearchAgent && deepResearchAgent.getMainGraph) {
+                        const mainGraph = deepResearchAgent.getMainGraph();
+                        if (mainGraph && mainGraph.get_graph) {
+                            const graph = mainGraph.get_graph();
+                            if (graph.drawMermaid) {
+                                console.log('Main process - agent:mermaid: Using LangGraph mermaid generation');
+                                const mermaidText = graph.drawMermaid({
+                                    withStyles: true,
+                                    curveStyle: 'linear',
+                                    wrapLabelNWords: 9
+                                });
+                                return mermaidText;
+                            }
+                        }
+                    }
+                } catch (graphError) {
+                    console.warn('Main process - agent:mermaid: Failed to get LangGraph mermaid, using fallback:', graphError.message);
+                }
+            }
+
+            // Fallback: Generate a custom mermaid diagram based on the agent architecture
+            console.log('Main process - agent:mermaid: Using fallback mermaid generation');
+            const fallbackMermaid = `
+graph TD
+    Start([User Input]) --> Routing{LangGraph Agent}
+    Routing --> |Research Query| DR[Deep Research System]
+    Routing --> |Tool Usage| TA[Tool Agent]
+    Routing --> |Direct Chat| LLM[Direct LLM Response]
+    
+    DR --> Clarify[Clarification Node]
+    Clarify --> |Needs Info| UserInput[Ask User]
+    Clarify --> |Clear Query| Research[Research Process]
+    
+    Research --> Supervisor[Supervisor Graph]
+    Supervisor --> Delegate[Delegate Research]
+    Delegate --> Researcher[Researcher Node]
+    Researcher --> |Tool Execution| Tools[Search & Analysis Tools]
+    Tools --> Researcher
+    Researcher --> Supervisor
+    Supervisor --> |Complete| Synthesis[Synthesis Node]
+    
+    TA --> ToolRegistry[Tool Registry]
+    ToolRegistry --> SearchTools[Search Tools]
+    ToolRegistry --> VectorTools[Vector Tools]  
+    ToolRegistry --> WeatherTools[Weather Tools]
+    ToolRegistry --> MapTools[Map Tools]
+    ToolRegistry --> ConnectorTools[Connector Tools]
+    
+    Synthesis --> Response[Final Response]
+    TA --> Response
+    LLM --> Response
+    UserInput --> Response
+    Response --> End([End])
+    
+    style Start fill:#e1f5fe
+    style End fill:#f3e5f5
+    style DR fill:#e8f5e8
+    style TA fill:#fff3e0
+    style LLM fill:#fce4ec
+    style Supervisor fill:#fff8e1
+    style Researcher fill:#e0f2f1
+    style Tools fill:#f1f8e9
+    style Response fill:#fafafa
+`;
+            
+            return fallbackMermaid;
+
+        } catch (error) {
+            console.error('Main process - agent:mermaid: Error generating mermaid:', error);
+            // Return a basic error diagram
+            return `
+graph TD
+    Error[Agent Graph Generation Failed] --> Message["${error.message}"]
+    Message --> Retry[Try Reloading the Application]
+    
+    style Error fill:#ffebee
+    style Message fill:#fff3e0
+    style Retry fill:#e8f5e8
+`;
+        }
+    });
+
     // IPC handler for creating conversations
     ipcMain.handle('create-conversation', async () => {
         console.log('Main process - create-conversation IPC called');

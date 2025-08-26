@@ -18,6 +18,7 @@ import ModernDatabasePanel from './components/ModernDatabasePanel';
 import ChatSidePanel, { WidgetType, WeatherData, MapData, IndexedFile } from './components/ChatSidePanel';
 import ThemeToggle from './components/ThemeToggle';
 import { ThemeProvider } from './contexts/ThemeContext';
+import AgentGraphVisualization from './components/AgentGraphVisualization';
 import { getSettings, setCurrentConversationId } from '../store/actions';
 import { toggleSettings } from '../store/actions';
 import { hideDocument } from '../store/actions';
@@ -43,7 +44,8 @@ import {
     PlayArrow as PlayIcon,
     Stop as StopIcon,
     ContentCopy as CopyIcon,
-    Description as DocumentIcon
+    Description as DocumentIcon,
+    AccountTree as GraphIcon
 } from '@mui/icons-material';
 
 const App: React.FC = () => {
@@ -71,6 +73,7 @@ const App: React.FC = () => {
     const [showSidePanel, setShowSidePanel] = useState(false);
     const [conversationWidgets, setConversationWidgets] = useState<Array<{ type: WidgetType; data: any; timestamp: number }>>([]);
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+    const [showDebugGraph, setShowDebugGraph] = useState(false);
     const audioContext = useRef<AudioContext | null>(null);
     const sounds = useRef<Record<string, AudioBuffer>>({});
     const streamController = useRef<AbortController | null>(null);
@@ -95,11 +98,29 @@ const App: React.FC = () => {
         }
         return "How can I assist you today?";
     }, [settings?.profile?.name]);
+    
     useEffect(() => {
         if (!currentConversationId) {
             dispatch(setCurrentConversationId(uuidv4()));
         }
-    }, [dispatch])
+    }, [dispatch]);
+
+    // Auto-show debug graph in debug mode
+    useEffect(() => {
+        const isDebugMode = process.env.NODE_ENV === 'development' || 
+                           window.location.search.includes('debug=true') ||
+                           window.location.search.includes('graph=true');
+        
+        if (isDebugMode) {
+            console.log('🔍 [Debug] Auto-opening agent graph visualization in debug mode');
+            
+            // Delay showing the graph to allow the app to initialize
+            setTimeout(() => {
+                console.log('🌳 [Debug] Showing agent graph after initialization delay');
+                setShowDebugGraph(true);
+            }, 3000); // 3 second delay to allow LLM provider to initialize
+        }
+    }, []);
 
     // Load conversation history when conversation changes
     useEffect(() => {
@@ -1253,6 +1274,16 @@ const App: React.FC = () => {
                         </IconButton>
 
                         <IconButton
+                            className={`graph-button ${showDebugGraph ? 'active' : ''}`}
+                            onClick={() => setShowDebugGraph(!showDebugGraph)}
+                            aria-label={showDebugGraph ? "Hide agent graph" : "Show agent graph"}
+                            size="small"
+                            title="Agent Architecture Graph"
+                        >
+                            <GraphIcon fontSize="small" />
+                        </IconButton>
+
+                        <IconButton
                             className={`settings-button ${showSettings ? 'active' : ''}`}
                             onClick={() => dispatch(toggleSettings())}
                             aria-label={showSettings ? "Close settings" : "Open settings"}
@@ -1742,9 +1773,31 @@ const App: React.FC = () => {
                     <div ref={databaseSidebarRef} className={`database-sidebar-container ${showDatabase ? 'open' : ''}`}>
                         <ModernDatabasePanel />
                     </div>
+                    <div className={`debug-graph-container ${showDebugGraph ? 'open' : ''}`}>
+                        <div className="debug-graph-panel">
+                            <div className="debug-graph-header">
+                                <h3>🌳 Agent Architecture Graph</h3>
+                                <button 
+                                    className="close-button"
+                                    onClick={() => setShowDebugGraph(false)}
+                                    aria-label="Close debug graph"
+                                >
+                                    ×
+                                </button>
+                            </div>
+                            <div className="debug-graph-content">
+                                <AgentGraphVisualization 
+                                    autoRender={showDebugGraph}
+                                    showControls={true}
+                                    onRenderComplete={() => console.log('🎨 [Debug] Agent graph rendered')}
+                                    onError={(error) => console.error('❌ [Debug] Agent graph error:', error)}
+                                />
+                            </div>
+                        </div>
+                    </div>
 
                     {/* Dark overlay when sidebars are open */}
-                    {(showSettings || showDatabase) && (
+                    {(showSettings || showDatabase || showDebugGraph) && (
                         <div className="sidebar-overlay" />
                     )}
 
