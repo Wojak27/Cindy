@@ -20,6 +20,8 @@ import ChatSidePanel, { WidgetType, WeatherData, MapData, IndexedFile } from './
 import ThemeToggle from './components/ThemeToggle';
 import { ThemeProvider } from './contexts/ThemeContext';
 import AgentGraphVisualization from './components/AgentGraphVisualization';
+import AgentFlowVisualization from './components/AgentFlowVisualization';
+import { agentFlowTracker } from './services/AgentFlowTracker';
 import { getSettings, setCurrentConversationId } from '../store/actions';
 import { toggleSettings } from '../store/actions';
 import { hideDocument } from '../store/actions';
@@ -84,6 +86,8 @@ const App: React.FC = () => {
     const databaseSidebarRef = useRef<HTMLDivElement>(null);
     const chatMessagesRef = useRef<HTMLDivElement>(null);
     const [availableDocuments, setAvailableDocuments] = useState<any[]>([]);
+    const [agentFlowSteps, setAgentFlowSteps] = useState<any[]>([]);
+    const [currentFlowMessageId, setCurrentFlowMessageId] = useState<string | null>(null);
 
 
     // Memoize welcome message to prevent re-calculation on every render
@@ -100,7 +104,7 @@ const App: React.FC = () => {
         }
         return "How can I assist you today?";
     }, [settings?.profile?.name]);
-    
+
     useEffect(() => {
         if (!currentConversationId) {
             dispatch(setCurrentConversationId(uuidv4()));
@@ -109,17 +113,17 @@ const App: React.FC = () => {
 
     // Auto-show debug graph in debug mode
     useEffect(() => {
-        const isDebugMode = process.env.NODE_ENV === 'development' || 
-                           window.location.search.includes('debug=true') ||
-                           window.location.search.includes('graph=true');
-        
+        const isDebugMode = process.env.NODE_ENV === 'development' ||
+            window.location.search.includes('debug=true') ||
+            window.location.search.includes('graph=true');
+
         if (isDebugMode) {
             console.log('🔍 [Debug] Auto-opening agent graph visualization in debug mode');
-            
+
             // Delay showing the graph to allow the app to initialize
             setTimeout(() => {
                 console.log('🌳 [Debug] Showing agent graph after initialization delay');
-                setShowDebugGraph(true);
+                setShowDebugGraph(false);
             }, 3000); // 3 second delay to allow LLM provider to initialize
         }
     }, []);
@@ -282,6 +286,56 @@ const App: React.FC = () => {
 
         return () => clearTimeout(timer);
     }, [dispatch]);
+
+    // Subscribe to agent flow tracker updates
+    useEffect(() => {
+        const unsubscribe = agentFlowTracker.subscribe((steps) => {
+            setAgentFlowSteps([...steps]);
+        });
+        return unsubscribe;
+    }, []);
+
+    // Listen for agent flow events from main process
+    useEffect(() => {
+        const handleFlowEvent = (event: any, { type, data }: { type: string, data: any }) => {
+            console.log('[AgentFlow] Received flow event:', type, data);
+
+            switch (type) {
+                case 'step-add':
+                    agentFlowTracker.addStep({
+                        title: data.title,
+                        details: data.details
+                    });
+                    break;
+
+                case 'step-update':
+                    if (data.stepId === 'initial') {
+                        // Update the first step we created
+                        const steps = agentFlowTracker.getSteps();
+                        if (steps.length > 0) {
+                            agentFlowTracker.updateStepStatus(steps[0].id, data.status, data.details);
+                        }
+                    } else {
+                        agentFlowTracker.updateStepStatus(data.stepId, data.status, data.details);
+                    }
+                    break;
+
+                case 'step-complete':
+                    agentFlowTracker.completeStep(data.stepId, data.details);
+                    break;
+
+                case 'step-error':
+                    agentFlowTracker.errorStep(data.stepId, data.error);
+                    break;
+            }
+        };
+
+        ipcRenderer.on('agent-flow-event', handleFlowEvent);
+
+        return () => {
+            ipcRenderer.removeListener('agent-flow-event', handleFlowEvent);
+        };
+    }, []);
 
 
     // Function to scroll to a specific human message
@@ -571,6 +625,16 @@ const App: React.FC = () => {
             dispatch({ type: 'ADD_MESSAGE', payload: assistantMessage });
             dispatch({ type: 'START_THINKING' });
 
+            // Initialize flow tracking for this message
+            agentFlowTracker.reset();
+            setCurrentFlowMessageId(assistantMessageId);
+
+            // Start the first flow step
+            const initialStepId = agentFlowTracker.startNewStep({
+                title: 'Processing request...',
+                details: 'Analyzing user input and determining response strategy'
+            });
+
             // Create new AbortController for this request
             streamController.current = new AbortController();
 
@@ -675,6 +739,14 @@ const App: React.FC = () => {
 
                 // Add any extracted thinking blocks to Redux with proper association
                 processedThinking.thinkingBlocks.forEach(block => {
+                    // Add thinking block to flow visualization
+                    if (currentFlowMessageId === currentAssistantId) {
+                        agentFlowTracker.addCompletedStep({
+                            title: 'Thinking...',
+                            details: `Internal reasoning (${block.content.length} characters)`
+                        });
+                    }
+
                     // Associate thinking block with the current assistant message
                     const enhancedBlock = {
                         ...block,
@@ -723,6 +795,19 @@ const App: React.FC = () => {
 
                 // Add any extracted tool calls to Redux
                 processedTools.toolCalls.forEach(toolCall => {
+                    // Add tool execution to flow visualization
+                    if (currentFlowMessageId === currentAssistantId) {
+                        const toolName = (toolCall as any).toolName || (toolCall as any).name || 'Tool';
+                        const toolStepId = agentFlowTracker.startNewStep({
+                            title: `Executing ${toolName}...`,
+                            details: `Tool execution in progress`
+                        });
+                        // Mark as complete after a short delay to show progress
+                        setTimeout(() => {
+                            agentFlowTracker.completeStep(toolStepId, `${toolName} completed`);
+                        }, 500);
+                    }
+
                     const enhancedToolCall = {
                         ...toolCall,
                         messageId: currentAssistantId,            // << use the real id
@@ -1510,6 +1595,14 @@ const App: React.FC = () => {
                                             <div className="message-content">
                                                 {msg.role === 'assistant' && (
                                                     <>
+                                                        {/* Agent Flow Visualization */}
+                                                        {agentFlowSteps.length > 0 && currentFlowMessageId === msg.id && (
+                                                            <AgentFlowVisualization
+                                                                steps={agentFlowSteps}
+                                                                isExpanded={false}
+                                                            />
+                                                        )}
+
                                                         {/* Render thinking blocks and tool calls in chronological order */}
                                                         {(() => {
                                                             // Combine thinking blocks and tool calls, then sort chronologically
@@ -1595,7 +1688,7 @@ const App: React.FC = () => {
                                                             renderTextWithColoredHashtags(msg.content)
                                                         ) : msg.role === 'assistant' && msg.content ? (
                                                             // Use Streamdown for all AI responses (handles markdown, streaming, and plain text)
-                                                            <StreamdownRenderer 
+                                                            <StreamdownRenderer
                                                                 content={msg.content}
                                                                 isStreaming={msg.isStreaming}
                                                                 className="ai-response"
@@ -1783,7 +1876,7 @@ const App: React.FC = () => {
                         <div className="debug-graph-panel">
                             <div className="debug-graph-header">
                                 <h3>🌳 Agent Architecture Graph</h3>
-                                <button 
+                                <button
                                     className="close-button"
                                     onClick={() => setShowDebugGraph(false)}
                                     aria-label="Close debug graph"
@@ -1792,7 +1885,7 @@ const App: React.FC = () => {
                                 </button>
                             </div>
                             <div className="debug-graph-content">
-                                <AgentGraphVisualization 
+                                <AgentGraphVisualization
                                     autoRender={showDebugGraph}
                                     showControls={true}
                                     onRenderComplete={() => console.log('🎨 [Debug] Agent graph rendered')}

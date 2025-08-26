@@ -481,12 +481,79 @@ IMPORTANT: Only use the exact routing format above. Do not add explanations or e
             switch (routing.route) {
                 case 'deep_research':
                     console.log('[DeepResearchIntegration] Streaming Deep Research');
+                    
+                    // Emit flow events for research workflow
+                    const emitFlowEvent = (global as any).emitFlowEvent;
+                    if (emitFlowEvent) {
+                        emitFlowEvent('step-update', {
+                            stepId: 'agent-processing',
+                            status: 'completed',
+                            title: 'AI Agent processing...',
+                            details: 'Routing to Deep Research workflow'
+                        });
+                        
+                        emitFlowEvent('step-add', {
+                            stepId: 'deep-research',
+                            title: 'Deep Research workflow',
+                            details: 'Conducting comprehensive research analysis'
+                        });
+                    }
+                    
                     for await (const update of this.deepResearchAgent.streamResearch(message)) {
-                        yield {
-                            ...update,
-                            usedDeepResearch: true,
-                            usedToolAgent: false
-                        };
+                        // Convert progress messages to flow events
+                        if (update.type === 'progress' && emitFlowEvent) {
+                            // Map research status to flow step details
+                            const statusMap: Record<string, { title: string, details: string }> = {
+                                'Starting research process...': {
+                                    title: 'Starting research...',
+                                    details: 'Initializing research workflow'
+                                },
+                                'Analyzing research requirements...': {
+                                    title: 'Analyzing requirements...',
+                                    details: 'Determining research strategy and scope'
+                                },
+                                'Conducting comprehensive research...': {
+                                    title: 'Conducting research...',
+                                    details: 'Gathering information from multiple sources'
+                                },
+                                'Research completed, generating final report...': {
+                                    title: 'Generating report...',
+                                    details: 'Synthesizing findings into final report'
+                                }
+                            };
+                            
+                            const stepInfo = statusMap[update.content] || {
+                                title: update.content,
+                                details: `Status: ${update.status || 'Processing'}`
+                            };
+                            
+                            emitFlowEvent('step-add', {
+                                stepId: `research-${Date.now()}`,
+                                ...stepInfo
+                            });
+                            
+                            // Don't yield progress updates as content
+                            continue;
+                        }
+                        
+                        // Only yield actual results, not progress updates
+                        if (update.type === 'result') {
+                            yield {
+                                ...update,
+                                usedDeepResearch: true,
+                                usedToolAgent: false
+                            };
+                            
+                            // Mark workflow as complete
+                            if (emitFlowEvent) {
+                                emitFlowEvent('step-update', {
+                                    stepId: 'deep-research',
+                                    status: 'completed',
+                                    title: 'Deep Research workflow',
+                                    details: 'Research analysis completed'
+                                });
+                            }
+                        }
                     }
                     break;
 

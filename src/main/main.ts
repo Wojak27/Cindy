@@ -2402,6 +2402,16 @@ app.on('ready', async () => {
         }
     });
 
+    // Flow tracking helper function
+    const emitFlowEvent = (type: string, data: any) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('agent-flow-event', { type, data });
+        }
+    };
+
+    // Make flow emitter globally available
+    (global as any).emitFlowEvent = emitFlowEvent;
+
     // IPC handler for processing messages with streaming
     ipcMain.handle('process-message', async (event, message: string, conversationId: string): Promise<string> => {
         console.log('Main process - process-message IPC called with:', message);
@@ -2750,6 +2760,20 @@ app.on('ready', async () => {
                     // Set current conversation ID globally for tools to access
                     (global as any).currentConversationId = conversationId;
                     
+                    // Emit flow events for agent processing
+                    emitFlowEvent('step-update', {
+                        stepId: 'initial',
+                        status: 'completed',
+                        title: 'Processing request...',
+                        details: 'Request analyzed, routing to appropriate agent'
+                    });
+                    
+                    emitFlowEvent('step-add', {
+                        stepId: 'agent-processing',
+                        title: 'AI Agent processing...',
+                        details: 'Generating response using conversational AI'
+                    });
+                    
                     // Use streaming processing from the agent
                     for await (const chunk of langChainCindyAgent.processStreaming(message, agentContext)) {
                         assistantContent += chunk;
@@ -2791,6 +2815,14 @@ app.on('ready', async () => {
                             console.error('🚨 DEBUG: Failed to persist assistant message:', saveError);
                         }
                     }
+                    
+                    // Mark agent processing as complete
+                    emitFlowEvent('step-update', {
+                        stepId: 'agent-processing',
+                        status: 'completed',
+                        title: 'AI Agent processing...',
+                        details: `Response generated (${assistantContent.length} characters)`
+                    });
                     
                     return assistantContent;
 
