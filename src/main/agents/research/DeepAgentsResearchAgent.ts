@@ -318,31 +318,98 @@ You have access to several tools including internet_search for gathering informa
      * Process a research request (main entry point)
      */
     async processResearch(message: string): Promise<string> {
-        console.log('[DeepAgentsResearchAgent] Processing research request...');
+        console.log('[DeepAgentsResearchAgent] ===== PROCESSING RESEARCH REQUEST =====');
+        console.log(`[DeepAgentsResearchAgent] Request: ${message}`);
 
         try {
             // Invoke the DeepAgent
+            console.log('[DeepAgentsResearchAgent] Invoking DeepAgent...');
             const result = await this.agent.invoke({
                 messages: [{ role: "user", content: message }],
             });
 
-            console.log('[DeepAgentsResearchAgent] Research completed successfully');
+            console.log('[DeepAgentsResearchAgent] ===== AGENT INVOCATION COMPLETE =====');
+            console.log('[DeepAgentsResearchAgent] Result analysis:');
+            console.log(`[DeepAgentsResearchAgent] - result type: ${typeof result}`);
+            console.log(`[DeepAgentsResearchAgent] - result keys: [${Object.keys(result || {}).join(', ')}]`);
 
-            // Extract the final report from files
-            if (result.files && result.files['final_report.md']) {
-                return result.files['final_report.md'];
+            // Analyze files in result
+            if (result.files) {
+                console.log(`[DeepAgentsResearchAgent] Files found: [${Object.keys(result.files).join(', ')}]`);
+                
+                // Check for final_report.md
+                if (result.files['final_report.md']) {
+                    const reportContent = result.files['final_report.md'];
+                    console.log(`[DeepAgentsResearchAgent] ✅ final_report.md found (${reportContent.length} characters)`);
+                    console.log(`[DeepAgentsResearchAgent] Report preview: ${reportContent.substring(0, 200)}...`);
+                    
+                    if (reportContent.trim().length > 50) {
+                        console.log('[DeepAgentsResearchAgent] ===== RETURNING FINAL REPORT =====');
+                        return reportContent;
+                    } else {
+                        console.warn('[DeepAgentsResearchAgent] ⚠️ Final report exists but is too short or empty');
+                        console.warn(`[DeepAgentsResearchAgent] Report content: "${reportContent}"`);
+                    }
+                } else {
+                    console.warn('[DeepAgentsResearchAgent] ⚠️ final_report.md not found in files');
+                }
+                
+                // Check for other relevant files
+                const otherFiles = Object.keys(result.files).filter(key => key !== 'final_report.md');
+                if (otherFiles.length > 0) {
+                    console.log('[DeepAgentsResearchAgent] Other files available:');
+                    otherFiles.forEach(filename => {
+                        const content = result.files[filename];
+                        console.log(`[DeepAgentsResearchAgent] - ${filename}: ${content.length} characters`);
+                        console.log(`[DeepAgentsResearchAgent] - ${filename} preview: ${content.substring(0, 100)}...`);
+                    });
+                }
+            } else {
+                console.warn('[DeepAgentsResearchAgent] ⚠️ No files property in result');
             }
 
-            // Fallback to last message content
-            if (result.messages && result.messages.length > 0) {
-                const lastMessage = result.messages[result.messages.length - 1];
-                return lastMessage.content || 'Research completed but no final report generated.';
+            // Analyze messages in result
+            if (result.messages) {
+                console.log(`[DeepAgentsResearchAgent] Messages found: ${result.messages.length}`);
+                if (result.messages.length > 0) {
+                    const lastMessage = result.messages[result.messages.length - 1];
+                    console.log(`[DeepAgentsResearchAgent] Last message type: ${typeof lastMessage}`);
+                    console.log(`[DeepAgentsResearchAgent] Last message keys: [${Object.keys(lastMessage || {}).join(', ')}]`);
+                    
+                    if (lastMessage.content) {
+                        console.log(`[DeepAgentsResearchAgent] Last message content length: ${lastMessage.content.length}`);
+                        console.log(`[DeepAgentsResearchAgent] Last message preview: ${lastMessage.content.substring(0, 200)}...`);
+                        
+                        if (lastMessage.content.trim().length > 50) {
+                            console.log('[DeepAgentsResearchAgent] ===== RETURNING LAST MESSAGE CONTENT =====');
+                            return lastMessage.content;
+                        } else {
+                            console.warn('[DeepAgentsResearchAgent] ⚠️ Last message content is too short');
+                        }
+                    } else {
+                        console.warn('[DeepAgentsResearchAgent] ⚠️ Last message has no content property');
+                    }
+                }
+            } else {
+                console.warn('[DeepAgentsResearchAgent] ⚠️ No messages property in result');
             }
 
-            return 'Research completed but no final report generated.';
+            console.error('[DeepAgentsResearchAgent] ===== NO VALID REPORT FOUND =====');
+            console.error('[DeepAgentsResearchAgent] Research completed but no final report was generated');
+            console.error('[DeepAgentsResearchAgent] This may be due to:');
+            console.error('[DeepAgentsResearchAgent] 1. DeepAgent failed to create final_report.md file');
+            console.error('[DeepAgentsResearchAgent] 2. Research process completed without synthesis');
+            console.error('[DeepAgentsResearchAgent] 3. Tool execution failures preventing research');
+            console.error('[DeepAgentsResearchAgent] 4. Agent initialization or configuration issues');
+            
+            return 'Research completed but no final report generated. The DeepAgent may have encountered issues during the research process. Please check the logs above for detailed diagnostic information.';
 
         } catch (error: any) {
+            console.error('[DeepAgentsResearchAgent] ===== RESEARCH PROCESSING ERROR =====');
             console.error('[DeepAgentsResearchAgent] Research processing error:', error);
+            console.error('[DeepAgentsResearchAgent] Error type:', typeof error);
+            console.error('[DeepAgentsResearchAgent] Error message:', error.message);
+            console.error('[DeepAgentsResearchAgent] Error stack:', error.stack);
             return `Research failed: ${error.message}`;
         }
     }
@@ -355,29 +422,25 @@ You have access to several tools including internet_search for gathering informa
         content: string;
         status?: ResearchStatus;
     }> {
-        console.log('[DeepAgentsResearchAgent] Starting streaming research...');
+        console.log('[DeepAgentsResearchAgent] ===== STARTING STREAMING RESEARCH =====');
+        console.log(`[DeepAgentsResearchAgent] Streaming request: ${message}`);
 
         try {
             yield { type: 'progress', content: 'Starting research process...', status: ResearchStatus.CLARIFYING };
 
-            // For now, we'll run the full research and then stream the result
-            // DeepAgents doesn't have built-in streaming yet, but we can simulate it
             yield { type: 'progress', content: 'Analyzing research requirements...', status: ResearchStatus.PLANNING };
 
-            const result = await this.agent.invoke({
-                messages: [{ role: "user", content: message }],
-            });
+            yield { type: 'progress', content: 'Conducting comprehensive research...', status: ResearchStatus.RESEARCHING };
+
+            // Use our enhanced processResearch method which has all the detailed logging
+            console.log('[DeepAgentsResearchAgent] Delegating to enhanced processResearch method...');
+            const finalReport = await this.processResearch(message);
+
+            console.log('[DeepAgentsResearchAgent] ===== STREAMING RESEARCH COMPLETE =====');
+            console.log(`[DeepAgentsResearchAgent] Final streaming result length: ${finalReport.length} characters`);
+            console.log(`[DeepAgentsResearchAgent] Streaming result preview: ${finalReport.substring(0, 200)}...`);
 
             yield { type: 'progress', content: 'Research completed, generating final report...', status: ResearchStatus.COMPLETE };
-
-            // Extract the final report
-            let finalReport = 'Research completed but no final report generated.';
-            if (result.files && result.files['final_report.md']) {
-                finalReport = result.files['final_report.md'];
-            } else if (result.messages && result.messages.length > 0) {
-                const lastMessage = result.messages[result.messages.length - 1];
-                finalReport = lastMessage.content || finalReport;
-            }
 
             yield {
                 type: 'result',
@@ -386,7 +449,12 @@ You have access to several tools including internet_search for gathering informa
             };
 
         } catch (error: any) {
+            console.error('[DeepAgentsResearchAgent] ===== STREAMING RESEARCH ERROR =====');
             console.error('[DeepAgentsResearchAgent] Streaming research error:', error);
+            console.error('[DeepAgentsResearchAgent] Error type:', typeof error);
+            console.error('[DeepAgentsResearchAgent] Error message:', error.message);
+            console.error('[DeepAgentsResearchAgent] Error stack:', error.stack);
+            
             yield {
                 type: 'result',
                 content: `Research failed: ${error.message}`,

@@ -7,8 +7,8 @@ import { LLMProvider } from '../../services/LLMProvider';
 import { toolRegistry } from '../tools/ToolRegistry';
 import { toolLoader } from '../tools/ToolLoader';
 import { SettingsService } from '../../services/SettingsService';
-// import { DeepResearchAgent } from './DeepResearchAgent'; // Legacy LangGraph implementation
-import { DeepAgentsResearchAgent as DeepResearchAgent } from './DeepAgentsResearchAgent';
+import { DeepResearchAgent } from './DeepResearchAgent'; // LangGraph implementation with enhanced logging
+// import { DeepAgentsResearchAgent as DeepResearchAgent } from './DeepAgentsResearchAgent'; // DeepAgents has initialization issues
 import { DeepResearchConfiguration, DeepResearchConfigManager } from './DeepResearchConfig';
 import { ToolAgent } from '../ToolAgent';
 
@@ -44,7 +44,7 @@ export class DeepResearchIntegration {
         // Initialize configuration from settings
         this.configManager = this.createConfigFromSettings();
 
-        // Create Deep Research agent (using DeepAgents architecture)
+        // Create Deep Research agent (using LangGraph architecture with enhanced logging)
         this.deepResearchAgent = new DeepResearchAgent({
             llmProvider: this.llmProvider,
             config: this.configManager.getConfig()
