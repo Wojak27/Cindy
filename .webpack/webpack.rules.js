@@ -9,6 +9,15 @@ module.exports = [
       },
     },
   },
+  // Handle ES modules from node_modules
+  {
+    test: /\.m?js$/,
+    include: /node_modules/,
+    type: 'javascript/auto',
+    resolve: {
+      fullySpecified: false,
+    },
+  },
   // Handle PDF.js worker files
   {
     test: /pdf\.worker\.(min\.)?js$/,

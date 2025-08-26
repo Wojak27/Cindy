@@ -1,0 +1,168 @@
+/* Streamdown Integration Styles */
+.streamdown-renderer {
+    width: 100%;
+}
+
+.streamdown-content {
+    color: inherit;
+    font-family: inherit;
+    line-height: 1.6;
+}
+
+/* AI Response specific styling */
+.ai-response .streamdown-content {
+    /* Inherit existing message text styling */
+    font-size: inherit;
+    color: inherit;
+}
+
+/* Streamdown component overrides for consistency */
+.streamdown-content h1,
+.streamdown-content h2,
+.streamdown-content h3,
+.streamdown-content h4,
+.streamdown-content h5,
+.streamdown-content h6 {
+    margin-top: 1.5em;
+    margin-bottom: 0.5em;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.streamdown-content h1 { font-size: 1.5em; }
+.streamdown-content h2 { font-size: 1.3em; }
+.streamdown-content h3 { font-size: 1.2em; }
+.streamdown-content h4 { font-size: 1.1em; }
+.streamdown-content h5 { font-size: 1.05em; }
+.streamdown-content h6 { font-size: 1em; }
+
+.streamdown-content p {
+    margin-bottom: 1em;
+    word-wrap: break-word;
+}
+
+.streamdown-content ul,
+.streamdown-content ol {
+    margin-bottom: 1em;
+    padding-left: 2em;
+}
+
+.streamdown-content li {
+    margin-bottom: 0.5em;
+}
+
+.streamdown-content blockquote {
+    border-left: 4px solid var(--accent-color, #007ACC);
+    margin: 1em 0;
+    padding-left: 1em;
+    color: var(--text-secondary, #666);
+    font-style: italic;
+}
+
+.streamdown-content code {
+    background-color: var(--code-background, rgba(0, 0, 0, 0.1));
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.9em;
+}
+
+.streamdown-content pre {
+    background-color: var(--code-background, rgba(0, 0, 0, 0.05));
+    border-radius: 6px;
+    padding: 1em;
+    overflow-x: auto;
+    margin: 1em 0;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.9em;
+    line-height: 1.4;
+}
+
+.streamdown-content pre code {
+    background: transparent;
+    padding: 0;
+    border-radius: 0;
+}
+
+.streamdown-content a {
+    color: var(--accent-color, #007ACC);
+    text-decoration: none;
+}
+
+.streamdown-content a:hover {
+    text-decoration: underline;
+}
+
+.streamdown-content table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1em 0;
+    font-size: 0.9em;
+}
+
+.streamdown-content th,
+.streamdown-content td {
+    border: 1px solid var(--border-color, #ddd);
+    padding: 8px 12px;
+    text-align: left;
+}
+
+.streamdown-content th {
+    background-color: var(--table-header-background, rgba(0, 0, 0, 0.05));
+    font-weight: 600;
+}
+
+.streamdown-content tr:nth-child(even) {
+    background-color: var(--table-row-background, rgba(0, 0, 0, 0.02));
+}
+
+/* Math rendering (if KaTeX is included) */
+.streamdown-content .katex {
+    font-size: 1em;
+}
+
+.streamdown-content .katex-display {
+    margin: 1em 0;
+    text-align: center;
+}
+
+/* Streaming indicators */
+.streamdown-content.streaming::after {
+    content: '▋';
+    animation: blink 1s infinite;
+    color: var(--accent-color, #007ACC);
+    margin-left: 2px;
+}
+
+@keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+}
+
+/* Dark theme compatibility */
+@media (prefers-color-scheme: dark) {
+    .streamdown-content code {
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+    
+    .streamdown-content pre {
+        background-color: rgba(255, 255, 255, 0.05);
+    }
+    
+    .streamdown-content blockquote {
+        color: #aaa;
+    }
+    
+    .streamdown-content th,
+    .streamdown-content td {
+        border-color: #444;
+    }
+    
+    .streamdown-content th {
+        background-color: rgba(255, 255, 255, 0.05);
+    }
+    
+    .streamdown-content tr:nth-child(even) {
+        background-color: rgba(255, 255, 255, 0.02);
+    }
+}

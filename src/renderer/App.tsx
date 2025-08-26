@@ -8,6 +8,7 @@ import ContentProcessor from './utils/contentProcessor';
 import { renderTextWithLinks, hasLinks } from './utils/linkParser';
 import { renderMarkdown, hasMarkdown } from './utils/markdownRenderer';
 import { renderTextWithColoredHashtags, hasHashtags } from './utils/hashtagRenderer';
+import StreamdownRenderer from './components/StreamdownRenderer';
 import HashtagManager from './components/HashtagManager';
 // SoundReactiveCircle was imported but not used in the component
 // The component now uses SoundReactiveBlob instead
@@ -26,6 +27,7 @@ import { streamError } from '../store/actions';
 import { getWelcomeMessage, getPersonalizedMessage, shouldShowWelcome } from './utils/personalizedMessages';
 import './styles/main.css';
 import './styles/database-sidebar.css';
+import './styles/streamdown.css';
 import { ipcRenderer } from 'electron';
 import ChatList from './components/ChatList';
 import { v4 as uuidv4 } from 'uuid';
@@ -1591,9 +1593,13 @@ const App: React.FC = () => {
                                                         msg.content && hasHashtags(msg.content) ? (
                                                             // Render hashtags with colored oval styling
                                                             renderTextWithColoredHashtags(msg.content)
-                                                        ) : msg.role === 'assistant' && msg.content && hasMarkdown(msg.content) ? (
-                                                            // Full markdown rendering with link previews for AI responses
-                                                            renderMarkdown(msg.content)
+                                                        ) : msg.role === 'assistant' && msg.content ? (
+                                                            // Use Streamdown for all AI responses (handles markdown, streaming, and plain text)
+                                                            <StreamdownRenderer 
+                                                                content={msg.content}
+                                                                isStreaming={msg.isStreaming}
+                                                                className="ai-response"
+                                                            />
                                                         ) : msg.content && hasLinks(msg.content) ? (
                                                             // Simple link preview for messages with links but no markdown
                                                             renderTextWithLinks(msg.content)

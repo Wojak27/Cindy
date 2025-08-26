@@ -15,12 +15,23 @@ module.exports = {
   },
   plugins: plugins,
   resolve: {
-    extensions: ['.js', '.ts', '.jsx', '.tsx', '.css'],
+    extensions: ['.js', '.ts', '.jsx', '.tsx', '.css', '.mjs'],
     alias: {
       '@main': require('path').resolve(__dirname, '..', 'src', 'main'),
       '@renderer': require('path').resolve(__dirname, '..', 'src', 'renderer'),
       '@shared': require('path').resolve(__dirname, '..', 'src', 'shared'),
     },
+    // Resolve ES modules properly
+    extensionAlias: {
+      '.js': ['.ts', '.tsx', '.js', '.jsx'],
+      '.mjs': ['.mts', '.mjs']
+    },
+    // Tell webpack how to handle ES modules vs CommonJS
+    fullySpecified: false
+  },
+  // Allow ES module imports to be treated as CommonJS when needed
+  experiments: {
+    topLevelAwait: true,
   },
   devServer: {
     port: 3004,
