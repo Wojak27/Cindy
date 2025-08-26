@@ -1,6 +1,6 @@
 import { motion, useInView } from 'framer-motion';
 import { useRef } from 'react';
-import { Download, Github, ExternalLink, Monitor, Smartphone, Tablet, CheckCircle } from 'lucide-react';
+import { Download, Github, ExternalLink, Monitor, Tablet, CheckCircle } from 'lucide-react';
 
 const platforms = [
     {

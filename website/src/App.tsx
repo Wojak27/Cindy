@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import Navigation from './components/Navigation';
 import HeroSection from './components/HeroSection';
@@ -6,16 +6,14 @@ import FeaturesSection from './components/FeaturesSection';
 import HowItWorksSection from './components/HowItWorksSection';
 import DownloadSection from './components/DownloadSection';
 import SoundReactiveBlob from './components/SoundReactiveBlob';
+import GDPRBanner from './components/GDPRBanner';
 
 export default function App() {
-    const [scrollY, setScrollY] = useState(0);
     const [isFloating, setIsFloating] = useState(false);
-    const heroRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const handleScroll = () => {
             const currentScrollY = window.scrollY;
-            setScrollY(currentScrollY);
             
             // Trigger floating when scrolled past 70% of viewport height
             setIsFloating(currentScrollY > window.innerHeight * 0.7);
@@ -143,6 +141,9 @@ export default function App() {
                     </div>
                 </div>
             </footer>
+
+            {/* GDPR Banner */}
+            <GDPRBanner />
         </div>
     );
 }

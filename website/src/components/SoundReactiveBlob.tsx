@@ -29,7 +29,7 @@ export default function SoundReactiveBlob({ isActive, size, className }: Props) 
     
     // Web-friendly settings (removed Electron dependency)
     const blobSensitivity = 0.5;
-    const blobStyle = 'moderate';
+    const blobStyle = 'moderate' as const;
 
     useLayoutEffect(() => {
         if (size) {
@@ -112,13 +112,14 @@ export default function SoundReactiveBlob({ isActive, size, className }: Props) 
             // 1. volume RMS (0‒1)
             let rms = 0;
             if (analyserRef.current && dataRef.current) {
-                analyserRef.current.getByteTimeDomainData(dataRef.current);
+                const data = dataRef.current;
+                (analyserRef.current as any).getByteTimeDomainData(data);
                 let sum = 0;
-                for (let i = 0; i < dataRef.current.length; i++) {
-                    const v = (dataRef.current[i] - 128) / 128;
+                for (let i = 0; i < data.length; i++) {
+                    const v = (data[i] - 128) / 128;
                     sum += v * v;
                 }
-                rms = Math.sqrt(sum / dataRef.current.length);
+                rms = Math.sqrt(sum / data.length);
             }
 
             // 2. build points
@@ -128,8 +129,9 @@ export default function SoundReactiveBlob({ isActive, size, className }: Props) 
             zOff.current += NOISE_STEP;
 
             let intensity = NOISE_SCALE;
-            if (blobStyle === 'subtle') intensity *= 0.4;
-            if (blobStyle === 'intense') intensity *= 2;
+            // Apply style modifiers - for now just use moderate
+            // if (blobStyle === 'subtle') intensity *= 0.4;
+            // if (blobStyle === 'intense') intensity *= 2;
 
             const amp = 1 + rms * blobSensitivity * 3;
             const pts: { x: number; y: number }[] = [];

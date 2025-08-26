@@ -5,7 +5,7 @@ interface HeroSectionProps {
     hideBlob?: boolean;
 }
 
-export default function HeroSection({ hideBlob = false }: HeroSectionProps) {
+export default function HeroSection({ }: HeroSectionProps) {
     const scrollToFeatures = () => {
         const element = document.getElementById('features');
         element?.scrollIntoView({ behavior: 'smooth' });
@@ -22,15 +22,15 @@ export default function HeroSection({ hideBlob = false }: HeroSectionProps) {
             </div>
 
             {/* Main Content */}
-            <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+            <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center min-h-[80vh] lg:min-h-screen">
                     {/* Text Content */}
-                    <div className="space-y-8">
+                    <div className="space-y-6 lg:space-y-8 text-center lg:text-left">
                         <motion.h1
                             initial={{ opacity: 0, y: 30 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ duration: 0.8, delay: 0.2 }}
-                            className="text-5xl md:text-7xl font-bold text-white leading-tight"
+                            className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-white leading-tight"
                         >
                             Meet{' '}
                             <span className="bg-gradient-to-r from-primary-400 to-secondary-400 bg-clip-text text-transparent">
@@ -42,7 +42,7 @@ export default function HeroSection({ hideBlob = false }: HeroSectionProps) {
                             initial={{ opacity: 0, y: 30 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ duration: 0.8, delay: 0.4 }}
-                            className="text-xl md:text-2xl text-gray-300 max-w-2xl mx-auto lg:mx-0"
+                            className="text-lg sm:text-xl lg:text-2xl text-gray-300 max-w-2xl mx-auto lg:mx-0"
                         >
                             Your AI-powered voice assistant that understands, remembers, and evolves with you. 
                             Experience the future of human-computer interaction.
@@ -92,12 +92,12 @@ export default function HeroSection({ hideBlob = false }: HeroSectionProps) {
                     </div>
 
                     {/* Blob Area - The blob is positioned globally but we need space for floating elements */}
-                    <div className="relative lg:flex lg:items-center lg:justify-center">
+                    <div className="relative flex items-center justify-center mt-8 lg:mt-0">
                         <motion.div
                             initial={{ opacity: 0, scale: 0.8 }}
                             animate={{ opacity: 1, scale: 1 }}
                             transition={{ duration: 1, delay: 0.5 }}
-                            className="relative w-96 h-96 flex items-center justify-center"
+                            className="relative w-80 h-80 sm:w-96 sm:h-96 flex items-center justify-center"
                         >
                             {/* Floating Elements that orbit around the blob space */}
                             <motion.div
