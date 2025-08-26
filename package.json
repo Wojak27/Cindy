@@ -63,6 +63,7 @@
         "axios": "^1.4.0",
         "bull": "^4.11.5",
         "cookieconsent": "^3.1.1",
+        "deepagents": "file:deepagentsjs",
         "duck-duck-scrape": "^2.2.7",
         "duckdb-async": "^1.3.2",
         "electron": "^25.0.0",
