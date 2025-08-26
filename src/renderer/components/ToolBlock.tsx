@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import './ToolBlock.css';
+import '../styles/components/ToolBlock.css';
 
 interface ToolCall {
     id: string;

@@ -73,8 +73,8 @@ class TrayService {
 
     updateTrayIcon(connected: boolean): void {
         const iconPath = connected
-            ? path.join(__dirname, '../../assets/icons/tray-icon-connected.png')
-            : path.join(__dirname, '../../assets/icons/tray-icon-disconnected.png');
+            ? path.join(__dirname, '../../../src/renderer/assets/icons/tray-icon-connected.png')
+            : path.join(__dirname, '../../../src/renderer/assets/icons/tray-icon-disconnected.png');
 
         // Create image with proper template settings for macOS
         const image = nativeImage.createFromPath(iconPath);

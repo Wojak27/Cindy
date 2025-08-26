@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ipcRenderer } from 'electron';
-import './ChatList.css';
+import '../styles/components/ChatList.css';
 
 interface Conversation {
     id: string;
@@ -18,7 +18,7 @@ const ChatList: React.FC<{
 
     useEffect(() => {
         loadConversations();
-    }, [currentConversationId]);
+    }, []);
 
     const loadConversations = async () => {
         try {
@@ -41,11 +41,6 @@ const ChatList: React.FC<{
         }
     };
 
-    // const handleNewChat = () => {
-    //     onCreateNewChat();
-    //     // Refresh conversations list after creating new chat
-    //     loadConversations();
-    // };
 
     const formatTimeAgo = (timestamp: number) => {
         const now = Date.now();

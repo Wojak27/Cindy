@@ -5,7 +5,6 @@ import {
     IconButton,
     Card,
     CardContent,
-    Paper,
     useTheme,
     alpha,
     Tabs,
@@ -17,7 +16,6 @@ import {
     WbSunny as WeatherIcon,
     Map as MapIcon,
 } from '@mui/icons-material';
-import { ipcRenderer } from 'electron';
 import WeatherWidget from './WeatherWidget';
 import MapsWidget from './MapsWidget';
 import DocumentWidget from './DocumentWidget';
@@ -100,11 +98,11 @@ const ChatSidePanel: React.FC<ChatSidePanelProps> = ({ widgetType, data, convers
         // Initialize local widgets from conversation widgets
         const localWidgets = (conversationWidgets || []).map(w => ({ type: w.type, data: w.data }));
         setWidgets(localWidgets);
-        
+
         // If a specific widget is passed, find its index and set as active
         if (widgetType && data) {
-            const targetIndex = localWidgets.findIndex(w => 
-                w.type === widgetType && 
+            const targetIndex = localWidgets.findIndex(w =>
+                w.type === widgetType &&
                 safeStringify(w.data) === safeStringify(data)
             );
             if (targetIndex >= 0) {
@@ -175,9 +173,9 @@ const ChatSidePanel: React.FC<ChatSidePanelProps> = ({ widgetType, data, convers
     }
 
     return (
-        <Card sx={{ 
-            height: '100%', 
-            display: 'flex', 
+        <Card sx={{
+            height: '100%',
+            display: 'flex',
             flexDirection: 'column',
             backgroundColor: alpha(theme.palette.background.paper, 0.95),
             backdropFilter: 'blur(10px)',
@@ -193,16 +191,16 @@ const ChatSidePanel: React.FC<ChatSidePanelProps> = ({ widgetType, data, convers
                         <CloseIcon />
                     </IconButton>
                 </Box>
-                
+
                 {widgets.length > 1 && (
-                    <Tabs 
-                        value={activeTab} 
+                    <Tabs
+                        value={activeTab}
                         onChange={handleTabChange}
                         variant="scrollable"
                         scrollButtons="auto"
-                        sx={{ 
+                        sx={{
                             minHeight: 36,
-                            '& .MuiTab-root': { 
+                            '& .MuiTab-root': {
                                 minHeight: 36,
                                 textTransform: 'none',
                                 fontSize: '0.875rem'
@@ -210,7 +208,7 @@ const ChatSidePanel: React.FC<ChatSidePanelProps> = ({ widgetType, data, convers
                         }}
                     >
                         {widgets.map((widget, index) => (
-                            <Tab 
+                            <Tab
                                 key={index}
                                 label={
                                     <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -229,7 +227,7 @@ const ChatSidePanel: React.FC<ChatSidePanelProps> = ({ widgetType, data, convers
                 {widgets.length > 0 && activeTab < widgets.length && (
                     <Box sx={{ height: '100%', position: 'relative' }}>
                         {renderWidget(widgets[activeTab])}
-                        
+
                         {/* Close button for individual widget */}
                         {widgets.length > 1 && (
                             <IconButton

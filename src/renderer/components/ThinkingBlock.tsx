@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import './ThinkingBlock.css';
+import '../styles/components/ThinkingBlock.css';
 
 interface ThinkingBlockProps {
     id: string;

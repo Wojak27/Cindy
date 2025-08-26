@@ -20,7 +20,7 @@ import ThemeToggle from './components/ThemeToggle';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { getSettings, setCurrentConversationId } from '../store/actions';
 import { toggleSettings } from '../store/actions';
-import { hideDocument, showDocument } from '../store/actions';
+import { hideDocument } from '../store/actions';
 import { streamError } from '../store/actions';
 import { getWelcomeMessage, getPersonalizedMessage, shouldShowWelcome } from './utils/personalizedMessages';
 import './styles/main.css';
@@ -50,9 +50,6 @@ const App: React.FC = () => {
     const dispatch = useDispatch();
     const showSettings = useSelector((state: any) => state.ui.showSettings);
     const showDatabase = useSelector((state: any) => state.ui.showDatabase);
-    const showDocumentPanel = useSelector((state: any) => state.ui.showDocumentPanel);
-    const currentDocument = useSelector((state: any) => state.ui.currentDocument);
-    // const thinkingStartTime = useSelector((state: any) => state.ui.thinkingStartTime);
     const thinkingBlocks = useSelector((state: any) => state.messages?.thinkingBlocks || []);
     const toolCalls = useSelector((state: any) => state.messages?.toolCalls || []);
     const settings = useSelector((state: any) => state.settings);
@@ -109,19 +106,19 @@ const App: React.FC = () => {
 
         const loadConversationHistory = async () => {
             if (!currentConversationId) return;
-            
+
             setIsLoadingHistory(true);
 
             try {
                 // Check conversation health first
                 const health = await ipcRenderer.invoke('get-conversation-health', currentConversationId);
                 console.log('🏥 [DEBUG] Conversation health:', health);
-                
+
                 // Get ALL messages without any filtering (duplicates, ordering fixes, etc.)
                 // To use filtered messages (with cleanup), change to: 'load-conversation'
                 const messages = await ipcRenderer.invoke('load-all-conversation-messages', currentConversationId);
                 console.log('📝 Loading ALL unfiltered messages:', messages.length, 'messages found');
-                
+
                 // Log health information if conversation is incomplete
                 if (health && !health.isComplete) {
                     console.warn('⚠️ [DEBUG] Incomplete conversation detected:', {
@@ -159,10 +156,10 @@ const App: React.FC = () => {
                 // Add informational message for incomplete conversations (only if not already shown)
                 if (health && !health.isComplete && health.missingResponseCount > 0) {
                     // Check if we've already shown the notice for this conversation
-                    const hasNoticeAlready = updatedMessages.some((msg: any) => 
+                    const hasNoticeAlready = updatedMessages.some((msg: any) =>
                         msg.role === 'system' && msg.content.includes('Incomplete Conversation Notice')
                     );
-                    
+
                     if (!hasNoticeAlready) {
                         const incompleteMessage = {
                             id: `incomplete-notice-${Date.now()}`,
@@ -602,12 +599,12 @@ const App: React.FC = () => {
             data: document as IndexedFile,
             timestamp: Date.now()
         };
-        
+
         // Add to conversation widgets history
         setConversationWidgets(prev => {
             // Check if widget already exists to avoid duplicates
-            const exists = prev.some(w => 
-                w.type === 'document' && 
+            const exists = prev.some(w =>
+                w.type === 'document' &&
                 (w.data as IndexedFile).path === (document as IndexedFile).path
             );
             if (!exists) {
@@ -615,7 +612,7 @@ const App: React.FC = () => {
             }
             return prev;
         });
-        
+
         setSidePanelWidgetType('document');
         setSidePanelData(document as IndexedFile);
         setShowSidePanel(true);
@@ -723,18 +720,18 @@ const App: React.FC = () => {
                 // Check for side view data (weather/map) in streaming updates
                 if (data.chunk.includes('📊 ')) {
                     console.log('📊 [DEBUG] Side view marker detected in chunk:', data.chunk);
-                    
+
                     // Try to extract JSON from the side view marker  
                     const jsonMatch = data.chunk.match(/📊 (.+)/);
                     if (jsonMatch) {
                         const sideViewContent = jsonMatch[1].trim();
                         console.log('📊 [DEBUG] Extracted side view content:', sideViewContent);
-                        
+
                         // Try to parse as JSON (for weather/map data)
                         try {
                             const parsedData = JSON.parse(sideViewContent);
                             console.log('📊 [DEBUG] Parsed side view data:', parsedData);
-                            
+
                             if (parsedData.location && parsedData.temperature) {
                                 console.log('🌤️ [DEBUG] Received weather data via stream:', parsedData);
                                 setSidePanelWidgetType('weather');
@@ -910,10 +907,10 @@ const App: React.FC = () => {
                 sideViewData: data.sideViewData,
                 conversationMatch: data.conversationId === currentConversationIdRef.current
             });
-            
+
             if (data.conversationId === currentConversationIdRef.current && data.sideViewData) {
                 console.log('🌤️ Processing side view data for current conversation:', data.sideViewData);
-                
+
                 // Check if this is weather data or map data
                 if (data.sideViewData.type === 'weather' && data.sideViewData.data) {
                     const newWidget = {
@@ -921,12 +918,12 @@ const App: React.FC = () => {
                         data: data.sideViewData.data as WeatherData,
                         timestamp: Date.now()
                     };
-                    
+
                     // Add to conversation widgets history
                     setConversationWidgets(prev => {
                         // Check if widget already exists to avoid duplicates
-                        const exists = prev.some(w => 
-                            w.type === 'weather' && 
+                        const exists = prev.some(w =>
+                            w.type === 'weather' &&
                             JSON.stringify(w.data) === JSON.stringify(newWidget.data)
                         );
                         if (!exists) {
@@ -934,7 +931,7 @@ const App: React.FC = () => {
                         }
                         return prev;
                     });
-                    
+
                     setSidePanelWidgetType('weather');
                     setSidePanelData(data.sideViewData.data as WeatherData);
                     setShowSidePanel(true);
@@ -944,18 +941,18 @@ const App: React.FC = () => {
                         mapData: data.sideViewData.data,
                         locationsCount: data.sideViewData.data?.locations?.length
                     });
-                    
+
                     const newWidget = {
                         type: 'map' as WidgetType,
                         data: data.sideViewData.data as MapData,
                         timestamp: Date.now()
                     };
-                    
+
                     // Add to conversation widgets history
                     setConversationWidgets(prev => {
                         // Check if widget already exists to avoid duplicates
-                        const exists = prev.some(w => 
-                            w.type === 'map' && 
+                        const exists = prev.some(w =>
+                            w.type === 'map' &&
                             JSON.stringify(w.data) === JSON.stringify(newWidget.data)
                         );
                         if (!exists) {
@@ -965,7 +962,7 @@ const App: React.FC = () => {
                         console.log('🗺️ [DEBUG] Map widget already exists, skipping duplicate');
                         return prev;
                     });
-                    
+
                     console.log('🗺️ [DEBUG] Setting up map in side panel');
                     setSidePanelWidgetType('map');
                     setSidePanelData(data.sideViewData.data as MapData);
@@ -1242,10 +1239,10 @@ const App: React.FC = () => {
                                 }
                             }}
                             aria-label={
-                                showSidePanel ? "Hide side panel" : 
-                                conversationWidgets.length > 0 ? `Show ${conversationWidgets.length} widget${conversationWidgets.length > 1 ? 's' : ''}` :
-                                availableDocuments.length > 0 ? "Show retrieved files" : 
-                                "No data available - use AI to generate weather/maps or index documents"
+                                showSidePanel ? "Hide side panel" :
+                                    conversationWidgets.length > 0 ? `Show ${conversationWidgets.length} widget${conversationWidgets.length > 1 ? 's' : ''}` :
+                                        availableDocuments.length > 0 ? "Show retrieved files" :
+                                            "No data available - use AI to generate weather/maps or index documents"
                             }
                             size="small"
                             sx={{
