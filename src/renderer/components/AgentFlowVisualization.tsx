@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import { Box, Typography, IconButton, Collapse, Chip, Avatar } from '@mui/material';
+import '../styles/AgentFlowVisualization.css';
 import { 
     ExpandMore as ExpandMoreIcon,
     ExpandLess as ExpandLessIcon,
@@ -214,10 +215,10 @@ export const AgentFlowVisualization: React.FC<AgentFlowVisualizationProps> = ({
     const hasErrorSteps = steps.some(step => step.status === 'error');
 
     const getThinkingState = () => {
-        if (hasErrorSteps) return { text: 'Encountered issues', color: '#F44336', icon: <ErrorIcon /> };
-        if (hasActiveSteps) return { text: 'Thinking...', color: '#2196F3', icon: <ThinkingIcon /> };
-        if (hasCompletedSteps) return { text: 'Analysis complete', color: '#4CAF50', icon: <CompleteIcon /> };
-        return { text: 'Preparing...', color: '#9E9E9E', icon: <ThinkingIcon /> };
+        if (hasErrorSteps) return { text: 'Encountered issues', color: '#F44336', icon: <ErrorIcon />, animate: false };
+        if (hasActiveSteps) return { text: 'Thinking', color: '#2196F3', icon: <ThinkingIcon />, animate: true };
+        if (hasCompletedSteps) return { text: 'Analysis complete', color: '#4CAF50', icon: <CompleteIcon />, animate: false };
+        return { text: 'Preparing', color: '#9E9E9E', icon: <ThinkingIcon />, animate: true };
     };
 
     const thinkingState = getThinkingState();
@@ -247,15 +248,18 @@ export const AgentFlowVisualization: React.FC<AgentFlowVisualizationProps> = ({
                 }}
                 onClick={handleToggle}
             >
-                <Avatar sx={{ width: 24, height: 24, bgcolor: thinkingState.color }}>
+                <Avatar 
+                    sx={{ width: 24, height: 24, bgcolor: thinkingState.color }}
+                    className={thinkingState.animate ? 'thinking-icon-animate' : ''}
+                >
                     {React.cloneElement(thinkingState.icon, { sx: { fontSize: 14, color: 'white' } })}
                 </Avatar>
                 
                 <Typography 
                     variant="body2" 
+                    className={thinkingState.animate ? 'thinking-text-shimmer' : 'thinking-text-static'}
                     sx={{ 
                         flex: 1,
-                        fontWeight: 500,
                         color: thinkingState.color
                     }}
                 >

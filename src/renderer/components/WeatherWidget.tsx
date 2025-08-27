@@ -21,32 +21,32 @@ import {
 } from '@mui/icons-material';
 
 interface WeatherData {
-    location: string;
-    temperature: {
-        celsius: number;
-        fahrenheit: number;
-        unit_metric: string;
-        unit_imperial: string;
+    location?: string;
+    temperature?: {
+        celsius?: number;
+        fahrenheit?: number;
+        unit_metric?: string;
+        unit_imperial?: string;
     };
-    condition: string;
-    humidity: string;
-    wind: {
-        speed_metric: number;
-        speed_imperial: number;
-        direction: string;
+    condition?: string;
+    humidity?: string;
+    wind?: {
+        speed_metric?: number;
+        speed_imperial?: number;
+        direction?: string;
     };
-    pressure: {
-        metric: number;
-        imperial: number;
+    pressure?: {
+        metric?: number;
+        imperial?: number;
     };
-    visibility: {
-        metric: number;
-        imperial: number;
+    visibility?: {
+        metric?: number;
+        imperial?: number;
     };
-    uv_index: number | string;
-    is_day: boolean;
-    observation_time: string;
-    source: string;
+    uv_index?: number | string;
+    is_day?: boolean;
+    observation_time?: string;
+    source?: string;
 }
 
 interface WeatherWidgetProps {
@@ -55,24 +55,39 @@ interface WeatherWidgetProps {
 
 const WeatherWidget: React.FC<WeatherWidgetProps> = ({ weatherData }) => {
     const theme = useTheme();
+    
+    // Debug logging to see what data we're receiving
+    console.log('🌤️ [WeatherWidget] Received weatherData:', weatherData);
+    console.log('🌤️ [WeatherWidget] Data keys:', weatherData ? Object.keys(weatherData) : 'No data');
+    console.log('🌤️ [WeatherWidget] Temperature:', weatherData?.temperature);
+    console.log('🌤️ [WeatherWidget] Condition:', weatherData?.condition);
+    console.log('🌤️ [WeatherWidget] Location:', weatherData?.location);
 
-    const getWeatherIcon = (condition: string, isDay: boolean) => {
+    const getWeatherIcon = (condition: string | undefined, isDay: boolean) => {
         const iconStyle = { fontSize: 48, color: theme.palette.primary.main };
         
-        if (condition.toLowerCase().includes('sunny') || condition.toLowerCase().includes('clear')) {
+        // Handle undefined or null condition
+        if (!condition || typeof condition !== 'string') {
+            return isDay ? <SunnyIcon sx={iconStyle} /> : <CloudIcon sx={iconStyle} />;
+        }
+        
+        const conditionLower = condition.toLowerCase();
+        
+        if (conditionLower.includes('sunny') || conditionLower.includes('clear')) {
             return <SunnyIcon sx={iconStyle} />;
-        } else if (condition.toLowerCase().includes('cloud')) {
-            return condition.toLowerCase().includes('partly') ? <CloudIcon sx={iconStyle} /> : <CloudyIcon sx={iconStyle} />;
-        } else if (condition.toLowerCase().includes('rain')) {
+        } else if (conditionLower.includes('cloud')) {
+            return conditionLower.includes('partly') ? <CloudIcon sx={iconStyle} /> : <CloudyIcon sx={iconStyle} />;
+        } else if (conditionLower.includes('rain')) {
             return <RainIcon sx={iconStyle} />;
-        } else if (condition.toLowerCase().includes('snow')) {
+        } else if (conditionLower.includes('snow')) {
             return <SnowIcon sx={iconStyle} />;
         } else {
             return isDay ? <SunnyIcon sx={iconStyle} /> : <CloudIcon sx={iconStyle} />;
         }
     };
 
-    const formatTime = (isoString: string) => {
+    const formatTime = (isoString?: string) => {
+        if (!isoString) return 'Unknown';
         try {
             return new Date(isoString).toLocaleString();
         } catch {
@@ -87,22 +102,22 @@ const WeatherWidget: React.FC<WeatherWidgetProps> = ({ weatherData }) => {
                 <Box sx={{ p: 2 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                         <Box sx={{ mr: 2 }}>
-                            {getWeatherIcon(weatherData.condition, weatherData.is_day)}
+                            {getWeatherIcon(weatherData.condition, weatherData.is_day ?? true)}
                         </Box>
                         <Box sx={{ flex: 1 }}>
                             <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
-                                {weatherData.location}
+                                {weatherData.location ?? 'Unknown Location'}
                             </Typography>
                             <Typography variant="h4" sx={{ fontWeight: 700, color: theme.palette.primary.main }}>
-                                {weatherData.temperature.celsius}°C
+                                {weatherData.temperature?.celsius ?? '--'}°C
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
-                                {weatherData.temperature.fahrenheit}°F
+                                {weatherData.temperature?.fahrenheit ?? '--'}°F
                             </Typography>
                         </Box>
                     </Box>
                     <Typography variant="body1" sx={{ fontWeight: 500, textAlign: 'center' }}>
-                        {weatherData.condition}
+                        {weatherData.condition ?? 'Unknown Condition'}
                     </Typography>
                 </Box>
             </Card>
@@ -122,7 +137,7 @@ const WeatherWidget: React.FC<WeatherWidgetProps> = ({ weatherData }) => {
                         </Typography>
                     </Box>
                     <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                        {weatherData.humidity}
+                        {weatherData.humidity ?? '--'}
                     </Typography>
                 </Card>
 
@@ -135,10 +150,10 @@ const WeatherWidget: React.FC<WeatherWidgetProps> = ({ weatherData }) => {
                         </Typography>
                     </Box>
                     <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                        {weatherData.wind.speed_metric} km/h
+                        {weatherData.wind?.speed_metric ?? '--'} km/h
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                        {weatherData.wind.direction}
+                        {weatherData.wind?.direction ?? '--'}
                     </Typography>
                 </Card>
 
@@ -151,7 +166,7 @@ const WeatherWidget: React.FC<WeatherWidgetProps> = ({ weatherData }) => {
                         </Typography>
                     </Box>
                     <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                        {weatherData.pressure.metric} mb
+                        {weatherData.pressure?.metric ?? '--'} mb
                     </Typography>
                 </Card>
 
@@ -164,7 +179,7 @@ const WeatherWidget: React.FC<WeatherWidgetProps> = ({ weatherData }) => {
                         </Typography>
                     </Box>
                     <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                        {weatherData.visibility.metric} km
+                        {weatherData.visibility?.metric ?? '--'} km
                     </Typography>
                 </Card>
             </Box>
@@ -179,7 +194,7 @@ const WeatherWidget: React.FC<WeatherWidgetProps> = ({ weatherData }) => {
                         </Typography>
                     </Box>
                     <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                        {weatherData.uv_index} {typeof weatherData.uv_index === 'number' ? 
+                        {weatherData.uv_index ?? '--'} {typeof weatherData.uv_index === 'number' ? 
                             (weatherData.uv_index <= 2 ? '(Low)' : 
                              weatherData.uv_index <= 5 ? '(Moderate)' : 
                              weatherData.uv_index <= 7 ? '(High)' : '(Very High)') : ''}
@@ -196,7 +211,7 @@ const WeatherWidget: React.FC<WeatherWidgetProps> = ({ weatherData }) => {
                 </Typography>
                 <br />
                 <Typography variant="caption" color="text.secondary">
-                    Source: {weatherData.source}
+                    Source: {weatherData.source ?? 'Unknown'}
                 </Typography>
             </Box>
         </Box>

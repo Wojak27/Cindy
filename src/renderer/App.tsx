@@ -7,9 +7,7 @@ import ToolBlock from './components/ToolBlock';
 import ContentProcessor from './utils/contentProcessor';
 import { renderTextWithLinks, hasLinks } from './utils/linkParser';
 import { renderMarkdown, hasMarkdown } from './utils/markdownRenderer';
-import { renderTextWithColoredHashtags, hasHashtags } from './utils/hashtagRenderer';
 import StreamdownRenderer from './components/StreamdownRenderer';
-import HashtagManager from './components/HashtagManager';
 // SoundReactiveCircle was imported but not used in the component
 // The component now uses SoundReactiveBlob instead
 import SoundReactiveBlob from './components/SoundReactiveBlob';
@@ -21,7 +19,9 @@ import ThemeToggle from './components/ThemeToggle';
 import { ThemeProvider } from './contexts/ThemeContext';
 import AgentGraphVisualization from './components/AgentGraphVisualization';
 import AgentFlowVisualization from './components/AgentFlowVisualization';
+import ToolSelector from './components/ToolSelector';
 import { agentFlowTracker } from './services/AgentFlowTracker';
+import { generateStepDescription } from '../shared/AgentFlowStandard';
 import { getSettings, setCurrentConversationId } from '../store/actions';
 import { toggleSettings } from '../store/actions';
 import { hideDocument } from '../store/actions';
@@ -71,11 +71,28 @@ const App: React.FC = () => {
     const [isTTSPlaying, setIsTTSPlaying] = useState(false);
     const [currentTTSMessage, setCurrentTTSMessage] = useState<string | null>(null);
     const [isInputExpanded, setIsInputExpanded] = useState(false);
-    const [activeHashtags, setActiveHashtags] = useState<string[]>([]);
     const [sidePanelWidgetType, setSidePanelWidgetType] = useState<WidgetType | null>(null);
     const [sidePanelData, setSidePanelData] = useState<WeatherData | MapData | IndexedFile | null>(null);
     const [showSidePanel, setShowSidePanel] = useState(false);
     const [conversationWidgets, setConversationWidgets] = useState<Array<{ type: WidgetType; data: any; timestamp: number }>>([]);
+    const [widgetsByConversation, setWidgetsByConversation] = useState<Record<string, Array<{ type: WidgetType; data: any; timestamp: number }>>>({});
+    const [selectedTool, setSelectedTool] = useState<string | null>(null);
+    
+    // Helper function to add widget to current conversation
+    const addWidgetToConversation = (widget: { type: WidgetType; data: any; timestamp: number }) => {
+        const conversationId = currentConversationIdRef.current;
+        if (!conversationId) return;
+        
+        setWidgetsByConversation(prev => ({
+            ...prev,
+            [conversationId]: [...(prev[conversationId] || []), widget]
+        }));
+        
+        // Update current conversation widgets if it's the active conversation
+        if (conversationId === currentConversationId) {
+            setConversationWidgets(prev => [...prev, widget]);
+        }
+    };
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
     const [showDebugGraph, setShowDebugGraph] = useState(false);
     const audioContext = useRef<AudioContext | null>(null);
@@ -88,6 +105,7 @@ const App: React.FC = () => {
     const [availableDocuments, setAvailableDocuments] = useState<any[]>([]);
     const [agentFlowSteps, setAgentFlowSteps] = useState<any[]>([]);
     const [currentFlowMessageId, setCurrentFlowMessageId] = useState<string | null>(null);
+    const [flowStepsByMessage, setFlowStepsByMessage] = useState<Record<string, any[]>>({});
 
 
     // Memoize welcome message to prevent re-calculation on every render
@@ -162,6 +180,10 @@ const App: React.FC = () => {
                 dispatch({ type: 'CLEAR_MESSAGES' });
                 dispatch({ type: 'CLEAR_THINKING_BLOCKS' });
                 dispatch({ type: 'CLEAR_TOOL_CALLS' });
+                
+                // Load conversation-specific widgets
+                const conversationWidgetsForChat = widgetsByConversation[currentConversationId] || [];
+                setConversationWidgets(conversationWidgetsForChat);
 
 
                 // Reset token handlers
@@ -291,9 +313,17 @@ const App: React.FC = () => {
     useEffect(() => {
         const unsubscribe = agentFlowTracker.subscribe((steps) => {
             setAgentFlowSteps([...steps]);
+            
+            // Store steps for the current message
+            if (currentFlowMessageId && steps.length > 0) {
+                setFlowStepsByMessage(prev => ({
+                    ...prev,
+                    [currentFlowMessageId]: [...steps]
+                }));
+            }
         });
         return unsubscribe;
-    }, []);
+    }, [currentFlowMessageId]);
 
     // Listen for agent flow events from main process
     useEffect(() => {
@@ -450,15 +480,21 @@ const App: React.FC = () => {
                         const chatID = currentConversationId || getNewConversationId();
                         // Handle the transcribed text by sending it as a message
                         if (transcript.trim()) {
-                            // Combine transcript with active hashtags
                             let messageContent = transcript;
-                            if (activeHashtags.length > 0) {
-                                const hashtagsToAdd = activeHashtags.filter(tag =>
-                                    !messageContent.toLowerCase().includes(tag.toLowerCase())
-                                );
-                                if (hashtagsToAdd.length > 0) {
-                                    messageContent = hashtagsToAdd.join(' ') + ' ' + messageContent;
-                                }
+                            
+                            // Add tool instruction if a tool is selected
+                            if (selectedTool) {
+                                const toolInstructions: Record<string, string> = {
+                                    'search': 'Use web search to answer this query:',
+                                    'weather': 'Get weather information for:',
+                                    'maps': 'Show location and map information for:',
+                                    'email': 'Search emails for:',
+                                    'research': 'Use deep research mode for:',
+                                    'vector': 'Search indexed documents for:'
+                                };
+                                
+                                const instruction = toolInstructions[selectedTool] || 'Use specific tools to answer:';
+                                messageContent = `${instruction} ${transcript}`;
                             }
 
                             // User message will be saved by backend during processing
@@ -477,9 +513,9 @@ const App: React.FC = () => {
                             // When creating the placeholder (in handleSendClick and mic path)
                             dispatch({ type: 'ADD_MESSAGE', payload: { id: assistantMessageId, role: 'assistant', content: '', isStreaming: true, timestamp: Date.now() + 1, conversationId: chatID } });
                             dispatch({ type: 'SET_CURRENT_ASSISTANT_ID', payload: { conversationId: chatID, messageId: assistantMessageId } });
-                            setInputValue(''); // Clear input field after sending
-                            setActiveHashtags([]); // Clear hashtags after sending
-
+                            setInputValue('');
+                            setSelectedTool(null); // Clear tool selection after sending // Clear input field after sending
+                            
                             try {
                                 // Process message through agent with conversation ID
                                 await ipcRenderer.invoke('process-message', transcript, chatID);
@@ -585,23 +621,28 @@ const App: React.FC = () => {
             // Only play recording activation sound, no other sound effects
             const convID = currentConversationId || getNewConversationId();
 
-            // Combine input with active hashtags
             let messageContent = inputValue;
-            if (activeHashtags.length > 0) {
-                // Add hashtags to message if they're not already in the text
-                const hashtagsToAdd = activeHashtags.filter(tag =>
-                    !messageContent.toLowerCase().includes(tag.toLowerCase())
-                );
-                if (hashtagsToAdd.length > 0) {
-                    messageContent = hashtagsToAdd.join(' ') + ' ' + messageContent;
-                }
+            
+            // Add tool instruction if a tool is selected
+            if (selectedTool) {
+                const toolInstructions: Record<string, string> = {
+                    'search': 'Use web search to answer this query:',
+                    'weather': 'Get weather information for:',
+                    'maps': 'Show location and map information for:',
+                    'email': 'Search emails for:',
+                    'research': 'Use deep research mode for:',
+                    'vector': 'Search indexed documents for:'
+                };
+                
+                const instruction = toolInstructions[selectedTool] || 'Use specific tools to answer:';
+                messageContent = `${instruction} ${inputValue}`;
             }
 
             // Clear input immediately for better UX
-            const messageToProcess = messageContent;  // Use the content with hashtags
+            const messageToProcess = messageContent;
             setInputValue('');
-            setActiveHashtags([]); // Clear hashtags after sending
-
+            setSelectedTool(null); // Clear tool selection after sending
+            
             // IMMEDIATE UI UPDATE: Add user message to UI immediately for better UX
             const userMessage = {
                 id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -631,7 +672,7 @@ const App: React.FC = () => {
 
             // Start the first flow step
             const initialStepId = agentFlowTracker.startNewStep({
-                title: 'Processing request...',
+                title: 'Processing request',
                 details: 'Analyzing user input and determining response strategy'
             });
 
@@ -688,17 +729,13 @@ const App: React.FC = () => {
         };
 
         // Add to conversation widgets history
-        setConversationWidgets(prev => {
-            // Check if widget already exists to avoid duplicates
-            const exists = prev.some(w =>
-                w.type === 'document' &&
-                (w.data as IndexedFile).path === (document as IndexedFile).path
-            );
-            if (!exists) {
-                return [...prev, newWidget];
-            }
-            return prev;
-        });
+        const existsInCurrent = conversationWidgets.some(w =>
+            w.type === 'document' &&
+            (w.data as IndexedFile).path === (document as IndexedFile).path
+        );
+        if (!existsInCurrent) {
+            addWidgetToConversation(newWidget);
+        }
 
         setSidePanelWidgetType('document');
         setSidePanelData(document as IndexedFile);
@@ -739,15 +776,19 @@ const App: React.FC = () => {
 
                 // Add any extracted thinking blocks to Redux with proper association
                 processedThinking.thinkingBlocks.forEach(block => {
-                    // Add thinking block to flow visualization
+                    // Add thinking block to flow visualization using standard format
                     if (currentFlowMessageId === currentAssistantId) {
+                        const thinkingStep = generateStepDescription('THINKING', {
+                            contentLength: block.content.length
+                        });
+                        
                         agentFlowTracker.addCompletedStep({
-                            title: 'Thinking...',
-                            details: `Internal reasoning (${block.content.length} characters)`
+                            title: thinkingStep.title,
+                            details: thinkingStep.description
                         });
                     }
 
-                    // Associate thinking block with the current assistant message
+                    // Still add to Redux for potential debugging/fallback
                     const enhancedBlock = {
                         ...block,
                         messageId: `assistant-${Date.now()}`, // Will be updated to actual message ID
@@ -799,7 +840,7 @@ const App: React.FC = () => {
                     if (currentFlowMessageId === currentAssistantId) {
                         const toolName = (toolCall as any).toolName || (toolCall as any).name || 'Tool';
                         const toolStepId = agentFlowTracker.startNewStep({
-                            title: `Executing ${toolName}...`,
+                            title: `Executing ${toolName}`,
                             details: `Tool execution in progress`
                         });
                         // Mark as complete after a short delay to show progress
@@ -1021,6 +1062,24 @@ const App: React.FC = () => {
 
                 // Check if this is weather data or map data
                 if (data.sideViewData.type === 'weather' && data.sideViewData.data) {
+                    console.log('🌤️ [DEBUG] Processing weather data:', {
+                        type: data.sideViewData.type,
+                        weatherData: data.sideViewData.data,
+                        temperatureExists: !!data.sideViewData.data?.temperature,
+                        locationExists: !!data.sideViewData.data?.location,
+                        fullDataDump: JSON.stringify(data.sideViewData.data, null, 2)
+                    });
+                    
+                    // Deep inspection of the data structure
+                    console.log('🌤️ [DEBUG] Weather data deep inspection:');
+                    console.log('  - location:', data.sideViewData.data?.location);
+                    console.log('  - temperature:', data.sideViewData.data?.temperature);
+                    console.log('  - condition:', data.sideViewData.data?.condition);
+                    console.log('  - humidity:', data.sideViewData.data?.humidity);
+                    console.log('  - wind:', data.sideViewData.data?.wind);
+                    console.log('  - is_day:', data.sideViewData.data?.is_day);
+                    console.log('  - source:', data.sideViewData.data?.source);
+                    
                     const newWidget = {
                         type: 'weather' as WidgetType,
                         data: data.sideViewData.data as WeatherData,
@@ -1028,17 +1087,13 @@ const App: React.FC = () => {
                     };
 
                     // Add to conversation widgets history
-                    setConversationWidgets(prev => {
-                        // Check if widget already exists to avoid duplicates
-                        const exists = prev.some(w =>
-                            w.type === 'weather' &&
-                            JSON.stringify(w.data) === JSON.stringify(newWidget.data)
-                        );
-                        if (!exists) {
-                            return [...prev, newWidget];
-                        }
-                        return prev;
-                    });
+                    const existsInCurrent = conversationWidgets.some(w =>
+                        w.type === 'weather' &&
+                        JSON.stringify(w.data) === JSON.stringify(newWidget.data)
+                    );
+                    if (!existsInCurrent) {
+                        addWidgetToConversation(newWidget);
+                    }
 
                     setSidePanelWidgetType('weather');
                     setSidePanelData(data.sideViewData.data as WeatherData);
@@ -1057,19 +1112,16 @@ const App: React.FC = () => {
                     };
 
                     // Add to conversation widgets history
-                    setConversationWidgets(prev => {
-                        // Check if widget already exists to avoid duplicates
-                        const exists = prev.some(w =>
-                            w.type === 'map' &&
-                            JSON.stringify(w.data) === JSON.stringify(newWidget.data)
-                        );
-                        if (!exists) {
-                            console.log('🗺️ [DEBUG] Adding map widget to conversation history');
-                            return [...prev, newWidget];
-                        }
+                    const existsInCurrent = conversationWidgets.some(w =>
+                        w.type === 'map' &&
+                        JSON.stringify(w.data) === JSON.stringify(newWidget.data)
+                    );
+                    if (!existsInCurrent) {
+                        console.log('🗺️ [DEBUG] Adding map widget to conversation history');
+                        addWidgetToConversation(newWidget);
+                    } else {
                         console.log('🗺️ [DEBUG] Map widget already exists, skipping duplicate');
-                        return prev;
-                    });
+                    }
 
                     console.log('🗺️ [DEBUG] Setting up map in side panel');
                     setSidePanelWidgetType('map');
@@ -1443,12 +1495,13 @@ const App: React.FC = () => {
                                             {/* Input area when no messages */}
                                             <div className={`welcome-input-area ${isInputExpanded ? 'expanded' : ''}`}>
                                                 {/* Hashtag Manager */}
-                                                <HashtagManager
-                                                    inputValue={inputValue}
-                                                    onHashtagsChange={setActiveHashtags}
-                                                />
 
                                                 <div className="welcome-input-row">
+                                                    <ToolSelector
+                                                        selectedTool={selectedTool}
+                                                        onToolSelect={setSelectedTool}
+                                                        disabled={isRecording}
+                                                    />
                                                     <textarea
                                                         value={inputValue}
                                                         onChange={handleInputChange}
@@ -1596,58 +1649,33 @@ const App: React.FC = () => {
                                                 {msg.role === 'assistant' && (
                                                     <>
                                                         {/* Agent Flow Visualization */}
-                                                        {agentFlowSteps.length > 0 && currentFlowMessageId === msg.id && (
-                                                            <AgentFlowVisualization
-                                                                steps={agentFlowSteps}
-                                                                isExpanded={false}
-                                                            />
-                                                        )}
-
-                                                        {/* Render thinking blocks and tool calls in chronological order */}
                                                         {(() => {
-                                                            // Combine thinking blocks and tool calls, then sort chronologically
-                                                            const allItems = [
-                                                                ...associatedBlocks.map((block: any) => ({
-                                                                    ...block,
-                                                                    type: 'thinking',
-                                                                    timestamp: block.startTime || block.timestamp || 0
-                                                                })),
-                                                                ...associatedToolCalls.map((toolCall: any) => ({
-                                                                    ...toolCall,
-                                                                    type: 'tool',
-                                                                    timestamp: toolCall.startTime || toolCall.timestamp || 0
-                                                                }))
-                                                            ];
-
-                                                            // Sort by timestamp for proper chronological order
-                                                            allItems.sort((a, b) => a.timestamp - b.timestamp);
-
-                                                            return allItems.map((item: any) => {
-                                                                if (item.type === 'thinking') {
-                                                                    return (
-                                                                        <ThinkingBlock
-                                                                            key={item.id}
-                                                                            id={item.id}
-                                                                            content={item.content}
-                                                                            startTime={item.startTime}
-                                                                            endTime={item.endTime}
-                                                                            duration={item.duration}
-                                                                            defaultOpen={false}
-                                                                            isIncomplete={item.isIncomplete || false}
-                                                                            isStreaming={item.isStreaming || false}
-                                                                        />
-                                                                    );
-                                                                } else {
-                                                                    return (
-                                                                        <ToolBlock
-                                                                            key={item.id}
-                                                                            toolCall={item}
-                                                                            defaultOpen={false}
-                                                                        />
-                                                                    );
-                                                                }
-                                                            });
+                                                            // Show current flow for active message or stored flow for completed messages
+                                                            const messageFlowSteps = currentFlowMessageId === msg.id 
+                                                                ? agentFlowSteps 
+                                                                : flowStepsByMessage[msg.id] || [];
+                                                            
+                                                            if (messageFlowSteps.length > 0) {
+                                                                return (
+                                                                    <AgentFlowVisualization
+                                                                        steps={messageFlowSteps}
+                                                                        isExpanded={false}
+                                                                    />
+                                                                );
+                                                            }
+                                                            return null;
                                                         })()}
+
+                                                        {/* Render tool calls only (thinking blocks moved to flow timeline) */}
+                                                        {associatedToolCalls.length > 0 && 
+                                                            associatedToolCalls.map((toolCall: any) => (
+                                                                <ToolBlock
+                                                                    key={toolCall.id}
+                                                                    toolCall={toolCall}
+                                                                    defaultOpen={false}
+                                                                />
+                                                            ))
+                                                        }
                                                     </>
                                                 )}
 
@@ -1682,11 +1710,8 @@ const App: React.FC = () => {
                                                     ) : msg.hasCodeBlocks ? (
                                                         <div dangerouslySetInnerHTML={{ __html: msg.content || '' }} />
                                                     ) : (
-                                                        // Enhanced rendering for user and AI messages with hashtag, markdown and link support
-                                                        msg.content && hasHashtags(msg.content) ? (
-                                                            // Render hashtags with colored oval styling
-                                                            renderTextWithColoredHashtags(msg.content)
-                                                        ) : msg.role === 'assistant' && msg.content ? (
+                                                        // Enhanced rendering for user and AI messages with markdown and link support
+                                                        msg.role === 'assistant' && msg.content ? (
                                                             // Use Streamdown for all AI responses (handles markdown, streaming, and plain text)
                                                             <StreamdownRenderer
                                                                 content={msg.content}
@@ -1772,12 +1797,11 @@ const App: React.FC = () => {
                             {/* Only show input area at bottom when there are messages */}
                             {messages.length > 0 && (
                                 <div className="input-area" style={{ alignItems: "center" }}>
-                                    {/* Hashtag Manager */}
-                                    <HashtagManager
-                                        inputValue={inputValue}
-                                        onHashtagsChange={setActiveHashtags}
+                                    <ToolSelector
+                                        selectedTool={selectedTool}
+                                        onToolSelect={setSelectedTool}
+                                        disabled={isRecording}
                                     />
-
                                     <textarea
                                         placeholder="Type your message... Press Shift+Enter for new line"
                                         className="message-input"

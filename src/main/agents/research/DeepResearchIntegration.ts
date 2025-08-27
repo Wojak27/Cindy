@@ -11,6 +11,7 @@ import { DeepResearchAgent } from './DeepResearchAgent'; // LangGraph implementa
 // import { DeepAgentsResearchAgent as DeepResearchAgent } from './DeepAgentsResearchAgent'; // DeepAgents has initialization issues
 import { DeepResearchConfiguration, DeepResearchConfigManager } from './DeepResearchConfig';
 import { ToolAgent } from '../ToolAgent';
+import { generateStepDescription, extractResearchContext, AGENT_STEP_TEMPLATES } from '../../../shared/AgentFlowStandard';
 
 /**
  * Integration options for Deep Research
@@ -189,45 +190,22 @@ export class DeepResearchIntegration {
         route: 'deep_research' | 'tool_agent' | 'direct_response';
         response?: string;
     }> {
-        const routingPrompt = `You are an intelligent routing agent that decides how to handle user requests. You have three options:
+        // First, try simple pattern-based routing as fallback
+        const simpleRoute = this.getSimpleRoute(message);
+        if (simpleRoute) {
+            console.log(`[DeepResearchIntegration] Using simple pattern-based routing: ${simpleRoute}`);
+            return { route: simpleRoute as any };
+        }
+        
+        const routingPrompt = `Route this message to one of three options. Respond with ONLY one of these exact phrases:
 
-DEEP RESEARCH - For complex research requiring comprehensive analysis:
-- Research requests about topics, trends, or detailed information
-- Comparative analysis or multi-faceted investigations
-- Questions requiring multiple sources and structured methodology
-- Requests for in-depth reports or comprehensive overviews
-- Academic or professional research needs
+ROUTE_DEEP_RESEARCH - for research requests
+ROUTE_TOOL_AGENT - for weather, maps, searches  
+ROUTE_DIRECT [your response] - for simple questions
 
-TOOL AGENT - For specific actions that require tools:
-- Weather inquiries (current conditions, forecasts)
-- Map displays and location visualization ("show me where", "display on map", "where is [location]")
-- Quick web searches for specific facts
-- Tool-based calculations or conversions
-- Location coordinates and geographical queries requiring visual maps
-- Real-time data requests
+Message: "${message}"
 
-DIRECT RESPONSE - For simple questions requiring immediate answers:
-- Basic factual questions with straightforward answers
-- Common knowledge queries  
-- Casual conversation or greetings
-- Simple explanations that don't require tools or research
-
-User Message: "${message}"
-
-CRITICAL: You MUST respond with exactly one of these three options. No other format is acceptable:
-- "ROUTE_DEEP_RESEARCH" - for comprehensive research requests
-- "ROUTE_TOOL_AGENT" - for tool-based actions (weather, maps, searches, etc.)  
-- "ROUTE_DIRECT" followed by your direct response - for simple questions
-
-Examples:
-- "what's the weather in Paris?" → "ROUTE_TOOL_AGENT"
-- "Please show me where Paris is" → "ROUTE_TOOL_AGENT"
-- "Display Tokyo on a map" → "ROUTE_TOOL_AGENT"  
-- "Where is London? Show it to me" → "ROUTE_TOOL_AGENT"
-- "research AI trends in healthcare" → "ROUTE_DEEP_RESEARCH"  
-- "hello, how are you?" → "ROUTE_DIRECT Hello! I'm here to help you with questions, research, and various tasks. How can I assist you today?"
-
-IMPORTANT: Only use the exact routing format above. Do not add explanations or extra text.`;
+Your routing decision:`;
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
@@ -276,12 +254,170 @@ IMPORTANT: Only use the exact routing format above. Do not add explanations or e
             }
         }
 
-        // All retries exhausted - return fallback with clear messaging
-        console.error('[DeepResearchIntegration] ❌ All routing attempts failed, using fallback');
-        return {
-            route: 'direct_response',
-            response: 'I\'m experiencing technical difficulties with my routing system. I can still help you, but some advanced features may be temporarily unavailable. Please try rephrasing your request or try again in a moment.'
-        };
+        // All retries exhausted - use intelligent fallback
+        console.error('[DeepResearchIntegration] ❌ All routing attempts failed, using intelligent fallback');
+        const fallbackRoute = this.getIntelligentFallback(message);
+        console.log(`[DeepResearchIntegration] Using intelligent fallback route: ${fallbackRoute}`);
+        
+        if (fallbackRoute === 'direct_response') {
+            return {
+                route: fallbackRoute,
+                response: 'I\'m experiencing technical difficulties with my routing system. I can still help you, but some advanced features may be temporarily unavailable. Please try rephrasing your request or try again in a moment.'
+            };
+        } else {
+            return {
+                route: fallbackRoute
+            };
+        }
+    }
+
+    /**
+     * Simple pattern-based routing for common cases
+     */
+    private getSimpleRoute(message: string): 'deep_research' | 'tool_agent' | 'direct_response' | null {
+        const lowerMessage = message.toLowerCase().trim();
+        
+        // Research keywords
+        const researchKeywords = [
+            'research', 'study', 'analyze', 'analysis', 'investigate', 'exploration', 
+            'comprehensive', 'detailed', 'thorough', 'compare', 'comparison',
+            'pros and cons', 'advantages and disadvantages', 'literature review'
+        ];
+        
+        // Tool agent keywords  
+        const toolKeywords = [
+            'weather', 'temperature', 'forecast', 'map', 'location', 'directions',
+            'search for', 'find', 'look up', 'google', 'browse', 'website'
+        ];
+        
+        // Direct response patterns
+        const directPatterns = [
+            'hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening',
+            'how are you', 'what is your name', 'who are you', 'thanks', 'thank you'
+        ];
+        
+        // Check for direct response patterns first
+        if (directPatterns.some(pattern => lowerMessage.includes(pattern))) {
+            return 'direct_response';
+        }
+        
+        // Check for tool keywords
+        if (toolKeywords.some(keyword => lowerMessage.includes(keyword))) {
+            return 'tool_agent';
+        }
+        
+        // Check for research keywords
+        if (researchKeywords.some(keyword => lowerMessage.includes(keyword))) {
+            return 'deep_research';
+        }
+        
+        // Check for question length heuristic (longer questions often need research)
+        if (lowerMessage.includes('?') && lowerMessage.length > 100) {
+            return 'deep_research';
+        }
+        
+        // Check for simple questions
+        if (lowerMessage.startsWith('what is') || lowerMessage.startsWith('who is') || 
+            lowerMessage.startsWith('when is') || lowerMessage.startsWith('where is') ||
+            lowerMessage.startsWith('how do') || lowerMessage.startsWith('can you')) {
+            return lowerMessage.length > 50 ? 'tool_agent' : 'direct_response';
+        }
+        
+        return null; // Let LLM decide
+    }
+    
+    /**
+     * Check if required tools are available for a given message type
+     */
+    private checkRequiredTools(message: string, route: 'deep_research' | 'tool_agent' | 'direct_response'): {
+        available: boolean;
+        missingTools: string[];
+        errorMessage?: string;
+    } {
+        const lowerMessage = message.toLowerCase().trim();
+        const availableTools = toolRegistry.getAvailableTools();
+        const missingTools: string[] = [];
+
+        if (route === 'deep_research') {
+            // Research requires web search capabilities
+            const hasWebSearch = availableTools.some(tool => 
+                tool.includes('search') && !tool.includes('vector') && !tool.includes('documents')
+            );
+            
+            if (!hasWebSearch) {
+                missingTools.push('web_search');
+                return {
+                    available: false,
+                    missingTools,
+                    errorMessage: 'I cannot conduct research without access to web search tools. Please activate the web search tool (DuckDuckGo, Brave, or SerpAPI) in the settings to enable research capabilities. You can also try asking for information I might already know from my training data.'
+                };
+            }
+        }
+
+        if (route === 'tool_agent') {
+            // Check for specific tool requirements based on message content
+            if (lowerMessage.includes('weather') || lowerMessage.includes('temperature') || lowerMessage.includes('forecast')) {
+                if (!availableTools.includes('weather')) {
+                    missingTools.push('weather');
+                    return {
+                        available: false,
+                        missingTools,
+                        errorMessage: 'I cannot provide weather information without the weather tool. Please activate the weather service (AccuWeather API) in the settings to get current weather data and forecasts.'
+                    };
+                }
+            }
+
+            if (lowerMessage.includes('map') || lowerMessage.includes('location') || lowerMessage.includes('directions')) {
+                // Maps don't require external tools, but check anyway
+                if (!availableTools.includes('maps') && !availableTools.some(tool => tool.includes('search'))) {
+                    missingTools.push('maps_or_search');
+                    return {
+                        available: false,
+                        missingTools,
+                        errorMessage: 'I cannot provide location or mapping information without search tools. Please activate web search tools in the settings to enable location-based queries.'
+                    };
+                }
+            }
+
+            if ((lowerMessage.includes('search') || lowerMessage.includes('find') || lowerMessage.includes('look up')) && 
+                !lowerMessage.includes('weather') && !lowerMessage.includes('map')) {
+                // General search requests
+                const hasAnySearch = availableTools.some(tool => tool.includes('search'));
+                if (!hasAnySearch) {
+                    missingTools.push('search');
+                    return {
+                        available: false,
+                        missingTools,
+                        errorMessage: 'I cannot perform web searches without search tools. Please activate web search tools (DuckDuckGo, Brave, or SerpAPI) in the settings to enable search capabilities.'
+                    };
+                }
+            }
+        }
+
+        return { available: true, missingTools: [] };
+    }
+
+    /**
+     * Get intelligent fallback based on message characteristics
+     */
+    private getIntelligentFallback(message: string): 'deep_research' | 'tool_agent' | 'direct_response' {
+        const lowerMessage = message.toLowerCase().trim();
+        
+        // Default to tool agent for specific domains
+        if (lowerMessage.includes('weather') || lowerMessage.includes('map') || 
+            lowerMessage.includes('search') || lowerMessage.includes('find')) {
+            return 'tool_agent';
+        }
+        
+        // Default to research for academic/analysis requests
+        if (lowerMessage.includes('explain') || lowerMessage.includes('analyze') ||
+            lowerMessage.includes('compare') || lowerMessage.includes('research') ||
+            lowerMessage.length > 80) {
+            return 'deep_research';
+        }
+        
+        // Default to direct response for everything else
+        return 'direct_response';
     }
 
     /**
@@ -360,6 +496,18 @@ IMPORTANT: Only use the exact routing format above. Do not add explanations or e
 
         try {
             const routing = await this.routeMessage(message);
+
+            // Check if required tools are available before proceeding
+            const toolCheck = this.checkRequiredTools(message, routing.route);
+            if (!toolCheck.available && toolCheck.errorMessage) {
+                console.warn(`[DeepResearchIntegration] Missing required tools for ${routing.route}:`, toolCheck.missingTools);
+                return {
+                    result: toolCheck.errorMessage,
+                    usedDeepResearch: false,
+                    usedToolAgent: false,
+                    processingTime: Date.now() - startTime
+                };
+            }
 
             switch (routing.route) {
                 case 'deep_research':
@@ -478,6 +626,19 @@ IMPORTANT: Only use the exact routing format above. Do not add explanations or e
         try {
             const routing = await this.routeMessage(message);
 
+            // Check if required tools are available before proceeding
+            const toolCheck = this.checkRequiredTools(message, routing.route);
+            if (!toolCheck.available && toolCheck.errorMessage) {
+                console.warn(`[DeepResearchIntegration] Missing required tools for ${routing.route}:`, toolCheck.missingTools);
+                yield {
+                    type: 'result',
+                    content: toolCheck.errorMessage,
+                    usedDeepResearch: false,
+                    usedToolAgent: false
+                };
+                return;
+            }
+
             switch (routing.route) {
                 case 'deep_research':
                     console.log('[DeepResearchIntegration] Streaming Deep Research');
@@ -502,34 +663,25 @@ IMPORTANT: Only use the exact routing format above. Do not add explanations or e
                     for await (const update of this.deepResearchAgent.streamResearch(message)) {
                         // Convert progress messages to flow events
                         if (update.type === 'progress' && emitFlowEvent) {
-                            // Map research status to flow step details
-                            const statusMap: Record<string, { title: string, details: string }> = {
-                                'Starting research process...': {
-                                    title: 'Starting research...',
-                                    details: 'Initializing research workflow'
-                                },
-                                'Analyzing research requirements...': {
-                                    title: 'Analyzing requirements...',
-                                    details: 'Determining research strategy and scope'
-                                },
-                                'Conducting comprehensive research...': {
-                                    title: 'Conducting research...',
-                                    details: 'Gathering information from multiple sources'
-                                },
-                                'Research completed, generating final report...': {
-                                    title: 'Generating report...',
-                                    details: 'Synthesizing findings into final report'
-                                }
+                            const researchContext = extractResearchContext(message);
+                            
+                            // Map research status to standardized steps
+                            const statusMap: Record<string, keyof typeof AGENT_STEP_TEMPLATES> = {
+                                'Starting research process...': 'STARTING_RESEARCH',
+                                'Analyzing research requirements...': 'ANALYZING_REQUIREMENTS', 
+                                'Conducting comprehensive research...': 'CONDUCTING_RESEARCH',
+                                'Research completed, generating final report...': 'GENERATING_REPORT'
                             };
                             
-                            const stepInfo = statusMap[update.content] || {
-                                title: update.content,
-                                details: `Status: ${update.status || 'Processing'}`
-                            };
+                            const templateKey = statusMap[update.content];
+                            const stepInfo = templateKey 
+                                ? generateStepDescription(templateKey, researchContext)
+                                : { title: update.content, description: `Status: ${update.status || 'Processing'}` };
                             
                             emitFlowEvent('step-add', {
                                 stepId: `research-${Date.now()}`,
-                                ...stepInfo
+                                title: stepInfo.title,
+                                details: stepInfo.description
                             });
                             
                             // Don't yield progress updates as content

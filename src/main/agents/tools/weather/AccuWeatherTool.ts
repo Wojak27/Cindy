@@ -55,7 +55,12 @@ export class AccuWeatherTool extends Tool {
             console.log(`[AccuWeatherTool] Fetching weather for: ${location}`);
 
             if (!this.apiKey) {
-                return this.getMockWeatherData(location);
+                const mockData = this.getMockWeatherData(location);
+                // Parse and send the mock data to widget
+                const weatherObj = JSON.parse(mockData);
+                console.log('[AccuWeatherTool] Using mock data, parsed object:', weatherObj);
+                this.sendWeatherWidget(weatherObj, location);
+                return mockData;
             }
 
             // Step 1: Get location key
@@ -66,6 +71,13 @@ export class AccuWeatherTool extends Tool {
 
             // Step 2: Get current conditions
             const weatherData = await this.getCurrentConditions(locationKey);
+
+            // Format the response for consistent structure
+            const formattedData = this.formatWeatherDataForWidget(weatherData, location);
+            console.log('[AccuWeatherTool] Using real API data, formatted object:', formattedData);
+
+            // Send side-view-data to display widget
+            this.sendWeatherWidget(formattedData, location);
 
             // Format the response
             return this.formatWeatherResponse(weatherData, location);
@@ -83,7 +95,12 @@ export class AccuWeatherTool extends Tool {
             } catch {
                 fallbackLocation = input;
             }
-            return this.getMockWeatherData(fallbackLocation);
+            const fallbackData = this.getMockWeatherData(fallbackLocation);
+            // Parse and send the mock data to widget
+            const weatherObj = JSON.parse(fallbackData);
+            console.log('[AccuWeatherTool] Using fallback mock data, parsed object:', weatherObj);
+            this.sendWeatherWidget(weatherObj, fallbackLocation);
+            return fallbackData;
         }
     }
 
@@ -143,6 +160,40 @@ export class AccuWeatherTool extends Tool {
             console.error('[AccuWeatherTool] Error getting current conditions:', error);
             throw error;
         }
+    }
+
+    /**
+     * Format weather data consistently for widget display
+     */
+    private formatWeatherDataForWidget(weatherData: any, location: string): any {
+        return {
+            location: location,
+            temperature: {
+                celsius: weatherData.Temperature?.Metric?.Value || 'N/A',
+                fahrenheit: weatherData.Temperature?.Imperial?.Value || 'N/A',
+                unit_metric: weatherData.Temperature?.Metric?.Unit || 'C',
+                unit_imperial: weatherData.Temperature?.Imperial?.Unit || 'F'
+            },
+            condition: weatherData.WeatherText || 'Unknown',
+            humidity: weatherData.RelativeHumidity ? `${weatherData.RelativeHumidity}%` : 'N/A',
+            wind: {
+                speed_metric: weatherData.Wind?.Speed?.Metric?.Value || 'N/A',
+                speed_imperial: weatherData.Wind?.Speed?.Imperial?.Value || 'N/A',
+                direction: weatherData.Wind?.Direction?.English || 'N/A'
+            },
+            pressure: {
+                metric: weatherData.Pressure?.Metric?.Value || 'N/A',
+                imperial: weatherData.Pressure?.Imperial?.Value || 'N/A'
+            },
+            visibility: {
+                metric: weatherData.Visibility?.Metric?.Value || 'N/A',
+                imperial: weatherData.Visibility?.Imperial?.Value || 'N/A'
+            },
+            uv_index: weatherData.UVIndex || 'N/A',
+            is_day: weatherData.IsDayTime || false,
+            observation_time: weatherData.LocalObservationDateTime || new Date().toISOString(),
+            source: 'AccuWeather'
+        };
     }
 
     /**
@@ -221,6 +272,41 @@ export class AccuWeatherTool extends Tool {
         };
 
         return JSON.stringify(mockData, null, 2);
+    }
+
+    /**
+     * Send weather data to display widget via IPC
+     */
+    private sendWeatherWidget(weatherData: any, location: string): void {
+        try {
+            const mainWindow = (global as any).mainWindow;
+            const conversationId = (global as any).currentConversationId || 'default';
+            
+            console.log('[AccuWeatherTool] Attempting to send weather widget via IPC');
+            console.log('[AccuWeatherTool] Main window available:', !!mainWindow);
+            console.log('[AccuWeatherTool] Conversation ID:', conversationId);
+            console.log('[AccuWeatherTool] Weather data to send:', JSON.stringify(weatherData, null, 2));
+            
+            if (mainWindow && weatherData) {
+                const sideViewData = {
+                    type: 'weather',
+                    data: weatherData
+                };
+
+                console.log('[AccuWeatherTool] Complete IPC payload:', JSON.stringify({ sideViewData, conversationId }, null, 2));
+
+                mainWindow.webContents.send('side-view-data', {
+                    sideViewData,
+                    conversationId
+                });
+                
+                console.log('[AccuWeatherTool] ✅ Successfully sent weather widget via IPC');
+            } else {
+                console.warn('[AccuWeatherTool] ❌ Main window or weather data not available for IPC');
+            }
+        } catch (ipcError) {
+            console.error('[AccuWeatherTool] ❌ Failed to send weather data via IPC:', ipcError);
+        }
     }
 
     /**

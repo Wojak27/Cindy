@@ -16,6 +16,7 @@ import RealTimeTranscriptionService from './services/RealTimeTranscriptionServic
 import { LinkPreviewService } from './services/LinkPreviewService';
 import { TextToSpeechService } from './services/TextToSpeechService';
 import { ConnectorManagerService } from './services/ConnectorManagerService';
+import { generateStepDescription } from '../shared/AgentFlowStandard';
 
 import installExtension, {
     REDUX_DEVTOOLS,
@@ -2760,18 +2761,26 @@ app.on('ready', async () => {
                     // Set current conversation ID globally for tools to access
                     (global as any).currentConversationId = conversationId;
                     
-                    // Emit flow events for agent processing
+                    // Emit flow events for agent processing with context
+                    const processingStep = generateStepDescription('PROCESSING_REQUEST', { 
+                        userQuery: message 
+                    });
+                    
                     emitFlowEvent('step-update', {
                         stepId: 'initial',
                         status: 'completed',
-                        title: 'Processing request...',
-                        details: 'Request analyzed, routing to appropriate agent'
+                        title: processingStep.title,
+                        details: processingStep.description
+                    });
+                    
+                    const agentStep = generateStepDescription('AGENT_ROUTING', {
+                        agentType: 'conversational'
                     });
                     
                     emitFlowEvent('step-add', {
                         stepId: 'agent-processing',
-                        title: 'AI Agent processing...',
-                        details: 'Generating response using conversational AI'
+                        title: agentStep.title,
+                        details: agentStep.description
                     });
                     
                     // Use streaming processing from the agent
@@ -2817,11 +2826,15 @@ app.on('ready', async () => {
                     }
                     
                     // Mark agent processing as complete
+                    const completeStep = generateStepDescription('ANALYSIS_COMPLETE', {
+                        outputLength: assistantContent.length
+                    });
+                    
                     emitFlowEvent('step-update', {
                         stepId: 'agent-processing',
                         status: 'completed',
-                        title: 'AI Agent processing...',
-                        details: `Response generated (${assistantContent.length} characters)`
+                        title: completeStep.title,
+                        details: completeStep.description
                     });
                     
                     return assistantContent;

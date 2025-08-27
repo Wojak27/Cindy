@@ -136,6 +136,20 @@ export class ToolRegistry extends EventEmitter {
     }
 
     /**
+     * Get all tools formatted for OpenAI function calling
+     */
+    getAllToolsForBinding(): any[] {
+        return this.getAllTools().map(spec => ({
+            type: "function",
+            function: {
+                name: spec.name,
+                description: spec.description,
+                parameters: spec.parameters
+            }
+        }));
+    }
+
+    /**
      * Get tools by category
      */
     getToolsByCategory(category: ToolCategory): ToolSpecification[] {

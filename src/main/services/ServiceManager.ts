@@ -124,7 +124,8 @@ export class ServiceManager extends EventEmitter {
      */
     async getToolsForAgent(duckdbVectorStore?: any, connectorInstances?: any): Promise<any[]> {
         await this.initializeTools(duckdbVectorStore, connectorInstances);
-        return toolRegistry.getAllToolDefinitions();
+        // Return the actual tool instances for LangChain binding
+        return toolRegistry.getAllTools().map(spec => spec.tool);
     }
 
     /**

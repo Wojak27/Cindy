@@ -33,32 +33,32 @@ export interface IndexedFile {
 }
 
 export interface WeatherData {
-    location: string;
-    temperature: {
-        celsius: number;
-        fahrenheit: number;
-        unit_metric: string;
-        unit_imperial: string;
+    location?: string;
+    temperature?: {
+        celsius?: number;
+        fahrenheit?: number;
+        unit_metric?: string;
+        unit_imperial?: string;
     };
-    condition: string;
-    humidity: string;
-    wind: {
-        speed_metric: number;
-        speed_imperial: number;
-        direction: string;
+    condition?: string;
+    humidity?: string;
+    wind?: {
+        speed_metric?: number;
+        speed_imperial?: number;
+        direction?: string;
     };
-    pressure: {
-        metric: number;
-        imperial: number;
+    pressure?: {
+        metric?: number;
+        imperial?: number;
     };
-    visibility: {
-        metric: number;
-        imperial: number;
+    visibility?: {
+        metric?: number;
+        imperial?: number;
     };
-    uv_index: number | string;
-    is_day: boolean;
-    observation_time: string;
-    source: string;
+    uv_index?: number | string;
+    is_day?: boolean;
+    observation_time?: string;
+    source?: string;
 }
 
 export interface MapData {
