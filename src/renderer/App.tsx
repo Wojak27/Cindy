@@ -17,7 +17,7 @@ import ModernDatabasePanel from './components/ModernDatabasePanel';
 import ChatSidePanel, { WidgetType, WeatherData, MapData, IndexedFile } from './components/ChatSidePanel';
 import ThemeToggle from './components/ThemeToggle';
 import { ThemeProvider } from './contexts/ThemeContext';
-import AgentGraphVisualization from './components/AgentGraphVisualization';
+import AgentVisualizationPanel from './components/AgentVisualizationPanel';
 import AgentFlowVisualization from './components/AgentFlowVisualization';
 import ToolSelector from './components/ToolSelector';
 import { agentFlowTracker } from './services/AgentFlowTracker';
@@ -1131,6 +1131,25 @@ const App: React.FC = () => {
             }
         };
 
+        const handleTodoListUpdate = (_: any, data: { todos: any[], timestamp: Date, conversationId: string }) => {
+            console.log('📝 [DEBUG] Received todo-list:updated IPC:', {
+                receivedConversationId: data.conversationId,
+                currentConversationId: currentConversationIdRef.current,
+                todosCount: data.todos.length,
+                conversationMatch: data.conversationId === currentConversationIdRef.current
+            });
+
+            // Only process if it's for the current conversation
+            if (data.conversationId === currentConversationIdRef.current && currentFlowMessageId === currentAssistantId) {
+                console.log('📝 [DEBUG] Adding todo list step to agent flow');
+                agentFlowTracker.addTodoListStep({
+                    title: 'Task Planning',
+                    todos: data.todos,
+                    timestamp: new Date(data.timestamp)
+                });
+            }
+        };
+
         ipcRenderer.on('stream-chunk', handleStreamChunk);
         ipcRenderer.on('stream-complete', handleStreamComplete);
         ipcRenderer.on('stream-error', handleStreamError);
@@ -1141,6 +1160,7 @@ const App: React.FC = () => {
         ipcRenderer.on('tool-execution-update', handleToolExecutionUpdate);
         ipcRenderer.on('user-message', handleUserMessage);
         ipcRenderer.on('side-view-data', handleSideViewData);
+        ipcRenderer.on('todo-list:updated', handleTodoListUpdate);
 
         // Cleanup listeners on unmount
         return () => {
@@ -1150,6 +1170,7 @@ const App: React.FC = () => {
             ipcRenderer.off('tool-execution-update', handleToolExecutionUpdate);
             ipcRenderer.off('user-message', handleUserMessage);
             ipcRenderer.off('side-view-data', handleSideViewData);
+            ipcRenderer.off('todo-list:updated', handleTodoListUpdate);
             if (streamController.current) {
                 streamController.current.abort();
             }
@@ -1415,9 +1436,9 @@ const App: React.FC = () => {
                         <IconButton
                             className={`graph-button ${showDebugGraph ? 'active' : ''}`}
                             onClick={() => setShowDebugGraph(!showDebugGraph)}
-                            aria-label={showDebugGraph ? "Hide agent graph" : "Show agent graph"}
+                            aria-label={showDebugGraph ? "Hide agent visualization" : "Show agent visualization"}
                             size="small"
-                            title="Agent Architecture Graph"
+                            title="Agent Architecture & Memory"
                         >
                             <GraphIcon fontSize="small" />
                         </IconButton>
@@ -1899,7 +1920,7 @@ const App: React.FC = () => {
                     <div className={`debug-graph-container ${showDebugGraph ? 'open' : ''}`}>
                         <div className="debug-graph-panel">
                             <div className="debug-graph-header">
-                                <h3>🌳 Agent Architecture Graph</h3>
+                                <h3>🤖 Agent Architecture & Memory</h3>
                                 <button
                                     className="close-button"
                                     onClick={() => setShowDebugGraph(false)}
@@ -1909,11 +1930,11 @@ const App: React.FC = () => {
                                 </button>
                             </div>
                             <div className="debug-graph-content">
-                                <AgentGraphVisualization
+                                <AgentVisualizationPanel
                                     autoRender={showDebugGraph}
                                     showControls={true}
-                                    onRenderComplete={() => console.log('🎨 [Debug] Agent graph rendered')}
-                                    onError={(error) => console.error('❌ [Debug] Agent graph error:', error)}
+                                    onRenderComplete={() => console.log('🎨 [Debug] Agent visualization rendered')}
+                                    onError={(error) => console.error('❌ [Debug] Agent visualization error:', error)}
                                 />
                             </div>
                         </div>

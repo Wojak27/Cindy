@@ -261,6 +261,9 @@ If no tools are needed or available tools don't match the request, return empty 
                 return 'No tool results to process.';
             }
 
+            // Extract sources and citations from search results
+            const sources = this.extractSourcesFromResults(toolResults);
+            
             const resultsText = toolResults.map(tr => {
                 if (tr.error) {
                     return `${tr.tool} failed: ${tr.error}`;
@@ -276,18 +279,109 @@ User request: "${userRequest}"
 Tool results:
 ${resultsText}
 
-Provide a natural, helpful response that addresses the user's request using the tool results. Be conversational and focus on the information the user needs. If there were errors, explain them helpfully.`;
+Provide a natural, helpful response that addresses the user's request using the tool results. Be conversational and focus on the information the user needs. If there were errors, explain them helpfully.
+
+IMPORTANT: If the tool results include web search results, you MUST include proper citations at the end of your response. Format citations as:
+
+**Sources:**
+1. [Title](URL) - Brief description
+2. [Title](URL) - Brief description
+
+Only include citations for web search, wikipedia, or research tools that provide URLs.`;
 
             const result = await this.llmProvider.invoke([
                 new HumanMessage({ content: synthesisPrompt })
             ]);
 
-            return (result.content as string).trim();
+            let response = (result.content as string).trim();
+
+            // If we have sources but the LLM didn't include them, append them
+            if (sources.length > 0 && !response.includes('**Sources:**') && !response.includes('Sources:')) {
+                response += '\n\n' + this.formatCitations(sources);
+            }
+
+            return response;
 
         } catch (error) {
             console.error('[ToolAgent] Error synthesizing results:', error);
             return 'I gathered some information but had trouble putting it together. Please try again.';
         }
+    }
+
+    /**
+     * Extract source URLs and titles from search tool results
+     */
+    private extractSourcesFromResults(toolResults: any[]): Array<{ title: string; url: string; description?: string }> {
+        const sources: Array<{ title: string; url: string; description?: string }> = [];
+
+        for (const toolResult of toolResults) {
+            // Skip non-search tools and failed results
+            if (toolResult.error || !['web_search', 'wikipedia_search', 'tavily_search', 'brave_search', 'serp_search'].includes(toolResult.tool)) {
+                continue;
+            }
+
+            try {
+                let resultText = '';
+                
+                // Handle different result formats
+                if (toolResult.result?.success && toolResult.result?.result) {
+                    resultText = toolResult.result.result;
+                } else if (typeof toolResult.result === 'string') {
+                    resultText = toolResult.result;
+                } else if (toolResult.result?.content) {
+                    resultText = toolResult.result.content;
+                }
+
+                // Extract URLs and titles from the result text
+                const urlRegex = /https?:\/\/[^\s\)]+/g;
+                const urls = resultText.match(urlRegex) || [];
+                
+                // Try to find title-URL pairs in common formats
+                const titleUrlRegex = /([^:\n]+):\s*(https?:\/\/[^\s\)]+)/g;
+                let match;
+                
+                while ((match = titleUrlRegex.exec(resultText)) !== null) {
+                    const title = match[1].trim();
+                    const url = match[2].trim();
+                    
+                    if (title && url && !sources.find(s => s.url === url)) {
+                        sources.push({ title, url });
+                    }
+                }
+
+                // If no title-URL pairs found, extract standalone URLs and try to infer titles
+                if (sources.length === 0) {
+                    urls.forEach((url, index) => {
+                        if (!sources.find(s => s.url === url)) {
+                            // Try to extract domain as title
+                            const domain = url.match(/https?:\/\/([^\/]+)/)?.[1] || 'Source';
+                            const title = `${domain.replace('www.', '')} - Result ${index + 1}`;
+                            sources.push({ title, url });
+                        }
+                    });
+                }
+
+            } catch (error) {
+                console.warn('[ToolAgent] Failed to extract sources from result:', error);
+            }
+        }
+
+        // Limit to maximum 5 sources
+        return sources.slice(0, 5);
+    }
+
+    /**
+     * Format citations in a user-friendly way
+     */
+    private formatCitations(sources: Array<{ title: string; url: string; description?: string }>): string {
+        if (sources.length === 0) return '';
+
+        const citations = sources.map((source, index) => {
+            const description = source.description ? ` - ${source.description}` : '';
+            return `${index + 1}. [${source.title}](${source.url})${description}`;
+        }).join('\n');
+
+        return `**Sources:**\n${citations}`;
     }
 
     /**

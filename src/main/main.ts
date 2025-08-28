@@ -52,6 +52,46 @@ const getMimeType = (filePath: string): string => {
     return mimeTypes[ext] || 'application/octet-stream';
 };
 
+// Utility function to filter out internal content from user responses
+const filterInternalContent = (chunk: string): string => {
+    if (!chunk || typeof chunk !== 'string') {
+        return '';
+    }
+
+    let filtered = chunk;
+
+    // Remove tool execution blocks
+    filtered = filtered.replace(/<tool>.*?<\/tool>/gs, '');
+
+    // Remove todo list blocks  
+    filtered = filtered.replace(/TODO List:.*?(?=\n\n|\n$|$)/gs, '');
+    filtered = filtered.replace(/\*\*TODO List:\*\*.*?(?=\n\n|\n$|$)/gs, '');
+
+    // Remove markdown todo lists (- [ ] or 1. [ ])
+    filtered = filtered.replace(/^[\s]*[-*]?\s*\[[ x]\].*$/gm, '');
+    filtered = filtered.replace(/^\d+\.\s*\[[ x]\].*$/gm, '');
+
+    // Remove structured todo blocks
+    filtered = filtered.replace(/\[[\w\s]+\]\s*\*\*.*?\*\*.*?(?=\n\n|\n$|$)/gs, '');
+
+    // Remove status indicators like ✅ ❌ ⏳ etc. at start of lines
+    filtered = filtered.replace(/^[\s]*[✅❌⏳📝🔄⭐️]\s+.*$/gm, '');
+
+    // Remove "Plan:" or "Planning:" sections
+    filtered = filtered.replace(/\*\*Plan[^:]*:\*\*.*?(?=\n\n|\n$|$)/gs, '');
+    filtered = filtered.replace(/Plan[^:]*:.*?(?=\n\n|\n$|$)/gs, '');
+
+    // Remove debug/internal markers
+    filtered = filtered.replace(/🔧.*?(?=\n|\s)/g, '');
+    filtered = filtered.replace(/📊.*?(?=\n|\s)/g, '');
+
+    // Clean up multiple newlines
+    filtered = filtered.replace(/\n\s*\n\s*\n/g, '\n\n');
+    filtered = filtered.trim();
+
+    return filtered;
+};
+
 // Function to set up all settings-related IPC handlers
 const setupSettingsIPC = () => {
     console.log('🔧 DEBUG: Setting up settings IPC handlers');
@@ -1375,6 +1415,8 @@ let langChainVectorStoreService: any = null; // Type as any for now
 // Dynamic loading - no static types, will be loaded on-demand
 let serviceManager: ServiceManager | null = null;
 let langChainMemoryService: any = null;
+let agenticMemoryService: any = null; // A-Mem service
+let globalTodoListState: any[] = []; // Global todo list state
 let toolRegistry: any = null;
 let langChainCindyAgent: any = null;
 let wakeWordService: any = null;
@@ -1627,6 +1669,27 @@ app.on('ready', async () => {
         } catch (error) {
             console.error('🚨 DEBUG: Failed to initialize ChatStorageService:', error);
             // Continue without chat storage for now
+        }
+    }
+
+    // Initialize AgenticMemoryService (A-Mem)
+    if (!agenticMemoryService && llmProvider) {
+        try {
+            console.log('🔧 DEBUG: Initializing AgenticMemoryService (A-Mem)...');
+            const { AgenticMemoryService } = await import('./services/AgenticMemoryService');
+            agenticMemoryService = new AgenticMemoryService({
+                llmProvider: llmProvider
+            });
+            await agenticMemoryService.initialize();
+            console.log('✅ DEBUG: AgenticMemoryService initialized successfully');
+            
+            // Set up periodic forgetting curve application
+            setInterval(() => {
+                agenticMemoryService?.applyForgettingCurve();
+            }, 24 * 60 * 60 * 1000); // Once per day
+        } catch (error) {
+            console.error('🚨 DEBUG: Failed to initialize AgenticMemoryService:', error);
+            // Continue without A-Mem for now
         }
     }
 
@@ -2746,13 +2809,49 @@ app.on('ready', async () => {
                 console.log('Main process - using Cindy Agent for intelligent processing');
                 console.log('🔍 DEBUG: Cindy Agent LLM provider:', langChainCindyAgent['llmProvider']?.getCurrentProvider());
 
-                // Build agent context with conversation ID and any preferences
+                // Build enhanced agent context with conversation history and memories
+                let conversationHistory: any[] = [];
+                let relevantMemories: any[] = [];
+                
+                // Get recent conversation history for context
+                if (chatStorageService) {
+                    try {
+                        const history = await chatStorageService.getConversationHistory(conversationId);
+                        // Get last 10 messages for context (5 exchanges)
+                        conversationHistory = history.slice(-10).map(msg => ({
+                            role: msg.role as 'system' | 'user' | 'assistant',
+                            content: msg.content
+                        }));
+                        console.log('🔧 DEBUG: Loaded', conversationHistory.length, 'messages for context');
+                    } catch (error) {
+                        console.error('Failed to get conversation history:', error);
+                    }
+                }
+                
+                // Retrieve relevant memories from A-Mem
+                if (agenticMemoryService) {
+                    try {
+                        relevantMemories = await agenticMemoryService.retrieveMemories(message, 5);
+                        console.log('🧠 DEBUG: Retrieved', relevantMemories.length, 'relevant memories from A-Mem');
+                        
+                        // Also add this message to memory for future retrieval
+                        agenticMemoryService.addMemory(message, conversationId).catch(err => 
+                            console.error('Failed to add message to memory:', err)
+                        );
+                    } catch (error) {
+                        console.error('Failed to retrieve memories:', error);
+                    }
+                }
+                
                 const agentContext = {
                     conversationId,
                     userId: undefined,
                     sessionId: conversationId,
                     timestamp: new Date(),
-                    preferences: {} // Could be loaded from settings if needed
+                    preferences: {}, // Could be loaded from settings if needed
+                    conversationHistory, // Recent messages for follow-up context
+                    relevantMemories, // Cross-chat memories from A-Mem
+                    memoryContext: relevantMemories.map(m => m.context).join('\n') // Formatted memory context
                 };
 
                 let assistantContent = '';
@@ -2787,13 +2886,36 @@ app.on('ready', async () => {
                     for await (const chunk of langChainCindyAgent.processStreaming(message, agentContext)) {
                         assistantContent += chunk;
 
-                        // Parse tool calls from chunk and emit tool execution updates
+                        // Filter out tool executions and internal data from user-facing content
+                        const cleanChunk = filterInternalContent(chunk);
+
+                        // Parse tool calls from chunk and emit tool execution updates (but don't include in user response)
                         const toolRegex = /<tool>(.*?)<\/tool>/gs;
                         let toolMatch;
                         while ((toolMatch = toolRegex.exec(chunk)) !== null) {
                             try {
                                 const toolCallData = JSON.parse(toolMatch[1]);
                                 console.log('🔧 DEBUG: Emitting tool execution update:', toolCallData);
+                                
+                                // Check if this is a TodoWrite tool execution
+                                if (toolCallData.function?.name === 'TodoWrite' || toolCallData.name === 'TodoWrite') {
+                                    try {
+                                        const todos = JSON.parse(toolCallData.function?.arguments || toolCallData.arguments || '{}').todos;
+                                        if (todos && Array.isArray(todos)) {
+                                            globalTodoListState = todos;
+                                            console.log('📝 DEBUG: Updated global todo list state with', todos.length, 'todos');
+                                            // Broadcast todo list update to frontend
+                                            event.sender.send('todo-list:updated', {
+                                                todos: todos,
+                                                timestamp: new Date(),
+                                                conversationId
+                                            });
+                                        }
+                                    } catch (todoError) {
+                                        console.error('🔧 DEBUG: Failed to parse TodoWrite arguments:', todoError);
+                                    }
+                                }
+                                
                                 event.sender.send('tool-execution-update', {
                                     toolCall: toolCallData,
                                     conversationId
@@ -2803,7 +2925,10 @@ app.on('ready', async () => {
                             }
                         }
 
-                        event.sender.send('stream-chunk', { chunk, conversationId });
+                        // Only send clean chunk to user (no tool executions, todo lists, etc.)
+                        if (cleanChunk.trim()) {
+                            event.sender.send('stream-chunk', { chunk: cleanChunk, conversationId });
+                        }
                     }
 
                     console.log('🔧 DEBUG: Sending stream-complete event for conversation:', conversationId);
@@ -2812,16 +2937,29 @@ app.on('ready', async () => {
                     // Save assistant message to backend storage
                     if (chatStorageService && assistantContent.trim()) {
                         try {
+                            // Clean the final assistant content before saving
+                            const cleanedContent = filterInternalContent(assistantContent);
+                            
                             const assistantMessage = {
                                 conversationId,
                                 role: 'assistant' as const,
-                                content: assistantContent,
+                                content: cleanedContent,
                                 timestamp: Date.now()
                             };
                             await chatStorageService.saveMessage(assistantMessage);
                             console.log('🔧 DEBUG: Assistant message saved to backend storage');
                         } catch (saveError) {
                             console.error('🚨 DEBUG: Failed to persist assistant message:', saveError);
+                        }
+                    }
+                    
+                    // Add assistant response to A-Mem for future context
+                    if (agenticMemoryService && assistantContent.trim()) {
+                        try {
+                            await agenticMemoryService.addMemory(assistantContent, conversationId);
+                            console.log('🧠 DEBUG: Assistant response added to A-Mem');
+                        } catch (memoryError) {
+                            console.error('Failed to add assistant response to memory:', memoryError);
                         }
                     }
                     
@@ -3095,6 +3233,104 @@ graph TD
         } catch (error) {
             console.error('Main process - load-conversation: error loading conversation:', error);
             return [];
+        }
+    });
+
+    // IPC handlers for AgenticMemoryService (A-Mem)
+    ipcMain.handle('memory-graph:get-data', async () => {
+        console.log('[IPC] memory-graph:get-data called');
+        try {
+            if (!agenticMemoryService) {
+                // Try to initialize if not already done
+                if (llmProvider) {
+                    const { AgenticMemoryService } = await import('./services/AgenticMemoryService');
+                    agenticMemoryService = new AgenticMemoryService({
+                        llmProvider: llmProvider
+                    });
+                    await agenticMemoryService.initialize();
+                } else {
+                    return { nodes: [], edges: [] };
+                }
+            }
+            const graphData = await agenticMemoryService.getMemoryGraphData();
+            console.log('[IPC] Returning graph data with', graphData.nodes.length, 'nodes and', graphData.edges.length, 'edges');
+            return graphData;
+        } catch (error) {
+            console.error('[IPC] Error getting memory graph data:', error);
+            return { nodes: [], edges: [] };
+        }
+    });
+
+    ipcMain.handle('memory-graph:add-memory', async (_, content: string, conversationId?: string) => {
+        console.log('[IPC] memory-graph:add-memory called');
+        try {
+            if (!agenticMemoryService) {
+                if (llmProvider) {
+                    const { AgenticMemoryService } = await import('./services/AgenticMemoryService');
+                    agenticMemoryService = new AgenticMemoryService({
+                        llmProvider: llmProvider
+                    });
+                    await agenticMemoryService.initialize();
+                } else {
+                    throw new Error('LLM provider not available');
+                }
+            }
+            const memory = await agenticMemoryService.addMemory(content, conversationId);
+            
+            // Emit update event to frontend
+            if (mainWindow) {
+                mainWindow.webContents.send('memory-graph:updated', await agenticMemoryService.getMemoryGraphData());
+            }
+            
+            return memory;
+        } catch (error) {
+            console.error('[IPC] Error adding memory:', error);
+            throw error;
+        }
+    });
+
+    ipcMain.handle('memory-graph:retrieve', async (_, query: string, limit: number = 10) => {
+        console.log('[IPC] memory-graph:retrieve called for query:', query);
+        try {
+            if (!agenticMemoryService) {
+                return [];
+            }
+            const memories = await agenticMemoryService.retrieveMemories(query, limit);
+            console.log('[IPC] Retrieved', memories.length, 'memories');
+            return memories;
+        } catch (error) {
+            console.error('[IPC] Error retrieving memories:', error);
+            return [];
+        }
+    });
+
+    // IPC handlers for Todo List Visibility
+    ipcMain.handle('todo-list:get-current', async () => {
+        console.log('[IPC] todo-list:get-current called');
+        try {
+            // Return current todo list state - this will be managed by the agent
+            return globalTodoListState || [];
+        } catch (error) {
+            console.error('[IPC] Error getting current todo list:', error);
+            return [];
+        }
+    });
+
+    ipcMain.handle('todo-list:update', async (_, todos: any[]) => {
+        console.log('[IPC] todo-list:update called with', todos.length, 'todos');
+        try {
+            globalTodoListState = todos;
+            // Broadcast update to all renderer processes
+            BrowserWindow.getAllWindows().forEach(window => {
+                window.webContents.send('todo-list:updated', {
+                    todos: todos,
+                    timestamp: new Date()
+                });
+            });
+            return { success: true };
+        } catch (error) {
+            console.error('[IPC] Error updating todo list:', error);
+            return { success: false, error: error.message };
         }
     });
 

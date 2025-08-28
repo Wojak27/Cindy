@@ -1,0 +1,177 @@
+.memory-graph-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 16px;
+}
+
+.graph-controls {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    right: 16px;
+    z-index: 10;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border-radius: 8px;
+}
+
+.graph-canvas {
+    flex: 1;
+    margin-top: 80px;
+    background: rgba(255, 255, 255, 0.98);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+}
+
+.graph-canvas svg {
+    width: 100%;
+    height: 100%;
+    cursor: move;
+}
+
+.node {
+    transition: all 0.3s ease;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+}
+
+.node:hover {
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+    transform: scale(1.1);
+}
+
+.node-label {
+    fill: #333;
+    font-family: 'Roboto', sans-serif;
+    font-weight: 500;
+    text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.8);
+}
+
+.link {
+    transition: all 0.3s ease;
+}
+
+.evolution-indicator {
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        opacity: 0.6;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.2);
+    }
+    100% {
+        opacity: 0.6;
+        transform: scale(1);
+    }
+}
+
+.node-details-panel {
+    position: absolute;
+    right: 16px;
+    top: 100px;
+    width: 350px;
+    max-height: 600px;
+    overflow-y: auto;
+    background: rgba(255, 255, 255, 0.98);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.node-tooltip {
+    background: rgba(255, 255, 255, 0.95) !important;
+    backdrop-filter: blur(10px);
+    border-radius: 8px !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+}
+
+.graph-legend {
+    position: absolute;
+    bottom: 16px;
+    left: 16px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border-radius: 8px;
+    min-width: 150px;
+}
+
+/* Scrollbar styling */
+.node-details-panel::-webkit-scrollbar {
+    width: 8px;
+}
+
+.node-details-panel::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 4px;
+}
+
+.node-details-panel::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+}
+
+.node-details-panel::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.3);
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+    .memory-graph-container {
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    }
+    
+    .graph-controls,
+    .graph-canvas,
+    .node-details-panel,
+    .node-tooltip,
+    .graph-legend {
+        background: rgba(30, 30, 40, 0.95);
+        color: #fff;
+    }
+    
+    .node-label {
+        fill: #fff;
+        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+    }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .node-details-panel {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        top: auto;
+        width: 100%;
+        max-height: 50vh;
+        border-radius: 12px 12px 0 0;
+    }
+    
+    .graph-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}

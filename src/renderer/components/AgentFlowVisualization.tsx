@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { Box, Typography, IconButton, Collapse, Chip, Avatar } from '@mui/material';
 import '../styles/AgentFlowVisualization.css';
+import TodoListStep from './TodoListStep';
 import { 
     ExpandMore as ExpandMoreIcon,
     ExpandLess as ExpandLessIcon,
@@ -25,6 +26,11 @@ export interface AgentFlowStep {
     details?: string;
     substeps?: AgentFlowStep[];
     duration?: number;
+    metadata?: {
+        type?: string;
+        todos?: any[];
+        [key: string]: any;
+    };
 }
 
 export interface AgentFlowVisualizationProps {
@@ -171,6 +177,17 @@ const StepComponent: React.FC<{ step: AgentFlowStep; isLast?: boolean; level?: n
                         >
                             {step.timestamp.toLocaleTimeString()}
                         </Typography>
+                    )}
+
+                    {/* Todo List Component */}
+                    {step.metadata?.type === 'todo-list' && step.metadata.todos && (
+                        <Box sx={{ mt: 1 }}>
+                            <TodoListStep 
+                                todos={step.metadata.todos}
+                                timestamp={step.timestamp}
+                                title={step.title}
+                            />
+                        </Box>
                     )}
                 </Box>
             </Box>

@@ -223,13 +223,14 @@ Create a comprehensive, well-structured research report that addresses the origi
    - Present findings in logical sections
    - Support with evidence and data from research
    - Include relevant statistics, quotes, and examples
-   - Maintain clear attribution to sources when possible
+   - **REQUIRED**: Use in-text citations for all web-based information (e.g., "According to [Source Name](URL)...")
+   - Reference specific sources when presenting facts, statistics, or claims
 
 4. **Analysis and Insights**
    - Synthesize findings across sources
    - Identify patterns, trends, and relationships
    - Address different perspectives or contradictory information
-   - Provide expert interpretation
+   - Provide expert interpretation with clear source attribution
 
 5. **Implications and Significance**
    - Practical implications of the findings
@@ -241,20 +242,35 @@ Create a comprehensive, well-structured research report that addresses the origi
    - Address the original research question/request
    - Suggest areas for further investigation if relevant
 
+7. **Sources and References** (MANDATORY)
+   - Extract and list all web sources used in the research
+   - Format as numbered references: "1. [Title](URL) - Brief description"
+   - Include at least 3-5 sources when available from web searches
+   - Sources should correspond to citations used throughout the report
+
 **Quality Standards:**
 - Use clear, professional language
 - Ensure logical flow and coherent structure
-- Integrate information from multiple sources
+- Integrate information from multiple sources with proper attribution
 - Maintain objectivity while providing analysis
-- Include specific details and evidence
+- Include specific details and evidence with source links
 - Make the report comprehensive yet readable
+- **CRITICAL**: Every web-based claim must be backed by a cited source
+
+**Citation Requirements:**
+- Use in-text citations throughout the report for web-based information
+- Format sources as clickable markdown links: [Source Title](URL)
+- When referencing web search results, extract URLs and titles from the research content
+- If URLs are available in research materials, they MUST be included as references
+- End the report with a "Sources and References" section listing all sources
 
 **Formatting:**
 - Use markdown formatting for headers and structure
 - Include bullet points or numbered lists where appropriate
 - Ensure proper paragraph breaks for readability
+- Make all source references clickable links
 
-Create a report that thoroughly addresses the research request while being informative, well-organized, and professionally presented.`;
+Create a report that thoroughly addresses the research request while being informative, well-organized, professionally presented, and properly cited with all web sources referenced.`;
 }
 
 /**

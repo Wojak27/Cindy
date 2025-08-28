@@ -485,7 +485,7 @@ Your routing decision:`;
     /**
      * Process a message using the appropriate agent (Deep Research, Tool Agent, or Direct Response)
      */
-    async processMessage(message: string): Promise<{
+    async processMessage(message: string, context?: any): Promise<{
         result: string;
         usedDeepResearch: boolean;
         usedToolAgent?: boolean;
@@ -583,13 +583,24 @@ Your routing decision:`;
 
                 case 'direct_response':
                 default:
-                    console.log('[DeepResearchIntegration] Using direct response');
-                    return {
-                        result: routing.response || 'I can help you with that.',
-                        usedDeepResearch: false,
-                        usedToolAgent: false,
-                        processingTime: Date.now() - startTime
-                    };
+                    console.log('[DeepResearchIntegration] Using direct response with memory context');
+                    try {
+                        const directResult = await this.processDirectResponse(message, context);
+                        return {
+                            result: directResult,
+                            usedDeepResearch: false,
+                            usedToolAgent: false,
+                            processingTime: Date.now() - startTime
+                        };
+                    } catch (directError: any) {
+                        console.error('[DeepResearchIntegration] Direct response error:', directError);
+                        return {
+                            result: routing.response || 'I can help you with that based on my knowledge.',
+                            usedDeepResearch: false,
+                            usedToolAgent: false,
+                            processingTime: Date.now() - startTime
+                        };
+                    }
             }
 
         } catch (error: any) {
@@ -615,7 +626,7 @@ Your routing decision:`;
     /**
      * Stream processing with support for all three agent types
      */
-    async *streamMessage(message: string): AsyncGenerator<{
+    async *streamMessage(message: string, context?: any): AsyncGenerator<{
         type: 'progress' | 'result' | 'tool_result' | 'side_view';
         content: string;
         usedDeepResearch: boolean;
@@ -782,13 +793,18 @@ Your routing decision:`;
 
                 case 'direct_response':
                 default:
-                    console.log('[DeepResearchIntegration] Streaming direct response');
-                    yield {
-                        type: 'result',
-                        content: routing.response || 'I can help you with that.',
-                        usedDeepResearch: false,
-                        usedToolAgent: false
-                    };
+                    console.log('[DeepResearchIntegration] Streaming direct response with memory context');
+                    try {
+                        yield* this.streamDirectResponse(message, context);
+                    } catch (directError: any) {
+                        console.error('[DeepResearchIntegration] Direct response streaming error:', directError);
+                        yield {
+                            type: 'result',
+                            content: routing.response || 'I can help you with that based on my knowledge.',
+                            usedDeepResearch: false,
+                            usedToolAgent: false
+                        };
+                    }
                     break;
             }
         } catch (error: any) {
@@ -799,6 +815,106 @@ Your routing decision:`;
                 usedDeepResearch: false,
                 usedToolAgent: false
             };
+        }
+    }
+
+    /**
+     * Process direct response with memory context
+     */
+    private async processDirectResponse(message: string, context?: any): Promise<string> {
+        try {
+            const { HumanMessage, SystemMessage } = await import('@langchain/core/messages');
+            
+            // Build context-aware prompt
+            let systemPrompt = 'You are Cindy, a helpful AI assistant. Answer the user\'s question directly and conversationally based on your knowledge.';
+            
+            if (context?.conversationHistory && context.conversationHistory.length > 0) {
+                const recentMessages = context.conversationHistory.slice(-6).map((msg: any) => 
+                    `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`
+                ).join('\n');
+                systemPrompt += `\n\nRecent conversation context:\n${recentMessages}`;
+            }
+            
+            if (context?.memoryContext && context.memoryContext.trim()) {
+                systemPrompt += `\n\nRelevant memories from previous conversations:\n${context.memoryContext}`;
+            }
+            
+            const messages = [
+                new SystemMessage({ content: systemPrompt }),
+                new HumanMessage({ content: message })
+            ];
+            
+            const result = await this.llmProvider.invoke(messages);
+            return result.content as string;
+        } catch (error) {
+            console.error('[DeepResearchIntegration] Error in processDirectResponse:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Stream direct response with memory context
+     */
+    private async *streamDirectResponse(message: string, context?: any): AsyncGenerator<{
+        type: 'progress' | 'result' | 'tool_result' | 'side_view';
+        content: string;
+        usedDeepResearch: boolean;
+        usedToolAgent?: boolean;
+        status?: string;
+        data?: any;
+    }> {
+        try {
+            const { HumanMessage, SystemMessage } = await import('@langchain/core/messages');
+            
+            // Build context-aware prompt (same as processDirectResponse)
+            let systemPrompt = 'You are Cindy, a helpful AI assistant. Answer the user\'s question directly and conversationally based on your knowledge.';
+            
+            if (context?.conversationHistory && context.conversationHistory.length > 0) {
+                const recentMessages = context.conversationHistory.slice(-6).map((msg: any) => 
+                    `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`
+                ).join('\n');
+                systemPrompt += `\n\nRecent conversation context:\n${recentMessages}`;
+            }
+            
+            if (context?.memoryContext && context.memoryContext.trim()) {
+                systemPrompt += `\n\nRelevant memories from previous conversations:\n${context.memoryContext}`;
+            }
+            
+            const messages = [
+                new SystemMessage({ content: systemPrompt }),
+                new HumanMessage({ content: message })
+            ];
+            
+            // Use streaming if available
+            if (typeof this.llmProvider.stream === 'function') {
+                let accumulatedContent = '';
+                
+                for await (const chunk of this.llmProvider.stream(messages)) {
+                    const content = chunk.content as string;
+                    if (content) {
+                        accumulatedContent += content;
+                        
+                        yield {
+                            type: 'result',
+                            content: content,
+                            usedDeepResearch: false,
+                            usedToolAgent: false
+                        };
+                    }
+                }
+            } else {
+                // Fallback to non-streaming
+                const result = await this.llmProvider.invoke(messages);
+                yield {
+                    type: 'result',
+                    content: result.content as string,
+                    usedDeepResearch: false,
+                    usedToolAgent: false
+                };
+            }
+        } catch (error) {
+            console.error('[DeepResearchIntegration] Error in streamDirectResponse:', error);
+            throw error;
         }
     }
 

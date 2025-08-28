@@ -54,12 +54,12 @@ export class LangGraphAgent {
     /**
      * Process a message through the Deep Research system (non-streaming)
      */
-    async process(input: string): Promise<string> {
+    async process(input: string, context?: any): Promise<string> {
         try {
             console.log('[LangGraphAgent] Processing input with Deep Research routing:', input);
 
             // Use Deep Research integration for intelligent processing
-            const result = await this.deepResearchIntegration.processMessage(input);
+            const result = await this.deepResearchIntegration.processMessage(input, context);
 
             if (result.usedDeepResearch && result.result !== 'FALLBACK_TO_ORIGINAL') {
                 console.log(`[LangGraphAgent] Deep Research completed in ${result.processingTime}ms`);
@@ -93,7 +93,7 @@ export class LangGraphAgent {
             // Stream processing through Deep Research integration
             console.log("[LangGraphAgent] Processing through Deep Research integration");
 
-            for await (const update of this.deepResearchIntegration.streamMessage(input)) {
+            for await (const update of this.deepResearchIntegration.streamMessage(input, context)) {
                 if (update.usedDeepResearch) {
                     // Deep Research mode
                     if (update.type === 'progress') {

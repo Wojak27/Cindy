@@ -144,6 +144,28 @@ export class AgentFlowTracker {
     }
 
     /**
+     * Add a todo list step
+     */
+    addTodoListStep(options: { title?: string; todos: any[]; timestamp?: Date }): string {
+        const step: AgentFlowStep = {
+            id: `todo_${++this.stepCounter}`,
+            title: options.title || 'Task Planning',
+            status: 'completed',
+            timestamp: options.timestamp || new Date(),
+            details: `Created task list with ${options.todos.length} items`,
+            substeps: [],
+            metadata: {
+                type: 'todo-list',
+                todos: options.todos
+            }
+        };
+
+        this.steps.set(step.id, step);
+        this.notifyListeners();
+        return step.id;
+    }
+
+    /**
      * Find step by ID (including substeps)
      */
     private findStep(stepId: string): AgentFlowStep | null {
