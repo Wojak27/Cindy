@@ -20,6 +20,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import AgentVisualizationPanel from './components/AgentVisualizationPanel';
 import AgentFlowVisualization from './components/AgentFlowVisualization';
 import ToolSelector from './components/ToolSelector';
+import MemorySavedNotification from './components/MemorySavedNotification';
 import { agentFlowTracker } from './services/AgentFlowTracker';
 import { generateStepDescription } from '../shared/AgentFlowStandard';
 import { getSettings, setCurrentConversationId } from '../store/actions';
@@ -77,6 +78,15 @@ const App: React.FC = () => {
     const [conversationWidgets, setConversationWidgets] = useState<Array<{ type: WidgetType; data: any; timestamp: number }>>([]);
     const [widgetsByConversation, setWidgetsByConversation] = useState<Record<string, Array<{ type: WidgetType; data: any; timestamp: number }>>>({});
     const [selectedTool, setSelectedTool] = useState<string | null>(null);
+    
+    // Memory notifications state
+    const [memoryNotifications, setMemoryNotifications] = useState<Array<{
+        id: string;
+        type: 'user_message' | 'assistant_response';
+        memory: any;
+        conversationId: string;
+        timestamp: number;
+    }>>([]);
     
     // Helper function to add widget to current conversation
     const addWidgetToConversation = (widget: { type: WidgetType; data: any; timestamp: number }) => {
@@ -1150,6 +1160,37 @@ const App: React.FC = () => {
             }
         };
 
+        const handleMemorySaved = (_: any, data: { 
+            type: 'user_message' | 'assistant_response', 
+            conversationId: string, 
+            memory: any 
+        }) => {
+            console.log('🧠 [DEBUG] Received memory-saved IPC:', {
+                type: data.type,
+                conversationId: data.conversationId,
+                memoryId: data.memory.id,
+                context: data.memory.context
+            });
+
+            // Only show notifications for the current conversation
+            if (data.conversationId === currentConversationIdRef.current) {
+                const notification = {
+                    id: data.memory.id,
+                    type: data.type,
+                    memory: data.memory,
+                    conversationId: data.conversationId,
+                    timestamp: Date.now()
+                };
+
+                setMemoryNotifications(prev => [...prev, notification]);
+
+                // Auto-remove notification after 10 seconds if not interacted with
+                setTimeout(() => {
+                    setMemoryNotifications(prev => prev.filter(n => n.id !== notification.id));
+                }, 10000);
+            }
+        };
+
         ipcRenderer.on('stream-chunk', handleStreamChunk);
         ipcRenderer.on('stream-complete', handleStreamComplete);
         ipcRenderer.on('stream-error', handleStreamError);
@@ -1161,6 +1202,7 @@ const App: React.FC = () => {
         ipcRenderer.on('user-message', handleUserMessage);
         ipcRenderer.on('side-view-data', handleSideViewData);
         ipcRenderer.on('todo-list:updated', handleTodoListUpdate);
+        ipcRenderer.on('memory-saved', handleMemorySaved);
 
         // Cleanup listeners on unmount
         return () => {
@@ -1171,6 +1213,7 @@ const App: React.FC = () => {
             ipcRenderer.off('user-message', handleUserMessage);
             ipcRenderer.off('side-view-data', handleSideViewData);
             ipcRenderer.off('todo-list:updated', handleTodoListUpdate);
+            ipcRenderer.off('memory-saved', handleMemorySaved);
             if (streamController.current) {
                 streamController.current.abort();
             }
@@ -1354,7 +1397,7 @@ const App: React.FC = () => {
                                 try {
                                     // Create new conversation through IPC handler
                                     const newId = await ipcRenderer.invoke('create-conversation');
-                                    setCurrentConversationId(newId);
+                                    dispatch(setCurrentConversationId(newId));
                                     // Clear messages for the new conversation
                                     dispatch({ type: 'CLEAR_MESSAGES' });
                                     // Reset token handlers for new conversation
@@ -1938,6 +1981,23 @@ const App: React.FC = () => {
                                 />
                             </div>
                         </div>
+                    </div>
+
+                    {/* Memory saved notifications */}
+                    <div className="memory-notification-container">
+                        {memoryNotifications.map(notification => (
+                            <MemorySavedNotification
+                                key={notification.id}
+                                type={notification.type}
+                                memory={notification.memory}
+                                conversationId={notification.conversationId}
+                                onDismiss={() => {
+                                    setMemoryNotifications(prev => 
+                                        prev.filter(n => n.id !== notification.id)
+                                    );
+                                }}
+                            />
+                        ))}
                     </div>
 
                     {/* Dark overlay when sidebars are open */}

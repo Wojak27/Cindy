@@ -2835,9 +2835,28 @@ app.on('ready', async () => {
                         console.log('🧠 DEBUG: Retrieved', relevantMemories.length, 'relevant memories from A-Mem');
                         
                         // Also add this message to memory for future retrieval
-                        agenticMemoryService.addMemory(message, conversationId).catch(err => 
-                            console.error('Failed to add message to memory:', err)
-                        );
+                        agenticMemoryService.addMemory(message, conversationId)
+                            .then(memoryNote => {
+                                console.log('🧠 DEBUG: User message added to A-Mem:', memoryNote.id);
+                                // Emit memory saved event to frontend
+                                event.sender.send('memory-saved', {
+                                    type: 'user_message',
+                                    conversationId,
+                                    memory: {
+                                        id: memoryNote.id,
+                                        content: memoryNote.content,
+                                        context: memoryNote.context,
+                                        keywords: memoryNote.keywords,
+                                        tags: memoryNote.tags,
+                                        timestamp: memoryNote.timestamp,
+                                        evolved: memoryNote.evolved,
+                                        links: memoryNote.links
+                                    }
+                                });
+                            })
+                            .catch(err => 
+                                console.error('Failed to add message to memory:', err)
+                            );
                     } catch (error) {
                         console.error('Failed to retrieve memories:', error);
                     }
@@ -2956,8 +2975,24 @@ app.on('ready', async () => {
                     // Add assistant response to A-Mem for future context
                     if (agenticMemoryService && assistantContent.trim()) {
                         try {
-                            await agenticMemoryService.addMemory(assistantContent, conversationId);
-                            console.log('🧠 DEBUG: Assistant response added to A-Mem');
+                            const memoryNote = await agenticMemoryService.addMemory(assistantContent, conversationId);
+                            console.log('🧠 DEBUG: Assistant response added to A-Mem:', memoryNote.id);
+                            
+                            // Emit memory saved event to frontend
+                            event.sender.send('memory-saved', {
+                                type: 'assistant_response',
+                                conversationId,
+                                memory: {
+                                    id: memoryNote.id,
+                                    content: memoryNote.content,
+                                    context: memoryNote.context,
+                                    keywords: memoryNote.keywords,
+                                    tags: memoryNote.tags,
+                                    timestamp: memoryNote.timestamp,
+                                    evolved: memoryNote.evolved,
+                                    links: memoryNote.links
+                                }
+                            });
                         } catch (memoryError) {
                             console.error('Failed to add assistant response to memory:', memoryError);
                         }
@@ -3211,12 +3246,17 @@ graph TD
     ipcMain.handle('create-conversation', async () => {
         console.log('Main process - create-conversation IPC called');
         try {
-            const newId = Date.now().toString();
+            if (!chatStorageService) {
+                console.error('Main process - create-conversation: chatStorageService not available');
+                return Date.now().toString(); // Fallback ID
+            }
+            
+            const newId = await chatStorageService.createConversation();
             console.log('Main process - create-conversation: created new conversation with ID:', newId);
             return newId;
         } catch (error) {
             console.error('Main process - create-conversation: error creating conversation:', error);
-            return Date.now().toString();
+            return Date.now().toString(); // Fallback ID
         }
     });
 

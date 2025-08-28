@@ -460,4 +460,32 @@ export class ChatStorageService {
         }
     }
 
+    async createConversation(): Promise<string> {
+        console.log('🔧 DEBUG: ChatStorageService.createConversation() called');
+        
+        if (!this.db) {
+            console.log('🔧 DEBUG: ChatStorageService.createConversation() - Database not initialized, initializing...');
+            await this.initialize();
+        }
+
+        try {
+            // Generate a unique conversation ID
+            const conversationId = Date.now().toString();
+
+            // Save a system message to establish the conversation
+            await this.saveMessage({
+                conversationId,
+                role: 'system',
+                content: 'New conversation created',
+                timestamp: Date.now()
+            });
+
+            console.log('🔧 DEBUG: ChatStorageService.createConversation() - Created new conversation with ID:', conversationId);
+            return conversationId;
+        } catch (error) {
+            console.error('🚨 DEBUG: ChatStorageService.createConversation() - Failed to create conversation:', error);
+            throw error;
+        }
+    }
+
 }

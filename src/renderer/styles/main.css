@@ -1575,3 +1575,44 @@ html:not([data-theme="dark"]) .message-text {
         justify-content: center;
     }
 }
+
+/* Memory Saved Notification Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+}
+
+.memory-saved-notification {
+    animation: fadeIn 0.3s ease;
+}
+
+.memory-saved-notification.hidden {
+    animation: fadeOut 0.3s ease;
+}
+
+/* Memory notification container */
+.memory-notification-container {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    z-index: 1000;
+    max-width: 400px;
+    pointer-events: auto;
+}

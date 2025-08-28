@@ -784,4 +784,140 @@ describe('ChatStorageService', () => {
             );
         });
     });
+
+    describe('createConversation', () => {
+        beforeEach(() => {
+            // Mock Date.now() to return a predictable value
+            jest.spyOn(Date, 'now').mockReturnValue(1609459200000); // 2021-01-01 00:00:00
+        });
+
+        afterEach(() => {
+            (Date.now as jest.Mock).mockRestore();
+        });
+
+        it('should create a new conversation and return its ID', async () => {
+            mockDatabase.get.mockResolvedValue({ name: 'messages' }); // Table exists
+            mockDatabase.run.mockResolvedValueOnce({ lastID: 1 }); // saveMessage response
+
+            const conversationId = await chatService.createConversation();
+
+            expect(conversationId).toBe('1609459200000'); // Timestamp as string
+            expect(mockDatabase.run).toHaveBeenCalledWith(
+                expect.stringContaining('INSERT INTO messages'),
+                expect.arrayContaining([
+                    '1609459200000', // conversationId
+                    'system',
+                    'New conversation created',
+                    1609459200000 // timestamp
+                ])
+            );
+        });
+
+        it('should initialize database if not already initialized', async () => {
+            mockDatabase.get.mockResolvedValue({ name: 'messages' });
+            mockDatabase.run.mockResolvedValueOnce({ lastID: 1 });
+
+            // Create service without initialization
+            const newChatService = new ChatStorageService();
+            const conversationId = await newChatService.createConversation();
+
+            expect(conversationId).toBe('1609459200000');
+            // Verify initialization was called
+            const { open } = require('sqlite');
+            expect(open).toHaveBeenCalledWith({
+                filename: '/tmp/test-app-data/chat-history.db',
+                driver: expect.any(Function)
+            });
+        });
+
+        it('should handle saveMessage errors gracefully', async () => {
+            mockDatabase.get.mockResolvedValue({ name: 'messages' });
+            const mockError = new Error('Database save failed');
+            mockDatabase.run.mockRejectedValueOnce(mockError);
+
+            await expect(chatService.createConversation()).rejects.toThrow('Database save failed');
+        });
+
+        it('should generate unique conversation IDs for concurrent calls', async () => {
+            mockDatabase.get.mockResolvedValue({ name: 'messages' });
+            mockDatabase.run.mockResolvedValue({ lastID: 1 });
+
+            // Mock Date.now to return different values for each call
+            let callCount = 0;
+            (Date.now as jest.Mock).mockImplementation(() => {
+                callCount++;
+                return 1609459200000 + callCount;
+            });
+
+            const [id1, id2, id3] = await Promise.all([
+                chatService.createConversation(),
+                chatService.createConversation(),
+                chatService.createConversation()
+            ]);
+
+            expect(id1).toBe('1609459200001');
+            expect(id2).toBe('1609459200002');
+            expect(id3).toBe('1609459200003');
+            expect(new Set([id1, id2, id3]).size).toBe(3); // All IDs are unique
+        });
+
+        it('should create system message with correct format', async () => {
+            mockDatabase.get.mockResolvedValue({ name: 'messages' });
+            mockDatabase.run.mockResolvedValueOnce({ lastID: 1 });
+
+            await chatService.createConversation();
+
+            expect(mockDatabase.run).toHaveBeenCalledWith(
+                expect.stringContaining('INSERT INTO messages'),
+                expect.arrayContaining([
+                    expect.any(String), // conversationId
+                    'system', // role
+                    'New conversation created', // content
+                    expect.any(Number) // timestamp
+                ])
+            );
+        });
+
+        it('should handle database initialization errors', async () => {
+            const mockError = new Error('Database initialization failed');
+            const { open } = require('sqlite');
+            open.mockRejectedValueOnce(mockError);
+
+            // Create new service to trigger initialization
+            const newChatService = new ChatStorageService();
+            
+            await expect(newChatService.createConversation()).rejects.toThrow('Database initialization failed');
+        });
+
+        it('should return string ID even for numeric timestamps', async () => {
+            mockDatabase.get.mockResolvedValue({ name: 'messages' });
+            mockDatabase.run.mockResolvedValueOnce({ lastID: 1 });
+
+            const conversationId = await chatService.createConversation();
+
+            expect(typeof conversationId).toBe('string');
+            expect(conversationId).toBe('1609459200000');
+            expect(parseInt(conversationId)).toBe(1609459200000);
+        });
+
+        it('should maintain conversation metadata after creation', async () => {
+            mockDatabase.get.mockResolvedValue({ name: 'messages' });
+            mockDatabase.run.mockResolvedValueOnce({ lastID: 1 });
+            mockDatabase.get.mockResolvedValueOnce({ count: 1 }); // Message count
+
+            const conversationId = await chatService.createConversation();
+
+            // Verify the conversation can be retrieved
+            expect(mockDatabase.run).toHaveBeenCalledWith(
+                expect.stringContaining('INSERT INTO messages'),
+                expect.arrayContaining([conversationId, 'system', 'New conversation created', expect.any(Number)])
+            );
+            
+            // Verify metadata update was called
+            expect(mockDatabase.run).toHaveBeenCalledWith(
+                expect.stringContaining('INSERT OR REPLACE INTO conversations'),
+                expect.any(Array)
+            );
+        });
+    });
 });

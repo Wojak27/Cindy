@@ -826,7 +826,15 @@ Your routing decision:`;
             const { HumanMessage, SystemMessage } = await import('@langchain/core/messages');
             
             // Build context-aware prompt
-            let systemPrompt = 'You are Cindy, a helpful AI assistant. Answer the user\'s question directly and conversationally based on your knowledge.';
+            let systemPrompt = `You are Cindy, a helpful AI assistant with persistent memory capabilities. You can remember information across conversations and save new information for future reference.
+
+MEMORY CAPABILITIES:
+- You have access to a persistent memory system that saves information across all conversations
+- You can remember facts, preferences, and important details mentioned by users
+- When users ask you to remember something, you WILL save it to persistent memory
+- You can recall information from previous conversations and sessions
+
+Answer the user's question directly and conversationally based on your knowledge and any relevant memories.`;
             
             if (context?.conversationHistory && context.conversationHistory.length > 0) {
                 const recentMessages = context.conversationHistory.slice(-6).map((msg: any) => 
@@ -867,7 +875,15 @@ Your routing decision:`;
             const { HumanMessage, SystemMessage } = await import('@langchain/core/messages');
             
             // Build context-aware prompt (same as processDirectResponse)
-            let systemPrompt = 'You are Cindy, a helpful AI assistant. Answer the user\'s question directly and conversationally based on your knowledge.';
+            let systemPrompt = `You are Cindy, a helpful AI assistant with persistent memory capabilities. You can remember information across conversations and save new information for future reference.
+
+MEMORY CAPABILITIES:
+- You have access to a persistent memory system that saves information across all conversations
+- You can remember facts, preferences, and important details mentioned by users
+- When users ask you to remember something, you WILL save it to persistent memory
+- You can recall information from previous conversations and sessions
+
+Answer the user's question directly and conversationally based on your knowledge and any relevant memories.`;
             
             if (context?.conversationHistory && context.conversationHistory.length > 0) {
                 const recentMessages = context.conversationHistory.slice(-6).map((msg: any) => 

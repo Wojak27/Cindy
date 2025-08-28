@@ -20,6 +20,13 @@ const ChatList: React.FC<{
         loadConversations();
     }, []);
 
+    // Refresh conversations when current conversation changes (e.g., when a new one is created)
+    useEffect(() => {
+        if (currentConversationId) {
+            loadConversations();
+        }
+    }, [currentConversationId]);
+
     const loadConversations = async () => {
         try {
             setIsLoading(true);
