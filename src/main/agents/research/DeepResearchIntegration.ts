@@ -196,7 +196,7 @@ export class DeepResearchIntegration {
             console.log(`[DeepResearchIntegration] Using simple pattern-based routing: ${simpleRoute}`);
             return { route: simpleRoute as any };
         }
-        
+
         const routingPrompt = `Route this message to one of three options. Respond with ONLY one of these exact phrases:
 
 ROUTE_DEEP_RESEARCH - for research requests
@@ -258,7 +258,7 @@ Your routing decision:`;
         console.error('[DeepResearchIntegration] ❌ All routing attempts failed, using intelligent fallback');
         const fallbackRoute = this.getIntelligentFallback(message);
         console.log(`[DeepResearchIntegration] Using intelligent fallback route: ${fallbackRoute}`);
-        
+
         if (fallbackRoute === 'direct_response') {
             return {
                 route: fallbackRoute,
@@ -276,56 +276,56 @@ Your routing decision:`;
      */
     private getSimpleRoute(message: string): 'deep_research' | 'tool_agent' | 'direct_response' | null {
         const lowerMessage = message.toLowerCase().trim();
-        
+
         // Research keywords
         const researchKeywords = [
-            'research', 'study', 'analyze', 'analysis', 'investigate', 'exploration', 
+            'research', 'study', 'analyze', 'analysis', 'investigate', 'exploration',
             'comprehensive', 'detailed', 'thorough', 'compare', 'comparison',
             'pros and cons', 'advantages and disadvantages', 'literature review'
         ];
-        
+
         // Tool agent keywords  
         const toolKeywords = [
             'weather', 'temperature', 'forecast', 'map', 'location', 'directions',
             'search for', 'find', 'look up', 'google', 'browse', 'website'
         ];
-        
+
         // Direct response patterns
         const directPatterns = [
             'hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening',
             'how are you', 'what is your name', 'who are you', 'thanks', 'thank you'
         ];
-        
+
         // Check for direct response patterns first
         if (directPatterns.some(pattern => lowerMessage.includes(pattern))) {
             return 'direct_response';
         }
-        
+
         // Check for tool keywords
         if (toolKeywords.some(keyword => lowerMessage.includes(keyword))) {
             return 'tool_agent';
         }
-        
+
         // Check for research keywords
         if (researchKeywords.some(keyword => lowerMessage.includes(keyword))) {
             return 'deep_research';
         }
-        
+
         // Check for question length heuristic (longer questions often need research)
         if (lowerMessage.includes('?') && lowerMessage.length > 100) {
             return 'deep_research';
         }
-        
+
         // Check for simple questions
-        if (lowerMessage.startsWith('what is') || lowerMessage.startsWith('who is') || 
+        if (lowerMessage.startsWith('what is') || lowerMessage.startsWith('who is') ||
             lowerMessage.startsWith('when is') || lowerMessage.startsWith('where is') ||
             lowerMessage.startsWith('how do') || lowerMessage.startsWith('can you')) {
             return lowerMessage.length > 50 ? 'tool_agent' : 'direct_response';
         }
-        
+
         return null; // Let LLM decide
     }
-    
+
     /**
      * Check if required tools are available for a given message type
      */
@@ -340,10 +340,10 @@ Your routing decision:`;
 
         if (route === 'deep_research') {
             // Research requires web search capabilities
-            const hasWebSearch = availableTools.some(tool => 
+            const hasWebSearch = availableTools.some(tool =>
                 tool.includes('search') && !tool.includes('vector') && !tool.includes('documents')
             );
-            
+
             if (!hasWebSearch) {
                 missingTools.push('web_search');
                 return {
@@ -379,7 +379,7 @@ Your routing decision:`;
                 }
             }
 
-            if ((lowerMessage.includes('search') || lowerMessage.includes('find') || lowerMessage.includes('look up')) && 
+            if ((lowerMessage.includes('search') || lowerMessage.includes('find') || lowerMessage.includes('look up')) &&
                 !lowerMessage.includes('weather') && !lowerMessage.includes('map')) {
                 // General search requests
                 const hasAnySearch = availableTools.some(tool => tool.includes('search'));
@@ -402,20 +402,20 @@ Your routing decision:`;
      */
     private getIntelligentFallback(message: string): 'deep_research' | 'tool_agent' | 'direct_response' {
         const lowerMessage = message.toLowerCase().trim();
-        
+
         // Default to tool agent for specific domains
-        if (lowerMessage.includes('weather') || lowerMessage.includes('map') || 
+        if (lowerMessage.includes('weather') || lowerMessage.includes('map') ||
             lowerMessage.includes('search') || lowerMessage.includes('find')) {
             return 'tool_agent';
         }
-        
+
         // Default to research for academic/analysis requests
         if (lowerMessage.includes('explain') || lowerMessage.includes('analyze') ||
             lowerMessage.includes('compare') || lowerMessage.includes('research') ||
             lowerMessage.length > 80) {
             return 'deep_research';
         }
-        
+
         // Default to direct response for everything else
         return 'direct_response';
     }
@@ -653,7 +653,7 @@ Your routing decision:`;
             switch (routing.route) {
                 case 'deep_research':
                     console.log('[DeepResearchIntegration] Streaming Deep Research');
-                    
+
                     // Emit flow events for research workflow
                     const emitFlowEvent = (global as any).emitFlowEvent;
                     if (emitFlowEvent) {
@@ -663,42 +663,42 @@ Your routing decision:`;
                             title: 'AI Agent processing...',
                             details: 'Routing to Deep Research workflow'
                         });
-                        
+
                         emitFlowEvent('step-add', {
                             stepId: 'deep-research',
                             title: 'Deep Research workflow',
                             details: 'Conducting comprehensive research analysis'
                         });
                     }
-                    
+
                     for await (const update of this.deepResearchAgent.streamResearch(message)) {
                         // Convert progress messages to flow events
                         if (update.type === 'progress' && emitFlowEvent) {
                             const researchContext = extractResearchContext(message);
-                            
+
                             // Map research status to standardized steps
                             const statusMap: Record<string, keyof typeof AGENT_STEP_TEMPLATES> = {
                                 'Starting research process...': 'STARTING_RESEARCH',
-                                'Analyzing research requirements...': 'ANALYZING_REQUIREMENTS', 
+                                'Analyzing research requirements...': 'ANALYZING_REQUIREMENTS',
                                 'Conducting comprehensive research...': 'CONDUCTING_RESEARCH',
                                 'Research completed, generating final report...': 'GENERATING_REPORT'
                             };
-                            
+
                             const templateKey = statusMap[update.content];
-                            const stepInfo = templateKey 
+                            const stepInfo = templateKey
                                 ? generateStepDescription(templateKey, researchContext)
                                 : { title: update.content, description: `Status: ${update.status || 'Processing'}` };
-                            
+
                             emitFlowEvent('step-add', {
                                 stepId: `research-${Date.now()}`,
                                 title: stepInfo.title,
                                 details: stepInfo.description
                             });
-                            
+
                             // Don't yield progress updates as content
                             continue;
                         }
-                        
+
                         // Only yield actual results, not progress updates
                         if (update.type === 'result') {
                             yield {
@@ -706,7 +706,7 @@ Your routing decision:`;
                                 usedDeepResearch: true,
                                 usedToolAgent: false
                             };
-                            
+
                             // Mark workflow as complete
                             if (emitFlowEvent) {
                                 emitFlowEvent('step-update', {
@@ -824,7 +824,7 @@ Your routing decision:`;
     private async processDirectResponse(message: string, context?: any): Promise<string> {
         try {
             const { HumanMessage, SystemMessage } = await import('@langchain/core/messages');
-            
+
             // Build context-aware prompt
             let systemPrompt = `You are Cindy, a helpful AI assistant with persistent memory capabilities. You can remember information across conversations and save new information for future reference.
 
@@ -835,23 +835,23 @@ MEMORY CAPABILITIES:
 - You can recall information from previous conversations and sessions
 
 Answer the user's question directly and conversationally based on your knowledge and any relevant memories.`;
-            
+
             if (context?.conversationHistory && context.conversationHistory.length > 0) {
-                const recentMessages = context.conversationHistory.slice(-6).map((msg: any) => 
+                const recentMessages = context.conversationHistory.slice(-6).map((msg: any) =>
                     `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`
                 ).join('\n');
                 systemPrompt += `\n\nRecent conversation context:\n${recentMessages}`;
             }
-            
+
             if (context?.memoryContext && context.memoryContext.trim()) {
                 systemPrompt += `\n\nRelevant memories from previous conversations:\n${context.memoryContext}`;
             }
-            
+
             const messages = [
                 new SystemMessage({ content: systemPrompt }),
                 new HumanMessage({ content: message })
             ];
-            
+
             const result = await this.llmProvider.invoke(messages);
             return result.content as string;
         } catch (error) {
@@ -873,7 +873,7 @@ Answer the user's question directly and conversationally based on your knowledge
     }> {
         try {
             const { HumanMessage, SystemMessage } = await import('@langchain/core/messages');
-            
+
             // Build context-aware prompt (same as processDirectResponse)
             let systemPrompt = `You are Cindy, a helpful AI assistant with persistent memory capabilities. You can remember information across conversations and save new information for future reference.
 
@@ -884,32 +884,32 @@ MEMORY CAPABILITIES:
 - You can recall information from previous conversations and sessions
 
 Answer the user's question directly and conversationally based on your knowledge and any relevant memories.`;
-            
+
             if (context?.conversationHistory && context.conversationHistory.length > 0) {
-                const recentMessages = context.conversationHistory.slice(-6).map((msg: any) => 
+                const recentMessages = context.conversationHistory.slice(-6).map((msg: any) =>
                     `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`
                 ).join('\n');
                 systemPrompt += `\n\nRecent conversation context:\n${recentMessages}`;
             }
-            
+
             if (context?.memoryContext && context.memoryContext.trim()) {
                 systemPrompt += `\n\nRelevant memories from previous conversations:\n${context.memoryContext}`;
             }
-            
+
             const messages = [
                 new SystemMessage({ content: systemPrompt }),
                 new HumanMessage({ content: message })
             ];
-            
+
             // Use streaming if available
             if (typeof this.llmProvider.stream === 'function') {
                 let accumulatedContent = '';
-                
+
                 for await (const chunk of this.llmProvider.stream(messages)) {
-                    const content = chunk.content as string;
+                    const content = chunk as string;
                     if (content) {
                         accumulatedContent += content;
-                        
+
                         yield {
                             type: 'result',
                             content: content,

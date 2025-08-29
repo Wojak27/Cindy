@@ -2,11 +2,9 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useSelector, useDispatch } from 'react-redux';
 import { thinkingTokenHandler } from './services/ThinkingTokenHandler';
 import { toolTokenHandler } from './services/ToolTokenHandler';
-import ThinkingBlock from './components/ThinkingBlock';
 import ToolBlock from './components/ToolBlock';
 import ContentProcessor from './utils/contentProcessor';
 import { renderTextWithLinks, hasLinks } from './utils/linkParser';
-import { renderMarkdown, hasMarkdown } from './utils/markdownRenderer';
 import StreamdownRenderer from './components/StreamdownRenderer';
 // SoundReactiveCircle was imported but not used in the component
 // The component now uses SoundReactiveBlob instead
@@ -78,7 +76,7 @@ const App: React.FC = () => {
     const [conversationWidgets, setConversationWidgets] = useState<Array<{ type: WidgetType; data: any; timestamp: number }>>([]);
     const [widgetsByConversation, setWidgetsByConversation] = useState<Record<string, Array<{ type: WidgetType; data: any; timestamp: number }>>>({});
     const [selectedTool, setSelectedTool] = useState<string | null>(null);
-    
+
     // Memory notifications state
     const [memoryNotifications, setMemoryNotifications] = useState<Array<{
         id: string;
@@ -87,17 +85,17 @@ const App: React.FC = () => {
         conversationId: string;
         timestamp: number;
     }>>([]);
-    
+
     // Helper function to add widget to current conversation
     const addWidgetToConversation = (widget: { type: WidgetType; data: any; timestamp: number }) => {
         const conversationId = currentConversationIdRef.current;
         if (!conversationId) return;
-        
+
         setWidgetsByConversation(prev => ({
             ...prev,
             [conversationId]: [...(prev[conversationId] || []), widget]
         }));
-        
+
         // Update current conversation widgets if it's the active conversation
         if (conversationId === currentConversationId) {
             setConversationWidgets(prev => [...prev, widget]);
@@ -190,7 +188,7 @@ const App: React.FC = () => {
                 dispatch({ type: 'CLEAR_MESSAGES' });
                 dispatch({ type: 'CLEAR_THINKING_BLOCKS' });
                 dispatch({ type: 'CLEAR_TOOL_CALLS' });
-                
+
                 // Load conversation-specific widgets
                 const conversationWidgetsForChat = widgetsByConversation[currentConversationId] || [];
                 setConversationWidgets(conversationWidgetsForChat);
@@ -323,7 +321,7 @@ const App: React.FC = () => {
     useEffect(() => {
         const unsubscribe = agentFlowTracker.subscribe((steps) => {
             setAgentFlowSteps([...steps]);
-            
+
             // Store steps for the current message
             if (currentFlowMessageId && steps.length > 0) {
                 setFlowStepsByMessage(prev => ({
@@ -491,7 +489,7 @@ const App: React.FC = () => {
                         // Handle the transcribed text by sending it as a message
                         if (transcript.trim()) {
                             let messageContent = transcript;
-                            
+
                             // Add tool instruction if a tool is selected
                             if (selectedTool) {
                                 const toolInstructions: Record<string, string> = {
@@ -502,7 +500,7 @@ const App: React.FC = () => {
                                     'research': 'Use deep research mode for:',
                                     'vector': 'Search indexed documents for:'
                                 };
-                                
+
                                 const instruction = toolInstructions[selectedTool] || 'Use specific tools to answer:';
                                 messageContent = `${instruction} ${transcript}`;
                             }
@@ -525,7 +523,7 @@ const App: React.FC = () => {
                             dispatch({ type: 'SET_CURRENT_ASSISTANT_ID', payload: { conversationId: chatID, messageId: assistantMessageId } });
                             setInputValue('');
                             setSelectedTool(null); // Clear tool selection after sending // Clear input field after sending
-                            
+
                             try {
                                 // Process message through agent with conversation ID
                                 await ipcRenderer.invoke('process-message', transcript, chatID);
@@ -632,7 +630,7 @@ const App: React.FC = () => {
             const convID = currentConversationId || getNewConversationId();
 
             let messageContent = inputValue;
-            
+
             // Add tool instruction if a tool is selected
             if (selectedTool) {
                 const toolInstructions: Record<string, string> = {
@@ -643,7 +641,7 @@ const App: React.FC = () => {
                     'research': 'Use deep research mode for:',
                     'vector': 'Search indexed documents for:'
                 };
-                
+
                 const instruction = toolInstructions[selectedTool] || 'Use specific tools to answer:';
                 messageContent = `${instruction} ${inputValue}`;
             }
@@ -652,7 +650,7 @@ const App: React.FC = () => {
             const messageToProcess = messageContent;
             setInputValue('');
             setSelectedTool(null); // Clear tool selection after sending
-            
+
             // IMMEDIATE UI UPDATE: Add user message to UI immediately for better UX
             const userMessage = {
                 id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -791,7 +789,7 @@ const App: React.FC = () => {
                         const thinkingStep = generateStepDescription('THINKING', {
                             contentLength: block.content.length
                         });
-                        
+
                         agentFlowTracker.addCompletedStep({
                             title: thinkingStep.title,
                             details: thinkingStep.description
@@ -1079,7 +1077,7 @@ const App: React.FC = () => {
                         locationExists: !!data.sideViewData.data?.location,
                         fullDataDump: JSON.stringify(data.sideViewData.data, null, 2)
                     });
-                    
+
                     // Deep inspection of the data structure
                     console.log('🌤️ [DEBUG] Weather data deep inspection:');
                     console.log('  - location:', data.sideViewData.data?.location);
@@ -1089,7 +1087,7 @@ const App: React.FC = () => {
                     console.log('  - wind:', data.sideViewData.data?.wind);
                     console.log('  - is_day:', data.sideViewData.data?.is_day);
                     console.log('  - source:', data.sideViewData.data?.source);
-                    
+
                     const newWidget = {
                         type: 'weather' as WidgetType,
                         data: data.sideViewData.data as WeatherData,
@@ -1160,10 +1158,10 @@ const App: React.FC = () => {
             }
         };
 
-        const handleMemorySaved = (_: any, data: { 
-            type: 'user_message' | 'assistant_response', 
-            conversationId: string, 
-            memory: any 
+        const handleMemorySaved = (_: any, data: {
+            type: 'user_message' | 'assistant_response',
+            conversationId: string,
+            memory: any
         }) => {
             console.log('🧠 [DEBUG] Received memory-saved IPC:', {
                 type: data.type,
@@ -1715,10 +1713,10 @@ const App: React.FC = () => {
                                                         {/* Agent Flow Visualization */}
                                                         {(() => {
                                                             // Show current flow for active message or stored flow for completed messages
-                                                            const messageFlowSteps = currentFlowMessageId === msg.id 
-                                                                ? agentFlowSteps 
+                                                            const messageFlowSteps = currentFlowMessageId === msg.id
+                                                                ? agentFlowSteps
                                                                 : flowStepsByMessage[msg.id] || [];
-                                                            
+
                                                             if (messageFlowSteps.length > 0) {
                                                                 return (
                                                                     <AgentFlowVisualization
@@ -1731,7 +1729,7 @@ const App: React.FC = () => {
                                                         })()}
 
                                                         {/* Render tool calls only (thinking blocks moved to flow timeline) */}
-                                                        {associatedToolCalls.length > 0 && 
+                                                        {associatedToolCalls.length > 0 &&
                                                             associatedToolCalls.map((toolCall: any) => (
                                                                 <ToolBlock
                                                                     key={toolCall.id}
@@ -1992,7 +1990,7 @@ const App: React.FC = () => {
                                 memory={notification.memory}
                                 conversationId={notification.conversationId}
                                 onDismiss={() => {
-                                    setMemoryNotifications(prev => 
+                                    setMemoryNotifications(prev =>
                                         prev.filter(n => n.id !== notification.id)
                                     );
                                 }}
