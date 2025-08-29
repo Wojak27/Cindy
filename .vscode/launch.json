@@ -2,18 +2,15 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Debug Main Process (ts-node)",
+            "name": "Electron Main (ts-node)",
             "type": "node",
             "request": "launch",
             "cwd": "${workspaceFolder}",
             "runtimeExecutable": "/Users/karwo09/.nvm/versions/node/v20.19.2/bin/node",
             "program": "${workspaceFolder}/node_modules/electron/cli.js",
             "args": [
-                "--inspect=9229",
-                "--remote-debugging-port=9223",
-                "-r",
-                "ts-node/register",
-                "${workspaceFolder}/src/main/main.ts"
+                "${workspaceFolder}/src/main/main.ts",
+                "--remote-debugging-port=9222"
             ],
             "console": "integratedTerminal",
             "sourceMaps": true,
@@ -22,22 +19,12 @@
                 "${workspaceFolder}/**",
                 "!**/node_modules/**"
             ],
-            "outFiles": [
-                "${workspaceFolder}/**/*.js",
-                "!**/node_modules/**"
-            ],
-            "sourceMapPathOverrides": {
-                "*": "${workspaceFolder}/*",
-                "file:///*": "${workspaceFolder}/*",
-                "/src/*": "${workspaceFolder}/src/*",
-                "/./*": "${workspaceFolder}/*",
-                "/Users/karwo09/code/voice-assistant/*": "${workspaceFolder}/*"
-            },
             "outputCapture": "std",
             "env": {
                 "NODE_ENV": "development",
-                "NODE_OPTIONS": "--max-old-space-size=8192",
-                "TS_NODE_COMPILER_OPTIONS": "{\"sourceMap\":true,\"inlineSources\":true,\"mapRoot\":\"${workspaceFolder}\",\"sourceRoot\":\"${workspaceFolder}\"}"
+                "NODE_OPTIONS": "--max-old-space-size=8192 --require ts-node/register/transpile-only",
+                "TS_NODE_COMPILER_OPTIONS": "{\"sourceMap\":true,\"inlineSources\":true}",
+                "ELECTRON_ENABLE_LOGGING": "1"
             },
             "autoAttachChildProcesses": true,
             "skipFiles": [
@@ -46,90 +33,16 @@
             ]
         },
         {
-            "name": "Debug Main Process (Webpack)",
-            "type": "node",
-            "request": "launch",
-            "cwd": "${workspaceFolder}",
-            "runtimeExecutable": "/Users/karwo09/.nvm/versions/node/v20.19.2/bin/node",
-            "program": "${workspaceFolder}/node_modules/electron/cli.js",
-            "args": [
-                "${workspaceFolder}/dist/main/main.js",
-                "--enable-logging"
-            ],
-            "preLaunchTask": "build:main",
-            "console": "integratedTerminal",
-            "sourceMaps": true,
-            "outFiles": [
-                "${workspaceFolder}/dist/**/*.js"
-            ],
-            "sourceMapPathOverrides": {
-                "webpack:///./src/*": "${workspaceFolder}/src/*",
-                "webpack:///*": "${workspaceFolder}/*"
-            ],
-            "outputCapture": "std",
-            "env": {
-                "NODE_ENV": "development"
-            }
-        },
-        {
-            "name": "Launch for Renderer Debug (starts Electron @9222)",
-            "type": "node",
-            "request": "launch",
-            "cwd": "${workspaceFolder}",
-            "runtimeExecutable": "/Users/karwo09/.nvm/versions/node/v20.19.2/bin/node",
-            "program": "${workspaceFolder}/node_modules/electron/cli.js",
-            "args": [
-                "-r",
-                "ts-node/register",
-                "${workspaceFolder}/src/main/main.ts",
-                "--remote-debugging-port=9222"
-            ],
-            "timeout": 30000,
-            "env": {
-                "NODE_ENV": "development"
-            },
-            "autoAttachChildProcesses": true
-        },
-        {
-            "name": "Attach to Renderer Process",
+            "name": "Attach to Renderer (9222)",
             "type": "chrome",
             "request": "attach",
             "port": 9222,
             "webRoot": "${workspaceFolder}",
+            "timeout": 60000,
             "sourceMapPathOverrides": {
                 "webpack:///./src/*": "${workspaceFolder}/src/*",
                 "webpack:///*": "${workspaceFolder}/*"
-            },
-            "timeout": 30000
-        },
-        {
-            "name": "Debug Dev Server",
-            "type": "node",
-            "request": "launch",
-            "runtimeExecutable": "npm",
-            "runtimeArgs": [
-                "run",
-                "dev:main"
-            ],
-            "console": "integratedTerminal",
-            "env": {
-                "NODE_ENV": "development",
-                "NODE_OPTIONS": "--inspect --max-old-space-size=8192",
-                "PATH": "/Users/karwo09/.nvm/versions/node/v20.19.2/bin:${env:PATH}"
-            },
-            "sourceMaps": true,
-            "outFiles": [
-                "${workspaceFolder}/dist/**/*.js",
-                "${workspaceFolder}/src/**/*.ts"
-            ],
-            "sourceMapPathOverrides": {
-                "webpack:///./src/*": "${workspaceFolder}/src/*"
-            },
-            "autoAttachChildProcesses": true,
-            "skipFiles": [
-                "<node_internals>/**",
-                "node_modules/**"
-            ]
+            }
         },
         {
             "name": "Debug: Start Dev Server",
@@ -147,45 +60,32 @@
                 "PATH": "/Users/karwo09/.nvm/versions/node/v20.19.2/bin:${env:PATH}"
             }
         },
+        // Optional: build+run main from dist instead of ts-node (if you ever switch)
         {
-            "name": "Debug: Simple TS-Node",
+            "name": "Electron Main (Webpack build)",
             "type": "node",
             "request": "launch",
             "cwd": "${workspaceFolder}",
-            "program": "${workspaceFolder}/node_modules/ts-node/dist/bin.js",
+            "runtimeExecutable": "/Users/karwo09/.nvm/versions/node/v20.19.2/bin/node",
+            "program": "${workspaceFolder}/node_modules/electron/cli.js",
             "args": [
-                "--project",
-                "tsconfig.debug.json",
-                "${workspaceFolder}/src/main/main.ts"
+                "${workspaceFolder}/dist/main/main.js",
+                "--enable-logging",
+                "--remote-debugging-port=9222"
             ],
+            "preLaunchTask": "build:main",
             "console": "integratedTerminal",
-            "env": {
-                "NODE_ENV": "development",
-                "ELECTRON_RUN_AS_NODE": "1",
-                "PATH": "/Users/karwo09/.nvm/versions/node/v20.19.2/bin:${env:PATH}"
-            }
-        },
-        {
-            "name": "Debug: Test Breakpoints",
-            "type": "node",
-            "request": "launch",
-            "cwd": "${workspaceFolder}",
-            "program": "${workspaceFolder}/debug-test.ts",
-            "runtimeArgs": [
-                "-r",
-                "ts-node/register"
-            ],
-            "console": "integratedTerminal",
-            "env": {
-                "NODE_ENV": "development",
-                "TS_NODE_PROJECT": "${workspaceFolder}/tsconfig.debug.json",
-                "PATH": "/Users/karwo09/.nvm/versions/node/v20.19.2/bin:${env:PATH}"
-            },
             "sourceMaps": true,
-            "resolveSourceMapLocations": [
-                "${workspaceFolder}/**",
-                "!**/node_modules/**"
-            ]
+            "outFiles": [
+                "${workspaceFolder}/dist/**/*.js"
+            ],
+            "sourceMapPathOverrides": {
+                "webpack:///./src/*": "${workspaceFolder}/src/*",
+                "webpack:///*": "${workspaceFolder}/*"
+            },
+            "env": {
+                "NODE_ENV": "development"
+            }
         }
     ],
     "compounds": [
@@ -193,33 +93,14 @@
             "name": "Full Application Debug",
             "configurations": [
                 "Debug: Start Dev Server",
-                "Debug Main Process (ts-node)"
+                "Electron Main (ts-node)",
+                "Attach to Renderer (9222)"
             ],
             "stopAll": true,
             "presentation": {
                 "hidden": false,
                 "group": "Debug",
                 "order": 1
-            }
-        },
-        {
-            "name": "Main + Renderer (ts-node)",
-            "configurations": [
-                "Debug Main Process (ts-node)",
-                "Attach to Renderer Process"
-            ],
-            "stopAll": true
-        },
-        {
-            "name": "Full Debug (Dev Server)",
-            "configurations": [
-                "Debug Dev Server"
-            ],
-            "stopAll": true,
-            "presentation": {
-                "hidden": false,
-                "group": "Debug",
-                "order": 2
             }
         }
     ]
