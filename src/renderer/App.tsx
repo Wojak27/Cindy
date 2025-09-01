@@ -165,12 +165,10 @@ const App: React.FC = () => {
             try {
                 // Check conversation health first
                 const health = await ipcRenderer.invoke('get-conversation-health', currentConversationId);
-                console.log('🏥 [DEBUG] Conversation health:', health);
 
                 // Get ALL messages without any filtering (duplicates, ordering fixes, etc.)
                 // To use filtered messages (with cleanup), change to: 'load-conversation'
                 const messages = await ipcRenderer.invoke('load-all-conversation-messages', currentConversationId);
-                console.log('📝 Loading ALL unfiltered messages:', messages.length, 'messages found');
 
                 // Log health information if conversation is incomplete
                 if (health && !health.isComplete) {
@@ -203,8 +201,6 @@ const App: React.FC = () => {
                     messages,
                     currentConversationId
                 );
-                console.log("Messages before processing", messages);
-                console.log("Updated messages after processing:", updatedMessages);
 
 
                 // Load all processed messages at once to prevent duplication
@@ -336,7 +332,6 @@ const App: React.FC = () => {
     // Listen for agent flow events from main process
     useEffect(() => {
         const handleFlowEvent = (event: any, { type, data }: { type: string, data: any }) => {
-            console.log('[AgentFlow] Received flow event:', type, data);
 
             switch (type) {
                 case 'step-add':
@@ -383,7 +378,6 @@ const App: React.FC = () => {
         // Find the message element by ID
         const messageElement = chatMessagesRef.current.querySelector(`[data-message-id="${messageId}"]`);
         if (messageElement) {
-            console.log('🔧 DEBUG: Scrolling to human message:', messageId);
             messageElement.scrollIntoView({
                 behavior: 'smooth',
                 block: 'center'
@@ -466,7 +460,6 @@ const App: React.FC = () => {
 
     // Handle microphone button click for recording
     const handleMicClick = async () => {
-        console.log('🎤 handleMicClick called, current state:', { isRecording, isListening });
 
         // Only play activation sound for recording (as requested)
         if (!isRecording) {
@@ -556,13 +549,10 @@ const App: React.FC = () => {
         } else {
             // Show visual feedback that recording is starting
             setIsRecording(true);
-            console.log('DEBUG: App.tsx: isRecording state set to true');
 
             // Test microphone permissions first
             try {
-                console.log('DEBUG: App.tsx: Testing microphone permissions');
                 const permissionStatus = await navigator.permissions.query({ name: 'microphone' as PermissionName });
-                console.log('DEBUG: App.tsx: Microphone permission status:', permissionStatus.state);
 
                 if (permissionStatus.state === 'denied') {
                     console.error('DEBUG: App.tsx: Microphone permission denied');
@@ -593,7 +583,6 @@ const App: React.FC = () => {
 
     // Retry a failed message
     const retryMessage = async (messageId: string, userMessage: any) => {
-        console.log('Retrying message:', messageId, userMessage);
 
         // Mark message as retrying
         dispatch({ type: 'RETRY_MESSAGE', payload: { messageId } });
@@ -777,7 +766,6 @@ const App: React.FC = () => {
     const currentAssistantId = useSelector((s: any) => s.messages.currentAssistantIdByConversation?.[currentConversationIdRef.current]);
     useEffect(() => {
         const handleStreamChunk = (_: any, data: { chunk: string, conversationId: string }) => {
-            console.log('🔧 DEBUG: Frontend received stream-chunk event:', data,);
             if (data.conversationId === currentConversationIdRef.current) {
                 // Process the chunk for thinking tokens
                 const processedThinking = thinkingTokenHandler.processChunk(data.chunk, currentConversationIdRef.current);
@@ -823,11 +811,7 @@ const App: React.FC = () => {
                             isStreaming: true
                         };
                         dispatch({ type: 'ADD_THINKING_BLOCK', payload: enhancedIncompleteBlock });
-                        console.log('🧠 IMMEDIATE THINKING: Showing incomplete thinking block:', {
-                            blockId: incompleteBlock.id,
-                            contentLength: incompleteBlock.content.length,
-                            contentPreview: incompleteBlock.content.substring(0, 50) + '...'
-                        });
+
                     } else {
                         // Update existing incomplete block with new content
                         const updatedBlock = {
@@ -876,26 +860,21 @@ const App: React.FC = () => {
 
                 // Check for side view data (weather/map) in streaming updates
                 if (data.chunk.includes('📊 ')) {
-                    console.log('📊 [DEBUG] Side view marker detected in chunk:', data.chunk);
 
                     // Try to extract JSON from the side view marker  
                     const jsonMatch = data.chunk.match(/📊 (.+)/);
                     if (jsonMatch) {
                         const sideViewContent = jsonMatch[1].trim();
-                        console.log('📊 [DEBUG] Extracted side view content:', sideViewContent);
 
                         // Try to parse as JSON (for weather/map data)
                         try {
                             const parsedData = JSON.parse(sideViewContent);
-                            console.log('📊 [DEBUG] Parsed side view data:', parsedData);
 
                             if (parsedData.location && parsedData.temperature) {
-                                console.log('🌤️ [DEBUG] Received weather data via stream:', parsedData);
                                 setSidePanelWidgetType('weather');
                                 setSidePanelData(parsedData as WeatherData);
                                 setShowSidePanel(true);
                             } else if (parsedData.locations && Array.isArray(parsedData.locations)) {
-                                console.log('🗺️ [DEBUG] Received map data via stream:', parsedData);
                                 setSidePanelWidgetType('map');
                                 setSidePanelData(parsedData as MapData);
                                 setShowSidePanel(true);
@@ -912,17 +891,12 @@ const App: React.FC = () => {
         };
 
         const handleStreamComplete = (_: any, data: { conversationId: string }) => {
-            console.log('🔧 DEBUG: Frontend received stream-complete event for conversation:', data.conversationId);
-            console.log('🔧 DEBUG: Current conversation ID:', currentConversationIdRef.current);
-            console.log('🔧 DEBUG: Conversation IDs match:', data.conversationId === currentConversationIdRef.current);
             if (data.conversationId === currentConversationIdRef.current) {
                 // FINALIZE STREAMING MESSAGE: Set isStreaming to false for the last assistant message
-                console.log('Messages:', messages);
                 const streamingMessage = messages.find((msg: any) =>
                     msg.role === 'assistant' && msg.conversationId === currentConversationIdRef.current && msg.isStreaming
                 );
 
-                console.log('🔧 DEBUG: Found streaming message to finalize:', streamingMessage?.id);
 
 
 
@@ -945,10 +919,7 @@ const App: React.FC = () => {
                             duration: '00:01' // Default duration for incomplete blocks
                         };
                         dispatch({ type: 'UPDATE_THINKING_BLOCK', payload: completedBlock });
-                        console.log('🧠 FINALIZED INCOMPLETE: Converted incomplete thinking block to completed:', {
-                            blockId: incompleteBlock.id,
-                            finalContentLength: incompleteBlock.content.length
-                        });
+
                     }
                 });
 
@@ -975,7 +946,6 @@ const App: React.FC = () => {
                     );
 
                     if (processed.hasCodeBlocks) {
-                        console.log('🔧 DEBUG: Processing code blocks for completed message');
                         dispatch({
                             type: 'UPDATE_LAST_ASSISTANT_MESSAGE',
                             payload: {
@@ -987,7 +957,6 @@ const App: React.FC = () => {
 
                     // Detect and auto-show documents mentioned in the AI response
                     try {
-                        console.log('🔍 DEBUG: Detecting documents in completed AI response');
                         detectAndShowDocuments(lastMessage.content).then(detectedDocs => {
                             if (detectedDocs.length > 0) {
                                 console.log('🔍 DEBUG: Auto-detected', detectedDocs.length, 'documents from AI response');
@@ -1002,7 +971,6 @@ const App: React.FC = () => {
 
                 dispatch({ type: 'STOP_THINKING' });
                 if (streamingMessage) {
-                    console.log('🔧 DEBUG: Dispatching FINALIZE_STREAMING_MESSAGE for message:', streamingMessage.id);
                     dispatch({
                         type: 'FINALIZE_STREAMING_MESSAGE',
                         payload: {
@@ -1010,7 +978,6 @@ const App: React.FC = () => {
                             conversationId: currentConversationIdRef.current
                         }
                     });
-                    console.log('📝 FINALIZED MESSAGE: Set isStreaming to false for message:', streamingMessage.id);
                 } else {
                     console.log('🔧 DEBUG: No streaming message found to finalize. Current messages:',
                         messages.filter(msg => msg.role === 'assistant' && msg.conversationId === currentConversationIdRef.current).map(msg => ({
@@ -1051,42 +1018,14 @@ const App: React.FC = () => {
             }
         };
 
-        // Handle user message emitted from backend - no longer used since frontend adds immediately
-        const handleUserMessage = (_: any, data: { message: any }) => {
-            // Backend no longer emits user messages - frontend handles them immediately
-            console.log('Backend user-message event received (should not happen):', data.message);
-        };
 
         const handleSideViewData = (_: any, data: { sideViewData: any, conversationId: string }) => {
-            console.log('📥 [DEBUG] Received side-view-data IPC:', {
-                receivedConversationId: data.conversationId,
-                currentConversationId: currentConversationIdRef.current,
-                sideViewData: data.sideViewData,
-                conversationMatch: data.conversationId === currentConversationIdRef.current
-            });
 
             if (data.conversationId === currentConversationIdRef.current && data.sideViewData) {
-                console.log('🌤️ Processing side view data for current conversation:', data.sideViewData);
 
                 // Check if this is weather data or map data
                 if (data.sideViewData.type === 'weather' && data.sideViewData.data) {
-                    console.log('🌤️ [DEBUG] Processing weather data:', {
-                        type: data.sideViewData.type,
-                        weatherData: data.sideViewData.data,
-                        temperatureExists: !!data.sideViewData.data?.temperature,
-                        locationExists: !!data.sideViewData.data?.location,
-                        fullDataDump: JSON.stringify(data.sideViewData.data, null, 2)
-                    });
 
-                    // Deep inspection of the data structure
-                    console.log('🌤️ [DEBUG] Weather data deep inspection:');
-                    console.log('  - location:', data.sideViewData.data?.location);
-                    console.log('  - temperature:', data.sideViewData.data?.temperature);
-                    console.log('  - condition:', data.sideViewData.data?.condition);
-                    console.log('  - humidity:', data.sideViewData.data?.humidity);
-                    console.log('  - wind:', data.sideViewData.data?.wind);
-                    console.log('  - is_day:', data.sideViewData.data?.is_day);
-                    console.log('  - source:', data.sideViewData.data?.source);
 
                     const newWidget = {
                         type: 'weather' as WidgetType,
@@ -1107,11 +1046,6 @@ const App: React.FC = () => {
                     setSidePanelData(data.sideViewData.data as WeatherData);
                     setShowSidePanel(true);
                 } else if (data.sideViewData.type === 'map' && data.sideViewData.data) {
-                    console.log('🗺️ [DEBUG] Processing map data:', {
-                        type: data.sideViewData.type,
-                        mapData: data.sideViewData.data,
-                        locationsCount: data.sideViewData.data?.locations?.length
-                    });
 
                     const newWidget = {
                         type: 'map' as WidgetType,
@@ -1125,13 +1059,11 @@ const App: React.FC = () => {
                         JSON.stringify(w.data) === JSON.stringify(newWidget.data)
                     );
                     if (!existsInCurrent) {
-                        console.log('🗺️ [DEBUG] Adding map widget to conversation history');
                         addWidgetToConversation(newWidget);
                     } else {
                         console.log('🗺️ [DEBUG] Map widget already exists, skipping duplicate');
                     }
 
-                    console.log('🗺️ [DEBUG] Setting up map in side panel');
                     setSidePanelWidgetType('map');
                     setSidePanelData(data.sideViewData.data as MapData);
                     setShowSidePanel(true);
@@ -1140,16 +1072,9 @@ const App: React.FC = () => {
         };
 
         const handleTodoListUpdate = (_: any, data: { todos: any[], timestamp: Date, conversationId: string }) => {
-            console.log('📝 [DEBUG] Received todo-list:updated IPC:', {
-                receivedConversationId: data.conversationId,
-                currentConversationId: currentConversationIdRef.current,
-                todosCount: data.todos.length,
-                conversationMatch: data.conversationId === currentConversationIdRef.current
-            });
 
             // Only process if it's for the current conversation
             if (data.conversationId === currentConversationIdRef.current && currentFlowMessageId === currentAssistantId) {
-                console.log('📝 [DEBUG] Adding todo list step to agent flow');
                 agentFlowTracker.addTodoListStep({
                     title: 'Task Planning',
                     todos: data.todos,
@@ -1163,12 +1088,6 @@ const App: React.FC = () => {
             conversationId: string,
             memory: any
         }) => {
-            console.log('🧠 [DEBUG] Received memory-saved IPC:', {
-                type: data.type,
-                conversationId: data.conversationId,
-                memoryId: data.memory.id,
-                context: data.memory.context
-            });
 
             // Only show notifications for the current conversation
             if (data.conversationId === currentConversationIdRef.current) {
@@ -1194,10 +1113,8 @@ const App: React.FC = () => {
         ipcRenderer.on('stream-error', handleStreamError);
 
         // Test IPC channel registration
-        console.log('🔧 DEBUG: IPC listeners registered, testing stream-complete channel...');
 
         ipcRenderer.on('tool-execution-update', handleToolExecutionUpdate);
-        ipcRenderer.on('user-message', handleUserMessage);
         ipcRenderer.on('side-view-data', handleSideViewData);
         ipcRenderer.on('todo-list:updated', handleTodoListUpdate);
         ipcRenderer.on('memory-saved', handleMemorySaved);
@@ -1208,7 +1125,6 @@ const App: React.FC = () => {
             ipcRenderer.off('stream-complete', handleStreamComplete);
             ipcRenderer.off('stream-error', handleStreamError);
             ipcRenderer.off('tool-execution-update', handleToolExecutionUpdate);
-            ipcRenderer.off('user-message', handleUserMessage);
             ipcRenderer.off('side-view-data', handleSideViewData);
             ipcRenderer.off('todo-list:updated', handleTodoListUpdate);
             ipcRenderer.off('memory-saved', handleMemorySaved);
@@ -1249,7 +1165,6 @@ const App: React.FC = () => {
 
     // TTS Functions
     const handlePlayMessage = async (messageContent: string) => {
-        console.log('🔊 handlePlayMessage called with content:', messageContent.substring(0, 50) + '...');
 
         // Prevent multiple simultaneous TTS playback
         if (isTTSPlaying) {
@@ -1260,7 +1175,6 @@ const App: React.FC = () => {
         try {
             setIsTTSPlaying(true);
             setCurrentTTSMessage(messageContent);
-            console.log('Playing message with TTS:', messageContent.substring(0, 50) + '...');
             const result = await ipcRenderer.invoke('tts-synthesize-and-play', messageContent);
 
             if (!result.success) {
@@ -1276,7 +1190,6 @@ const App: React.FC = () => {
     };
 
     const handleStopTTS = async () => {
-        console.log('🛑 handleStopTTS called');
         try {
             await ipcRenderer.invoke('tts-stop');
             setIsTTSPlaying(false);
@@ -1292,7 +1205,6 @@ const App: React.FC = () => {
     const handleCopyMessage = async (messageContent: string) => {
         try {
             await navigator.clipboard.writeText(messageContent);
-            console.log('Message copied to clipboard');
             // Optionally show success notification
         } catch (error) {
             console.error('Failed to copy message:', error);
@@ -1307,7 +1219,6 @@ const App: React.FC = () => {
                 console.warn('Copy fallback failed:', e);
             }
             document.body.removeChild(textArea);
-            console.log('Message copied to clipboard (fallback)');
         }
     };
 
@@ -1632,7 +1543,6 @@ const App: React.FC = () => {
                                 )}
                                 {[...messages].sort((a, b) => a.timestamp - b.timestamp).map((msg: any, index: number) => {
                                     const messageClass = `message ${msg.role} ${msg.isStreaming ? 'streaming' : ''} ${isSpeaking && msg.role === 'assistant' ? 'speaking' : ''} ''}`;
-                                    console.log('Rendering message:', msg)
                                     // Get thinking blocks associated with this specific message
                                     // For older chats, associate thinking blocks with assistant messages based on timestamp proximity
                                     const associatedBlocks = thinkingBlocks.filter((block: any) => {

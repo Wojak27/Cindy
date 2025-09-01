@@ -319,7 +319,7 @@ export class ChatStorageService {
 
         // Calculate missing responses: ideally user_messages should equal assistant_messages
         const missingResponseCount = Math.max(0, userMessages - assistantMessages);
-        
+
         // Conversation is complete if:
         // 1. Has messages
         // 2. User messages <= assistant messages (no orphaned user messages)
@@ -389,7 +389,7 @@ export class ChatStorageService {
      */
     async saveThinkingBlock(thinkingBlock: ThinkingBlock): Promise<void> {
         console.log('🔧 DEBUG: ChatStorageService.saveThinkingBlock() called for:', thinkingBlock.id);
-        
+
         if (!this.db) {
             console.error('🚨 DEBUG: ChatStorageService.saveThinkingBlock() - Database not initialized');
             return;
@@ -432,7 +432,7 @@ export class ChatStorageService {
                  ORDER BY timestamp ASC`,
                 [conversationId]
             );
-            
+
             console.log('🔧 DEBUG: ChatStorageService.getThinkingBlocks() - Retrieved', blocks.length, 'thinking blocks');
             return blocks;
         } catch (error) {
@@ -462,7 +462,7 @@ export class ChatStorageService {
 
     async createConversation(): Promise<string> {
         console.log('🔧 DEBUG: ChatStorageService.createConversation() called');
-        
+
         if (!this.db) {
             console.log('🔧 DEBUG: ChatStorageService.createConversation() - Database not initialized, initializing...');
             await this.initialize();
@@ -471,14 +471,6 @@ export class ChatStorageService {
         try {
             // Generate a unique conversation ID
             const conversationId = Date.now().toString();
-
-            // Save a system message to establish the conversation
-            await this.saveMessage({
-                conversationId,
-                role: 'system',
-                content: 'New conversation created',
-                timestamp: Date.now()
-            });
 
             console.log('🔧 DEBUG: ChatStorageService.createConversation() - Created new conversation with ID:', conversationId);
             return conversationId;
