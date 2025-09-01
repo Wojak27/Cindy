@@ -35,6 +35,7 @@ import {
     Settings as SettingsIcon,
 } from '@mui/icons-material';
 import { ipcRenderer } from 'electron';
+import { IPC_CHANNELS } from '../../shared/ipcChannels';
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -311,7 +312,7 @@ const ModernSettingsPanel: React.FC = () => {
         try {
             // First: Use direct LLM provider switching for immediate effect
             console.log(`🚀 Direct LLM provider switch: ${selectedProvider}`);
-            const switchResult = await ipcRenderer.invoke('update-llm-provider', updatedSettings.llm);
+            const switchResult = await ipcRenderer.invoke(IPC_CHANNELS.UPDATE_LLM_PROVIDER, updatedSettings.llm);
             console.log('✅ Direct LLM provider switch result:', switchResult);
 
             // Second: Update TTS service with new voice settings
@@ -328,7 +329,7 @@ const ModernSettingsPanel: React.FC = () => {
                 // Kokoro options
                 kokoroVoice: voiceSettings.kokoroVoice,
             };
-            const ttsResult = await ipcRenderer.invoke('tts-update-options', ttsOptions);
+            const ttsResult = await ipcRenderer.invoke(IPC_CHANNELS.TTS_UPDATE_OPTIONS, ttsOptions);
             console.log('✅ Direct TTS provider update result:', ttsResult);
 
             // Third: Update Redux store and persist all settings in background
@@ -341,7 +342,7 @@ const ModernSettingsPanel: React.FC = () => {
             // Fallback to old method if direct switch fails
             dispatch(updateSettings(updatedSettings));
             updateOriginalSettingsBaseline();
-            ipcRenderer.invoke('initialize-llm');
+            ipcRenderer.invoke(IPC_CHANNELS.INITIALIZE_LLM);
         }
     }, [dispatch, selectedProvider, providerConfigs, voiceSettings, profileSettings, searchSettings, settings, updateOriginalSettingsBaseline]);
 
@@ -410,7 +411,7 @@ const ModernSettingsPanel: React.FC = () => {
                     [providerId]: providerConfigs[providerId as keyof typeof providerConfigs]
                 })
             };
-            await ipcRenderer.invoke('update-llm-provider', providerChangeConfig);
+            await ipcRenderer.invoke(IPC_CHANNELS.UPDATE_LLM_PROVIDER, providerChangeConfig);
             console.log('✅ Immediate provider switch completed');
         } catch (error) {
             console.error('❌ Immediate provider switch failed:', error);

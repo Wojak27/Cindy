@@ -30,6 +30,7 @@ import './styles/main.css';
 import './styles/database-sidebar.css';
 import './styles/streamdown.css';
 import { ipcRenderer } from 'electron';
+import { IPC_CHANNELS } from '../shared/ipcChannels';
 import ChatList from './components/ChatList';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -164,11 +165,11 @@ const App: React.FC = () => {
 
             try {
                 // Check conversation health first
-                const health = await ipcRenderer.invoke('get-conversation-health', currentConversationId);
+                const health = await ipcRenderer.invoke(IPC_CHANNELS.GET_CONVERSATION_HEALTH, currentConversationId);
 
                 // Get ALL messages without any filtering (duplicates, ordering fixes, etc.)
                 // To use filtered messages (with cleanup), change to: 'load-conversation'
-                const messages = await ipcRenderer.invoke('load-all-conversation-messages', currentConversationId);
+                const messages = await ipcRenderer.invoke(IPC_CHANNELS.LOAD_ALL_CONVERSATION_MESSAGES, currentConversationId);
 
                 // Log health information if conversation is incomplete
                 if (health && !health.isComplete) {
@@ -229,7 +230,7 @@ const App: React.FC = () => {
                 // Find and scroll to latest human message after a short delay
                 setTimeout(async () => {
                     try {
-                        const latestHumanMessage = await ipcRenderer.invoke('get-latest-human-message', currentConversationId);
+                        const latestHumanMessage = await ipcRenderer.invoke(IPC_CHANNELS.GET_LATEST_HUMAN_MESSAGE, currentConversationId);
 
                         if (latestHumanMessage) {
                             scrollToHumanMessage(latestHumanMessage.id);
@@ -246,7 +247,7 @@ const App: React.FC = () => {
 
                 // Load thinking blocks for this conversation
                 try {
-                    const conversationThinkingBlocks = await ipcRenderer.invoke('get-thinking-blocks', currentConversationId);
+                    const conversationThinkingBlocks = await ipcRenderer.invoke(IPC_CHANNELS.GET_THINKING_BLOCKS, currentConversationId);
 
                     if (conversationThinkingBlocks && conversationThinkingBlocks.length > 0) {
                         // Retroactively associate thinking blocks with messages if not already associated
@@ -470,11 +471,11 @@ const App: React.FC = () => {
             // Stop recording
             try {
                 // Stop recording - this will trigger audio data to be sent
-                const audioData = await ipcRenderer.invoke('stop-recording');
+                const audioData = await ipcRenderer.invoke(IPC_CHANNELS.STOP_RECORDING);
 
                 if (audioData && audioData.length > 0) {
                     // Send Int16Array[] directly to main process for proper WAV conversion
-                    const transcript = await ipcRenderer.invoke('transcribe-audio', audioData);
+                    const transcript = await ipcRenderer.invoke(IPC_CHANNELS.TRANSCRIBE_AUDIO, audioData);
                     if (transcript) {
                         // Set the transcribed text in the input field
                         setInputValue(transcript);
@@ -519,7 +520,7 @@ const App: React.FC = () => {
 
                             try {
                                 // Process message through agent with conversation ID
-                                await ipcRenderer.invoke('process-message', transcript, chatID);
+                                await ipcRenderer.invoke(IPC_CHANNELS.PROCESS_MESSAGE, transcript, chatID);
                             } catch (error) {
                                 console.error('Error processing message:', error);
                                 // Mark the assistant message as failed
@@ -566,7 +567,7 @@ const App: React.FC = () => {
 
             // Send start-recording IPC to renderer service
             try {
-                const result = await ipcRenderer.invoke('start-recording');
+                const result = await ipcRenderer.invoke(IPC_CHANNELS.START_RECORDING);
                 if (!result?.success) {
                     console.error('DEBUG: App.tsx: start-recording failed:', result?.error);
                     setIsRecording(false);
@@ -593,7 +594,7 @@ const App: React.FC = () => {
             const userContent = userMessage?.content || '';
             if (userContent.trim()) {
                 // Process through agent again
-                await ipcRenderer.invoke('process-message', userContent, currentConversationId);
+                await ipcRenderer.invoke(IPC_CHANNELS.PROCESS_MESSAGE, userContent, currentConversationId);
             }
         } catch (error) {
             console.error('Error retrying message:', error);
@@ -678,7 +679,7 @@ const App: React.FC = () => {
 
             try {
                 // Process message through agent with conversation ID
-                await ipcRenderer.invoke('process-message', messageToProcess, convID);
+                await ipcRenderer.invoke(IPC_CHANNELS.PROCESS_MESSAGE, messageToProcess, convID);
             } catch (error) {
                 console.error('Error processing message:', error);
                 // Find and mark the last assistant message as failed
@@ -709,7 +710,7 @@ const App: React.FC = () => {
             const databasePath = settings?.database?.path;
             if (!databasePath) return;
 
-            const result = await ipcRenderer.invoke('vector-store:get-indexed-items', databasePath);
+            const result = await ipcRenderer.invoke(IPC_CHANNELS.VECTOR_STORE_GET_INDEXED_ITEMS, databasePath);
             if (result.success) {
                 setAvailableDocuments(result.items || []);
             }
@@ -1175,7 +1176,7 @@ const App: React.FC = () => {
         try {
             setIsTTSPlaying(true);
             setCurrentTTSMessage(messageContent);
-            const result = await ipcRenderer.invoke('tts-synthesize-and-play', messageContent);
+            const result = await ipcRenderer.invoke(IPC_CHANNELS.TTS_SYNTHESIZE_AND_PLAY, messageContent);
 
             if (!result.success) {
                 console.error('TTS playback failed:', result.error);
@@ -1191,7 +1192,7 @@ const App: React.FC = () => {
 
     const handleStopTTS = async () => {
         try {
-            await ipcRenderer.invoke('tts-stop');
+            await ipcRenderer.invoke(IPC_CHANNELS.TTS_STOP);
             setIsTTSPlaying(false);
             setCurrentTTSMessage(null);
         } catch (error) {
@@ -1263,7 +1264,7 @@ const App: React.FC = () => {
                             onCreateNewChat={async () => {
                                 try {
                                     // Create new conversation through IPC handler
-                                    const newId = await ipcRenderer.invoke('create-conversation');
+                                    const newId = await ipcRenderer.invoke(IPC_CHANNELS.CREATE_CONVERSATION);
                                     dispatch(setCurrentConversationId(newId));
                                     // Clear messages for the new conversation
                                     dispatch({ type: 'CLEAR_MESSAGES' });
@@ -1305,7 +1306,7 @@ const App: React.FC = () => {
                             onClick={async () => {
                                 try {
                                     // Create new conversation through IPC handler
-                                    const newId = await ipcRenderer.invoke('create-conversation');
+                                    const newId = await ipcRenderer.invoke(IPC_CHANNELS.CREATE_CONVERSATION);
                                     dispatch(setCurrentConversationId(newId));
                                     // Clear messages for the new conversation
                                     dispatch({ type: 'CLEAR_MESSAGES' });

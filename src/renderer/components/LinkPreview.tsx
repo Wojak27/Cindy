@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ipcRenderer } from 'electron';
+import { IPC_CHANNELS } from '../../shared/ipcChannels';
 import {
     Box,
     Card,
@@ -38,7 +39,7 @@ const LinkPreviewComponent: React.FC<LinkPreviewComponentProps> = ({ url, childr
 
         setIsLoading(true);
         try {
-            const result = await ipcRenderer.invoke('get-link-preview', url);
+            const result = await ipcRenderer.invoke(IPC_CHANNELS.GET_LINK_PREVIEW, url);
             if (result) {
                 setPreview(result);
             }

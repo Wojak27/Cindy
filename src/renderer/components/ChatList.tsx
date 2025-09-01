@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ipcRenderer } from 'electron';
+import { IPC_CHANNELS } from '../../shared/ipcChannels';
 import '../styles/components/ChatList.css';
 
 interface Conversation {
@@ -30,7 +31,7 @@ const ChatList: React.FC<{
     const loadConversations = async () => {
         try {
             setIsLoading(true);
-            const convos = await ipcRenderer.invoke('get-conversations');
+            const convos = await ipcRenderer.invoke(IPC_CHANNELS.GET_CONVERSATIONS);
             // Log the raw conversation data for debugging
             console.log('Raw conversations data:', convos);
             if (Array.isArray(convos)) {

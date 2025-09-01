@@ -40,6 +40,7 @@ import {
 } from '@mui/icons-material';
 // import DocViewer, { DocViewerRenderers } from '@cyntler/react-doc-viewer'; // Disabled due to Electron compatibility issues
 import { ipcRenderer } from 'electron';
+import { IPC_CHANNELS } from '../../shared/ipcChannels';
 // Ensure polyfill is loaded before PDF.js
 import '../polyfills';
 import { Document, Page, pdfjs } from 'react-pdf';
@@ -372,7 +373,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ databasePath }) => {
         setError(null);
 
         try {
-            const result = await ipcRenderer.invoke('vector-store:get-indexed-items', databasePath);
+            const result = await ipcRenderer.invoke(IPC_CHANNELS.VECTOR_STORE_GET_INDEXED_ITEMS, databasePath);
             if (result.success) {
                 setFiles(result.items || []);
             } else {
@@ -448,7 +449,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ databasePath }) => {
 
             // Handle text files differently to avoid blob URL fetch issues
             if (fileType.startsWith('text/') || fileType === 'application/json') {
-                const result = await ipcRenderer.invoke('read-file-buffer', file.path);
+                const result = await ipcRenderer.invoke(IPC_CHANNELS.READ_FILE_BUFFER, file.path);
                 console.log('[DocumentViewer] Text file IPC result:', { success: result.success, error: result.error, hasData: !!result.data });
 
                 if (result.success) {

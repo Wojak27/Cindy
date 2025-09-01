@@ -1,6 +1,7 @@
 import { app, BrowserWindow, Menu, nativeImage, NativeImage, ipcMain, desktopCapturer, shell } from 'electron';
 import * as path from 'path';
 import * as os from 'os';
+import * as fs from 'fs';
 import { CindyMenu } from './menu';
 import { DuckDBSettingsService, Settings } from './services/DuckDBSettingsService';
 import { TrayService } from './services/TrayService';
@@ -17,6 +18,7 @@ import { LinkPreviewService } from './services/LinkPreviewService';
 import { TextToSpeechService } from './services/TextToSpeechService';
 import { ConnectorManagerService } from './services/ConnectorManagerService';
 import { generateStepDescription } from '../shared/AgentFlowStandard';
+import { IPC_CHANNELS } from '../shared/ipcChannels';
 
 import installExtension, {
     REDUX_DEVTOOLS,
@@ -122,14 +124,14 @@ const setupSettingsIPC = () => {
     });
 
     // Settings service availability check
-    ipcMain.handle('get-settings-service', () => {
+    ipcMain.handle(IPC_CHANNELS.GET_SETTINGS_SERVICE, () => {
         console.log('🔧 DEBUG: Settings service requested by renderer, available:', !!settingsService);
         return !!settingsService;
     });
 
 
     // Settings CRUD handlers
-    ipcMain.handle('settings-get', async (event, section: string) => {
+    ipcMain.handle(IPC_CHANNELS.SETTINGS_GET, async (event, section: string) => {
         if (!settingsService) {
             throw new Error('SettingsService not initialized');
         }
@@ -142,7 +144,7 @@ const setupSettingsIPC = () => {
         return await settingsService.get(section as keyof Settings);
     });
 
-    ipcMain.handle('settings-set', async (event, section: string, value: any) => {
+    ipcMain.handle(IPC_CHANNELS.SETTINGS_SET, async (event, section: string, value: any) => {
         if (!settingsService) {
             throw new Error('SettingsService not initialized');
         }
@@ -155,21 +157,21 @@ const setupSettingsIPC = () => {
         return await settingsService.set(section as keyof Settings, value);
     });
 
-    ipcMain.handle('settings-get-all', async () => {
+    ipcMain.handle(IPC_CHANNELS.SETTINGS_GET_ALL, async () => {
         if (!settingsService) {
             throw new Error('SettingsService not initialized');
         }
         return await settingsService.getAll();
     });
 
-    ipcMain.handle('settings-save', async () => {
+    ipcMain.handle(IPC_CHANNELS.SETTINGS_SAVE, async () => {
         if (!settingsService) {
             throw new Error('SettingsService not initialized');
         }
         return await settingsService.save();
     });
 
-    ipcMain.handle('settings-set-all', async (event, settings: any) => {
+    ipcMain.handle(IPC_CHANNELS.SETTINGS_SET_ALL, async (event, settings: any) => {
         if (!settingsService) {
             throw new Error('SettingsService not initialized');
         }
@@ -184,7 +186,7 @@ const setupSettingsIPC = () => {
     });
 
     // IPC handlers for wake word management
-    ipcMain.handle('wake-word:start', async () => {
+    ipcMain.handle(IPC_CHANNELS.WAKE_WORD_START, async () => {
         console.log('Main process - wake-word:start IPC called');
         try {
             if (wakeWordService) {
@@ -198,7 +200,7 @@ const setupSettingsIPC = () => {
         }
     });
 
-    ipcMain.handle('wake-word:stop', async () => {
+    ipcMain.handle(IPC_CHANNELS.WAKE_WORD_STOP, async () => {
         console.log('Main process - wake-word:stop IPC called');
         try {
             if (wakeWordService) {
@@ -212,7 +214,7 @@ const setupSettingsIPC = () => {
         }
     });
 
-    ipcMain.handle('wake-word:update-keyword', async (_, keyword: string, sensitivity: number) => {
+    ipcMain.handle(IPC_CHANNELS.WAKE_WORD_UPDATE_KEYWORD, async (_, keyword: string, sensitivity: number) => {
         console.log('Main process - wake-word:update-keyword IPC called:', keyword, sensitivity);
         try {
             if (wakeWordService) {
@@ -226,14 +228,14 @@ const setupSettingsIPC = () => {
         }
     });
 
-    ipcMain.handle('wake-word:status', async () => {
+    ipcMain.handle(IPC_CHANNELS.WAKE_WORD_STATUS, async () => {
         console.log('Main process - wake-word:status IPC called');
         // Wake word functionality disabled by default
         return { success: false, isListening: false, error: 'Wake word service disabled' };
     });
 
     // Link preview handler
-    ipcMain.handle('get-link-preview', async (event, url: string) => {
+    ipcMain.handle(IPC_CHANNELS.GET_LINK_PREVIEW, async (event, url: string) => {
         if (!linkPreviewService) {
             throw new Error('LinkPreviewService not initialized');
         }
@@ -241,7 +243,7 @@ const setupSettingsIPC = () => {
     });
 
     // IPC handler for fetching models from provider APIs
-    ipcMain.handle('fetch-provider-models', async (event, { provider, config }) => {
+    ipcMain.handle(IPC_CHANNELS.FETCH_PROVIDER_MODELS, async (event, { provider, config }) => {
         console.log(`Main process - fetch-provider-models called for provider: ${provider}`);
 
         try {
@@ -380,7 +382,7 @@ const setupDatabaseIPC = () => {
     });
 
     // Validate path handler
-    ipcMain.handle('validate-path', async (event, pathToValidate) => {
+    ipcMain.handle(IPC_CHANNELS.VALIDATE_PATH, async (event, pathToValidate) => {
         console.log('[IPC] Validating path:', pathToValidate);
         try {
             if (!pathToValidate || pathToValidate.trim() === '') {
@@ -412,7 +414,7 @@ const setupDatabaseIPC = () => {
     });
 
     // Show directory dialog handler
-    ipcMain.handle('show-directory-dialog', async (event, defaultPath) => {
+    ipcMain.handle(IPC_CHANNELS.SHOW_DIRECTORY_DIALOG, async (event, defaultPath) => {
         console.log('[IPC] Showing directory dialog, default path:', defaultPath);
         try {
             const result = await dialog.showOpenDialog(mainWindow, {
@@ -433,7 +435,7 @@ const setupDatabaseIPC = () => {
     });
 
     // Create vector store handler
-    ipcMain.handle('create-vector-store', async (event, options) => {
+    ipcMain.handle(IPC_CHANNELS.CREATE_VECTOR_STORE, async (event, options) => {
         console.log('[IPC] Creating vector store with options:', options);
         try {
             // Validate path first
@@ -545,7 +547,7 @@ const setupDatabaseIPC = () => {
     });
 
     // Index directory handler
-    ipcMain.handle('vector-store:index-directory', async (event, directoryPath, options = {}) => {
+    ipcMain.handle(IPC_CHANNELS.VECTOR_STORE_INDEX_DIRECTORY, async (event, directoryPath, options = {}) => {
         console.log('[IPC] Indexing directory:', directoryPath);
         try {
             if (!directoryPath) {
@@ -608,7 +610,7 @@ const setupDatabaseIPC = () => {
     });
 
     // Check directory indexing status
-    ipcMain.handle('vector-store:check-status', async (event, directoryPath) => {
+    ipcMain.handle(IPC_CHANNELS.VECTOR_STORE_CHECK_STATUS, async (event, directoryPath) => {
         console.log('[IPC] Checking directory status:', directoryPath);
         try {
             if (!directoryPath) {
@@ -630,7 +632,7 @@ const setupDatabaseIPC = () => {
     });
 
     // Get indexed items handler
-    ipcMain.handle('vector-store:get-indexed-items', async (event, databasePath) => {
+    ipcMain.handle(IPC_CHANNELS.VECTOR_STORE_GET_INDEXED_ITEMS, async (event, databasePath) => {
         console.log('[IPC] Getting indexed items for path:', databasePath);
         console.log('[IPC] DuckDB vector store available:', !!duckDBVectorStore);
         try {
@@ -702,7 +704,7 @@ const setupDatabaseIPC = () => {
     });
 
     // Document resolution for auto-detection from AI responses
-    ipcMain.handle('resolve-document-path', async (event, documentPath: string) => {
+    ipcMain.handle(IPC_CHANNELS.RESOLVE_DOCUMENT_PATH, async (event, documentPath: string) => {
         console.log('[IPC] Resolving document path:', documentPath);
         try {
             // Check if it's already an absolute path
@@ -781,7 +783,7 @@ const setupDatabaseIPC = () => {
     });
 
     // Auto-detect and resolve documents from AI response text
-    ipcMain.handle('detect-and-resolve-documents', async (event, responseText: string) => {
+    ipcMain.handle(IPC_CHANNELS.DETECT_AND_RESOLVE_DOCUMENTS, async (event, responseText: string) => {
         console.log('[IPC] Detecting documents in AI response');
         try {
             // Simple document detection patterns (main process implementation)
@@ -874,7 +876,7 @@ const setupDatabaseIPC = () => {
     });
 
     // File reading for document viewer
-    ipcMain.handle('read-file-buffer', async (event, filePath) => {
+    ipcMain.handle(IPC_CHANNELS.READ_FILE_BUFFER, async (event, filePath) => {
         console.log('[IPC] Reading file buffer for:', filePath);
         console.log('[IPC] DuckDB vector store available for file access:', !!duckDBVectorStore);
         try {
@@ -957,7 +959,7 @@ const setupTTSIPC = () => {
     });
 
     // Synthesize text to audio file
-    ipcMain.handle('tts-synthesize', async (event, text: string, outputPath?: string) => {
+    ipcMain.handle(IPC_CHANNELS.TTS_SYNTHESIZE, async (event, text: string, outputPath?: string) => {
         console.log('Main process - tts-synthesize IPC called with text:', text.substring(0, 50) + '...');
         try {
             if (!textToSpeechService) {
@@ -989,7 +991,7 @@ const setupTTSIPC = () => {
     });
 
     // Synthesize text and play audio immediately
-    ipcMain.handle('tts-synthesize-and-play', async (event, text: string) => {
+    ipcMain.handle(IPC_CHANNELS.TTS_SYNTHESIZE_AND_PLAY, async (event, text: string) => {
         console.log('Main process - tts-synthesize-and-play IPC called with text:', text.substring(0, 50) + '...');
         try {
             if (!textToSpeechService) {
@@ -1021,7 +1023,7 @@ const setupTTSIPC = () => {
     });
 
     // Get current TTS options
-    ipcMain.handle('tts-get-options', async () => {
+    ipcMain.handle(IPC_CHANNELS.TTS_GET_OPTIONS, async () => {
         try {
             if (!textToSpeechService) {
                 return { success: false, error: 'TextToSpeechService not initialized' };
@@ -1036,7 +1038,7 @@ const setupTTSIPC = () => {
     });
 
     // Update TTS options
-    ipcMain.handle('tts-update-options', async (event, options: any) => {
+    ipcMain.handle(IPC_CHANNELS.TTS_UPDATE_OPTIONS, async (event, options: any) => {
         console.log('Main process - tts-update-options IPC called with provider:', options.provider);
         try {
             if (!textToSpeechService) {
@@ -1061,7 +1063,7 @@ const setupTTSIPC = () => {
     });
 
     // Check if TTS service is ready
-    ipcMain.handle('tts-is-ready', async () => {
+    ipcMain.handle(IPC_CHANNELS.TTS_IS_READY, async () => {
         try {
             // Service is available if it exists (even if not initialized yet)
             const available = !!textToSpeechService;
@@ -1079,7 +1081,7 @@ const setupTTSIPC = () => {
     });
 
     // Stop current TTS playback
-    ipcMain.handle('tts-stop', async () => {
+    ipcMain.handle(IPC_CHANNELS.TTS_STOP, async () => {
         console.log('Main process - tts-stop IPC called');
         try {
             if (!textToSpeechService) {
@@ -1095,7 +1097,7 @@ const setupTTSIPC = () => {
     });
 
     // Cleanup TTS resources
-    ipcMain.handle('tts-cleanup', async () => {
+    ipcMain.handle(IPC_CHANNELS.TTS_CLEANUP, async () => {
         console.log('Main process - tts-cleanup IPC called');
         try {
             if (textToSpeechService) {
@@ -1110,7 +1112,7 @@ const setupTTSIPC = () => {
     });
 
     // TTS Model Download Permission Handler
-    ipcMain.handle('tts-request-model-download-permission', async (event, request) => {
+    ipcMain.handle(IPC_CHANNELS.TTS_REQUEST_MODEL_DOWNLOAD_PERMISSION, async (event, request) => {
         console.log('[IPC] TTS model download permission requested:', request.modelName);
 
         try {
@@ -1239,7 +1241,7 @@ const setupConnectorIPC = () => {
     });
 
     // Get connector status
-    ipcMain.handle('connector-get-status', async () => {
+    ipcMain.handle(IPC_CHANNELS.CONNECTOR_GET_STATUS, async () => {
         try {
             if (!connectorManagerService) {
                 return { success: false, error: 'ConnectorManagerService not available' };
@@ -1254,7 +1256,7 @@ const setupConnectorIPC = () => {
     });
 
     // OAuth credential management handlers
-    ipcMain.handle('settings-get-oauth-credentials', async (event, provider: string) => {
+    ipcMain.handle(IPC_CHANNELS.SETTINGS_GET_OAUTH_CREDENTIALS, async (event, provider: string) => {
         try {
             if (!settingsService) {
                 return { success: false, error: 'Settings service not available' };
@@ -1267,7 +1269,7 @@ const setupConnectorIPC = () => {
         }
     });
 
-    ipcMain.handle('settings-set-oauth-credentials', async (event, provider: string, clientId: string, clientSecret: string) => {
+    ipcMain.handle(IPC_CHANNELS.SETTINGS_SET_OAUTH_CREDENTIALS, async (event, provider: string, clientId: string, clientSecret: string) => {
         try {
             if (!settingsService) {
                 return { success: false, error: 'Settings service not available' };
@@ -1280,7 +1282,7 @@ const setupConnectorIPC = () => {
         }
     });
 
-    ipcMain.handle('settings-delete-oauth-credentials', async (event, provider: string) => {
+    ipcMain.handle(IPC_CHANNELS.SETTINGS_DELETE_OAUTH_CREDENTIALS, async (event, provider: string) => {
         try {
             if (!settingsService) {
                 return { success: false, error: 'Settings service not available' };
@@ -1294,7 +1296,7 @@ const setupConnectorIPC = () => {
     });
 
     // Start OAuth flow for a connector
-    ipcMain.handle('connector-start-oauth', async (event, provider: string, oauthConfig?: any) => {
+    ipcMain.handle(IPC_CHANNELS.CONNECTOR_START_OAUTH, async (event, provider: string, oauthConfig?: any) => {
         try {
             if (!connectorManagerService) {
                 return { success: false, error: 'ConnectorManagerService not available' };
@@ -1309,7 +1311,7 @@ const setupConnectorIPC = () => {
     });
 
     // Configure Zotero with API key
-    ipcMain.handle('connector-configure-zotero', async (event, apiKey: string, userId: string, workspaceId?: string) => {
+    ipcMain.handle(IPC_CHANNELS.CONNECTOR_CONFIGURE_ZOTERO, async (event, apiKey: string, userId: string, workspaceId?: string) => {
         try {
             if (!connectorManagerService) {
                 return { success: false, error: 'ConnectorManagerService not available' };
@@ -1324,7 +1326,7 @@ const setupConnectorIPC = () => {
     });
 
     // Disconnect a connector
-    ipcMain.handle('connector-disconnect', async (event, provider: string) => {
+    ipcMain.handle(IPC_CHANNELS.CONNECTOR_DISCONNECT, async (event, provider: string) => {
         try {
             if (!connectorManagerService) {
                 return { success: false, error: 'ConnectorManagerService not available' };
@@ -1339,7 +1341,7 @@ const setupConnectorIPC = () => {
     });
 
     // Test a connector
-    ipcMain.handle('connector-test', async (event, provider: string) => {
+    ipcMain.handle(IPC_CHANNELS.CONNECTOR_TEST, async (event, provider: string) => {
         try {
             if (!connectorManagerService) {
                 return { success: false, error: 'ConnectorManagerService not available' };
@@ -1354,7 +1356,7 @@ const setupConnectorIPC = () => {
     });
 
     // Get connected connectors for tool loading
-    ipcMain.handle('connector-get-connected', async () => {
+    ipcMain.handle(IPC_CHANNELS.CONNECTOR_GET_CONNECTED, async () => {
         try {
             if (!connectorManagerService) {
                 return { success: false, error: 'ConnectorManagerService not available' };
@@ -1369,7 +1371,7 @@ const setupConnectorIPC = () => {
     });
 
     // Open external URL in default browser
-    ipcMain.handle('shell-open-external', async (event, url: string) => {
+    ipcMain.handle(IPC_CHANNELS.SHELL_OPEN_EXTERNAL, async (event, url: string) => {
         try {
             await shell.openExternal(url);
             return { success: true };
@@ -1616,7 +1618,7 @@ const createTray = async (): Promise<void> => {
 // Some APIs can only be used after this event occurs.
 app.on('ready', async () => {
     // Initialize desktopCapturer IPC handler first
-    ipcMain.handle('get-desktop-audio-sources', async () => {
+    ipcMain.handle(IPC_CHANNELS.GET_DESKTOP_AUDIO_SOURCES, async () => {
         console.log('DEBUG: Main process - get-desktop-audio-sources IPC called');
         try {
             const sources = await desktopCapturer.getSources({
@@ -1814,7 +1816,7 @@ app.on('ready', async () => {
 
 
     // IPC handler for getting available LLM models
-    ipcMain.handle('llm:get-available-models', async () => {
+    ipcMain.handle(IPC_CHANNELS.LLM_GET_AVAILABLE_MODELS, async () => {
         console.log('Main process - llm:get-available-models IPC called');
         if (!llmProvider) {
             console.error('Main process - llm:get-available-models: llmRouterService not available');
@@ -1832,7 +1834,7 @@ app.on('ready', async () => {
     });
 
     // IPC handler for testing LLM connections
-    ipcMain.handle('llm:test-connection', async () => {
+    ipcMain.handle(IPC_CHANNELS.LLM_TEST_CONNECTION, async () => {
         console.log('Main process - llm:test-connection IPC called');
         if (!llmProvider) {
             console.error('Main process - llm:test-connection: llmRouterService not available');
@@ -1866,7 +1868,7 @@ app.on('ready', async () => {
     });
 
     // IPC handler for full indexing (database + notes) - simplified version
-    ipcMain.handle('start-full-indexing', async (_, databasePath: string, notesPath?: string) => {
+    ipcMain.handle(IPC_CHANNELS.START_FULL_INDEXING, async (_, databasePath: string, notesPath?: string) => {
         console.log('[IPC] Full indexing called - Database:', databasePath, 'Notes:', notesPath);
 
         const fs = require('fs');
@@ -1983,7 +1985,7 @@ app.on('ready', async () => {
     });
 
     // IPC handlers for Ollama model management
-    ipcMain.handle('ollama-list-models', async () => {
+    ipcMain.handle(IPC_CHANNELS.OLLAMA_LIST_MODELS, async () => {
         console.log('Main process - ollama-list-models IPC called');
         try {
             const { exec } = require('child_process');
@@ -2008,7 +2010,7 @@ app.on('ready', async () => {
         }
     });
 
-    ipcMain.handle('ollama-pull-model', async (_, modelName: string) => {
+    ipcMain.handle(IPC_CHANNELS.OLLAMA_PULL_MODEL, async (_, modelName: string) => {
         console.log('Main process - ollama-pull-model IPC called for model:', modelName);
         try {
             const { exec } = require('child_process');
@@ -2026,7 +2028,7 @@ app.on('ready', async () => {
         }
     });
 
-    ipcMain.handle('ollama-remove-model', async (_, modelName: string) => {
+    ipcMain.handle(IPC_CHANNELS.OLLAMA_REMOVE_MODEL, async (_, modelName: string) => {
         console.log('Main process - ollama-remove-model IPC called for model:', modelName);
         try {
             const { exec } = require('child_process');
@@ -2044,7 +2046,7 @@ app.on('ready', async () => {
     });
 
     // IPC handlers for real-time transcription
-    ipcMain.handle('start-real-time-transcription', async () => {
+    ipcMain.handle(IPC_CHANNELS.START_REAL_TIME_TRANSCRIPTION, async () => {
         console.log('Main process - start-real-time-transcription IPC called');
         try {
             if (realTimeTranscriptionService) {
@@ -2058,7 +2060,7 @@ app.on('ready', async () => {
         }
     });
 
-    ipcMain.handle('stop-real-time-transcription', async () => {
+    ipcMain.handle(IPC_CHANNELS.STOP_REAL_TIME_TRANSCRIPTION, async () => {
         console.log('Main process - stop-real-time-transcription IPC called');
         try {
             if (realTimeTranscriptionService) {
@@ -2076,7 +2078,7 @@ app.on('ready', async () => {
 
 
     // IPC handler for starting audio recording
-    ipcMain.handle('start-recording', async () => {
+    ipcMain.handle(IPC_CHANNELS.START_RECORDING, async () => {
         console.log('DEBUG: Main process - start-recording IPC called');
         if (!mainWindow) {
             console.error('DEBUG: Main process - start-recording: mainWindow not available');
@@ -2098,7 +2100,7 @@ app.on('ready', async () => {
     });
 
     // IPC handler for stopping audio recording and returning audio data
-    ipcMain.handle('stop-recording', async () => {
+    ipcMain.handle(IPC_CHANNELS.STOP_RECORDING, async () => {
         console.log('Main process - stop-recording IPC called');
         if (!mainWindow) {
             console.error('Main process - stop-recording: mainWindow not available');
@@ -2139,7 +2141,7 @@ app.on('ready', async () => {
     });
 
     // IPC handler for transcribing audio
-    ipcMain.handle('transcribe-audio', async (event, audioData: Int16Array[] | ArrayBuffer) => {
+    ipcMain.handle(IPC_CHANNELS.TRANSCRIBE_AUDIO, async (event, audioData: Int16Array[] | ArrayBuffer) => {
         console.log('DEBUG: Main process - transcribe-audio IPC called with data type:', Array.isArray(audioData) ? 'Int16Array[]' : 'ArrayBuffer');
         console.log('DEBUG: Main process - transcribe-audio: data size:', Array.isArray(audioData) ? `${audioData.length} chunks` : `${audioData.byteLength} bytes`);
         try {
@@ -2402,13 +2404,13 @@ app.on('ready', async () => {
     }
 
     // IPC handler for manually initializing LLM services
-    ipcMain.handle('initialize-llm', async () => {
+    ipcMain.handle(IPC_CHANNELS.INITIALIZE_LLM, async () => {
         console.log('Main process - initialize-llm IPC called');
         return await initializeLLMServices();
     });
 
     // IPC handler for immediate LLM provider switching (bypasses async persistence)
-    ipcMain.handle('update-llm-provider', async (event, providerConfig) => {
+    ipcMain.handle(IPC_CHANNELS.UPDATE_LLM_PROVIDER, async (event, providerConfig) => {
         console.log('Main process - update-llm-provider IPC called with:', providerConfig);
 
         try {
@@ -2477,7 +2479,7 @@ app.on('ready', async () => {
     (global as any).emitFlowEvent = emitFlowEvent;
 
     // IPC handler for processing messages with streaming
-    ipcMain.handle('process-message', async (event, message: string, conversationId: string): Promise<string> => {
+    ipcMain.handle(IPC_CHANNELS.PROCESS_MESSAGE, async (event, message: string, conversationId: string): Promise<string> => {
         console.log('Main process - process-message IPC called with:', message);
 
         // Save user message to backend storage (frontend already shows it immediately)
@@ -3093,7 +3095,7 @@ app.on('ready', async () => {
     });
 
     // IPC handler for agent graph generation
-    ipcMain.handle('agent:mermaid', async () => {
+    ipcMain.handle(IPC_CHANNELS.AGENT_MERMAID, async () => {
         console.log('Main process - agent:mermaid IPC called');
         try {
             // Check if LLM provider is available first
@@ -3243,7 +3245,7 @@ graph TD
     });
 
     // IPC handler for creating conversations
-    ipcMain.handle('create-conversation', async () => {
+    ipcMain.handle(IPC_CHANNELS.CREATE_CONVERSATION, async () => {
         console.log('Main process - create-conversation IPC called');
         try {
             if (!chatStorageService) {
@@ -3261,7 +3263,7 @@ graph TD
     });
 
     // IPC handler for loading conversations
-    ipcMain.handle('load-conversation', async (_, conversationId: string) => {
+    ipcMain.handle(IPC_CHANNELS.LOAD_CONVERSATION, async (_, conversationId: string) => {
         console.log('Main process - load-conversation IPC called for:', conversationId);
         try {
             if (!chatStorageService) {
@@ -3277,7 +3279,7 @@ graph TD
     });
 
     // IPC handlers for AgenticMemoryService (A-Mem)
-    ipcMain.handle('memory-graph:get-data', async () => {
+    ipcMain.handle(IPC_CHANNELS.MEMORY_GRAPH_GET_DATA, async () => {
         console.log('[IPC] memory-graph:get-data called');
         try {
             if (!agenticMemoryService) {
@@ -3301,7 +3303,7 @@ graph TD
         }
     });
 
-    ipcMain.handle('memory-graph:add-memory', async (_, content: string, conversationId?: string) => {
+    ipcMain.handle(IPC_CHANNELS.MEMORY_GRAPH_ADD_MEMORY, async (_, content: string, conversationId?: string) => {
         console.log('[IPC] memory-graph:add-memory called');
         try {
             if (!agenticMemoryService) {
@@ -3329,7 +3331,7 @@ graph TD
         }
     });
 
-    ipcMain.handle('memory-graph:retrieve', async (_, query: string, limit: number = 10) => {
+    ipcMain.handle(IPC_CHANNELS.MEMORY_GRAPH_RETRIEVE, async (_, query: string, limit: number = 10) => {
         console.log('[IPC] memory-graph:retrieve called for query:', query);
         try {
             if (!agenticMemoryService) {
@@ -3345,7 +3347,7 @@ graph TD
     });
 
     // IPC handlers for Todo List Visibility
-    ipcMain.handle('todo-list:get-current', async () => {
+    ipcMain.handle(IPC_CHANNELS.TODO_LIST_GET_CURRENT, async () => {
         console.log('[IPC] todo-list:get-current called');
         try {
             // Return current todo list state - this will be managed by the agent
@@ -3356,7 +3358,7 @@ graph TD
         }
     });
 
-    ipcMain.handle('todo-list:update', async (_, todos: any[]) => {
+    ipcMain.handle(IPC_CHANNELS.TODO_LIST_UPDATE, async (_, todos: any[]) => {
         console.log('[IPC] todo-list:update called with', todos.length, 'todos');
         try {
             globalTodoListState = todos;
@@ -3375,7 +3377,7 @@ graph TD
     });
 
     // IPC handler for loading ALL messages without filtering
-    ipcMain.handle('load-all-conversation-messages', async (_, conversationId: string) => {
+    ipcMain.handle(IPC_CHANNELS.LOAD_ALL_CONVERSATION_MESSAGES, async (_, conversationId: string) => {
         console.log('Main process - load-all-conversation-messages IPC called for:', conversationId);
         try {
             if (!chatStorageService) {
@@ -3392,7 +3394,7 @@ graph TD
     });
 
     // IPC handler for checking incomplete conversations
-    ipcMain.handle('get-incomplete-conversations', async () => {
+    ipcMain.handle(IPC_CHANNELS.GET_INCOMPLETE_CONVERSATIONS, async () => {
         console.log('Main process - get-incomplete-conversations IPC called');
         try {
             if (!chatStorageService) {
@@ -3407,7 +3409,7 @@ graph TD
     });
 
     // IPC handler for getting conversation health
-    ipcMain.handle('get-conversation-health', async (_, conversationId: string) => {
+    ipcMain.handle(IPC_CHANNELS.GET_CONVERSATION_HEALTH, async (_, conversationId: string) => {
         console.log('Main process - get-conversation-health IPC called for:', conversationId);
         try {
             if (!chatStorageService) {
@@ -3422,7 +3424,7 @@ graph TD
     });
 
     // IPC handler for loading thinking blocks
-    ipcMain.handle('get-thinking-blocks', async (_, conversationId: string) => {
+    ipcMain.handle(IPC_CHANNELS.GET_THINKING_BLOCKS, async (_, conversationId: string) => {
         console.log('Main process - get-thinking-blocks IPC called for:', conversationId);
         try {
             if (!chatStorageService) {
@@ -3445,7 +3447,7 @@ graph TD
     });
 
     // IPC handler for getting conversations list
-    ipcMain.handle('get-conversations', async () => {
+    ipcMain.handle(IPC_CHANNELS.GET_CONVERSATIONS, async () => {
         console.log('Main process - get-conversations IPC called');
         try {
             if (!chatStorageService) {
@@ -3460,7 +3462,7 @@ graph TD
     });
 
     // IPC handler for getting latest human message in a conversation
-    ipcMain.handle('get-latest-human-message', async (_, conversationId: string) => {
+    ipcMain.handle(IPC_CHANNELS.GET_LATEST_HUMAN_MESSAGE, async (_, conversationId: string) => {
         console.log('Main process - get-latest-human-message IPC called for:', conversationId);
         try {
             if (!chatStorageService) {
@@ -3477,7 +3479,7 @@ graph TD
     // Note: settings-save IPC handler is now in setupSettingsIPC() function
 
     // IPC handler for saving messages to ChatStorageService
-    ipcMain.handle('save-message', async (event, messageData) => {
+    ipcMain.handle(IPC_CHANNELS.SAVE_MESSAGE, async (event, messageData) => {
         console.log('🔧 DEBUG: Main process - save-message IPC called with:', messageData);
         try {
             if (!chatStorageService) {

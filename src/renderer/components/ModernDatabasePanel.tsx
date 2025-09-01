@@ -42,6 +42,7 @@ import {
     Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import { ipcRenderer } from 'electron';
+import { IPC_CHANNELS } from '../../shared/ipcChannels';
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -126,7 +127,7 @@ const ModernDatabasePanel: React.FC = () => {
     // Path browsing
     const handleBrowse = async () => {
         try {
-            const result = await ipcRenderer.invoke('show-directory-dialog', databasePath);
+            const result = await ipcRenderer.invoke(IPC_CHANNELS.SHOW_DIRECTORY_DIALOG, databasePath);
             if (result) {
                 setDatabasePath(result);
                 validatePath(result);
@@ -225,7 +226,7 @@ const ModernDatabasePanel: React.FC = () => {
 
     const handleNotesBrowse = async () => {
         try {
-            const result = await ipcRenderer.invoke('show-directory-dialog', notesPath);
+            const result = await ipcRenderer.invoke(IPC_CHANNELS.SHOW_DIRECTORY_DIALOG, notesPath);
             if (result) {
                 setNotesPath(result);
                 setHasUnsavedChanges(true);
@@ -237,7 +238,7 @@ const ModernDatabasePanel: React.FC = () => {
 
     const validatePath = async (path: string) => {
         try {
-            const validation = await ipcRenderer.invoke('validate-path', path);
+            const validation = await ipcRenderer.invoke(IPC_CHANNELS.VALIDATE_PATH, path);
             setPathValidation(validation);
             return validation.valid;
         } catch (error) {
@@ -256,7 +257,7 @@ const ModernDatabasePanel: React.FC = () => {
 
         setStatusLoading(true);
         try {
-            const response = await ipcRenderer.invoke('vector-store:check-status', databasePath);
+            const response = await ipcRenderer.invoke(IPC_CHANNELS.VECTOR_STORE_CHECK_STATUS, databasePath);
             if (response.success) {
                 setDirectoryStatus(response.status);
             } else {
@@ -283,7 +284,7 @@ const ModernDatabasePanel: React.FC = () => {
         setIndexedItems([]);
 
         try {
-            await ipcRenderer.invoke('start-full-indexing', databasePath, notesPath);
+            await ipcRenderer.invoke(IPC_CHANNELS.START_FULL_INDEXING, databasePath, notesPath);
             // Refresh status after indexing
             setTimeout(() => {
                 checkDirectoryStatus();
