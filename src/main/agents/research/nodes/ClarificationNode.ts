@@ -7,7 +7,7 @@ import { BaseMessage, HumanMessage, AIMessage } from '@langchain/core/messages';
 import { LLMProvider } from '../../../services/LLMProvider';
 import { AgentState, ClarifyWithUser } from '../DeepResearchState';
 import { DeepResearchConfiguration } from '../DeepResearchConfig';
-import { ClarificationSchema, validateClarification, parseClarificationFromText } from '../../schemas/clarification';
+import { ClarificationSchema, parseClarificationFromText } from '../../schemas/clarification';
 
 /**
  * Clarification node that asks the user for more information if needed
@@ -91,21 +91,21 @@ For the verification message when no clarification is needed:
             });
 
             let clarificationResult: ClarifyWithUser;
-            
+
             if (structuredResult.success) {
                 console.log(`[ClarificationNode] Structured parsing successful on attempt ${structuredResult.attempts}`);
                 clarificationResult = structuredResult.data as ClarifyWithUser;
             } else {
-                console.warn(`[ClarificationNode] Structured parsing failed after ${structuredResult.attempts} attempts:`, 
+                console.warn(`[ClarificationNode] Structured parsing failed after ${structuredResult.attempts} attempts:`,
                     'error' in structuredResult ? structuredResult.error : 'Unknown error');
-                
+
                 // Fallback to manual parsing
                 const response = (await llmProvider.invoke([
                     new HumanMessage({ content: clarificationPrompt })
                 ])).content as string;
-                
+
                 const fallbackResult = parseClarificationFromText(response);
-                if (fallbackResult && 
+                if (fallbackResult &&
                     typeof fallbackResult.need_clarification === 'boolean' &&
                     typeof fallbackResult.question === 'string' &&
                     typeof fallbackResult.verification === 'string') {
@@ -117,7 +117,7 @@ For the verification message when no clarification is needed:
                         verification: 'I have sufficient information to proceed with the research.'
                     };
                 }
-                
+
                 console.log('[ClarificationNode] Using fallback parsing result');
             }
 

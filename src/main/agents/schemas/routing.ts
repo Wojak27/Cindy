@@ -43,25 +43,25 @@ export type RoutingResponse = z.infer<typeof RoutingResponseSchema>;
  */
 export function parseRoutingResponse(text: string): RoutingDecision | null {
   const cleanText = text.trim();
-  
+
   // Try to match exact routing patterns
-  if (cleanText === 'ROUTE_DEEP_RESEARCH') {
+  if (cleanText === 'DEEP_RESEARCH') {
     return { route: 'deep_research' };
   }
-  
-  if (cleanText === 'ROUTE_TOOL_AGENT') {
+
+  if (cleanText === 'TOOL_AGENT') {
     return { route: 'tool_agent' };
   }
-  
+
   // Handle ROUTE_DIRECT with response
-  const directMatch = cleanText.match(/^ROUTE_DIRECT\s+(.+)$/);
+  const directMatch = cleanText.match(/^DIRECT\s+(.+)$/);
   if (directMatch) {
     return {
       route: 'direct_response',
       response: directMatch[1].trim()
     };
   }
-  
+
   return null;
 }
 
@@ -78,11 +78,11 @@ export function validateRoutingDecision(data: unknown): {
 } {
   try {
     const result = RoutingDecisionSchema.safeParse(data);
-    
+
     if (result.success) {
       return { success: true, data: result.data };
     }
-    
+
     return {
       success: false,
       error: 'Routing decision validation failed',

@@ -4,9 +4,16 @@ import { toolRegistry } from './tools/ToolRegistry';
 import { SettingsService } from '../services/SettingsService';
 import { DeepResearchIntegration } from './research/DeepResearchIntegration';
 import { logger } from '../utils/ColorLogger';
-import fs from 'fs/promises';
-import path from 'path';
+import * as fs from 'fs';
+import * as path from 'path';
 import { spawn } from 'child_process';
+import {
+    TodoItem,
+    createTodoItem,
+    updateTodoStatus,
+    getTodoStats,
+    ResearchStatus
+} from './research/DeepResearchState';
 
 /**
  * Configuration options for the LangGraphAgent
@@ -15,6 +22,21 @@ export interface RouterLangGraphAgentOptions {
     llmProvider: LLMProvider;
     memoryService: LangChainMemoryService;
     config?: any;
+    enableStateManagement?: boolean;
+    persistState?: boolean;
+}
+
+/**
+ * Agent session state interface
+ */
+export interface AgentSessionState {
+    sessionId: string;
+    startTime: Date;
+    currentStatus: ResearchStatus;
+    todoList: TodoItem[];
+    // Remove benchmark-specific fields
+    // These were moved to the benchmark file as requested
+    metadata: { [key: string]: any };
 }
 
 /**
@@ -24,10 +46,20 @@ export interface RouterLangGraphAgentOptions {
 export class RouterLangGraphAgent {
     private routerAgent: DeepResearchIntegration;
     private llmProvider: LLMProvider;
+    private memoryService: LangChainMemoryService;
     private settingsService: SettingsService | null = null;
+
+    // State management properties
+    private sessionState: AgentSessionState | null = null;
+    private enableStateManagement: boolean;
+    private persistState: boolean;
+    private stateUpdateCallbacks: Array<(state: AgentSessionState) => void> = [];
 
     constructor(options: RouterLangGraphAgentOptions) {
         this.llmProvider = options.llmProvider;
+        this.memoryService = options.memoryService;
+        this.enableStateManagement = options.enableStateManagement !== false; // Default to enabled
+        this.persistState = options.persistState !== false; // Default to enabled
 
         // Create a minimal settings service for compatibility
         this.settingsService = this.createCompatibilitySettingsService();
@@ -40,10 +72,17 @@ export class RouterLangGraphAgent {
             fallbackToOriginal: true
         });
 
-        logger.success('RouterLangGraphAgent', 'Initialized with Deep Research routing', {
+        // Initialize state management
+        if (this.enableStateManagement) {
+            this.initializeState();
+        }
+
+        logger.success('RouterLangGraphAgent', 'Initialized with Deep Research routing and state management', {
             provider: this.llmProvider.getCurrentProvider(),
             deepResearchEnabled: true,
-            fallbackEnabled: true
+            fallbackEnabled: true,
+            stateManagementEnabled: this.enableStateManagement,
+            persistentState: this.persistState
         });
     }
 
@@ -58,30 +97,167 @@ export class RouterLangGraphAgent {
         } as any;
     }
 
+    //##################
+    // State Management Methods
+    //##################
+
+    /**
+     * Initialize agent session state
+     */
+    private initializeState(): void {
+        this.sessionState = {
+            sessionId: `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            startTime: new Date(),
+            currentStatus: ResearchStatus.PLANNING,
+            todoList: [],
+            metadata: {}
+        };
+
+        logger.info('RouterLangGraphAgent', 'Agent state initialized', {
+            sessionId: this.sessionState.sessionId,
+            status: this.sessionState.currentStatus
+        });
+    }
+
+    /**
+     * Get current agent state
+     */
+    public getAgentState(): AgentSessionState | null {
+        return this.sessionState;
+    }
+
+    /**
+     * Get the memory service for external access (used by benchmark)
+     */
+    public getMemoryService(): LangChainMemoryService {
+        return this.memoryService;
+    }
+
+    /**
+     * Update agent status
+     */
+    public updateStatus(status: ResearchStatus): void {
+        if (this.sessionState) {
+            this.sessionState.currentStatus = status;
+            this.notifyStateUpdate();
+
+            logger.info('RouterLangGraphAgent', `Status updated to ${status}`);
+        }
+    }
+
+    /**
+     * Add todo item to agent state
+     */
+    public addTodo(todo: TodoItem): void {
+        if (this.sessionState) {
+            this.sessionState.todoList.push(todo);
+            this.notifyStateUpdate();
+
+            logger.bullet('RouterLangGraphAgent', `Todo added: ${todo.content}`, 1);
+        }
+    }
+
+    /**
+     * Update todo status
+     */
+    public updateTodoStatus(todoId: string, status: 'pending' | 'in_progress' | 'completed'): void {
+        if (this.sessionState) {
+            this.sessionState.todoList = updateTodoStatus(this.sessionState.todoList, todoId, status);
+            this.notifyStateUpdate();
+
+            logger.bullet('RouterLangGraphAgent', `Todo ${todoId} status: ${status}`, 1);
+        }
+    }
+
+    /**
+     * Add conversation context
+     */
+    // Removed benchmark-specific methods as requested by user
+
+    /**
+     * Get todo statistics
+     */
+    public getTodoStats() {
+        if (!this.sessionState) return null;
+        return getTodoStats(this.sessionState.todoList);
+    }
+
+    // Removed LoCoMo-specific initialization as requested by user
+
+    /**
+     * Register state update callback
+     */
+    public onStateUpdate(callback: (state: AgentSessionState) => void): void {
+        this.stateUpdateCallbacks.push(callback);
+    }
+
+    /**
+     * Notify all registered callbacks of state updates
+     */
+    private notifyStateUpdate(): void {
+        if (this.sessionState && this.stateUpdateCallbacks.length > 0) {
+            this.stateUpdateCallbacks.forEach(callback => {
+                try {
+                    callback(this.sessionState!);
+                } catch (error) {
+                    logger.warn('RouterLangGraphAgent', 'State update callback failed', error);
+                }
+            });
+        }
+    }
+
     /**
      * Process a message through the Deep Research system (non-streaming)
      */
     async process(input: string, context?: any): Promise<string> {
         try {
-            console.log('[RouterLangGraphAgent] Processing input with Deep Research routing:', input);
+            // Update state to indicate processing has started
+            if (this.sessionState) {
+                this.updateStatus(ResearchStatus.RESEARCHING);
+
+                // Add processing todo
+                const processingTodo = createTodoItem({
+                    content: `Process query: ${input.slice(0, 50)}${input.length > 50 ? '...' : ''}`,
+                    activeForm: `Processing query: ${input.slice(0, 50)}${input.length > 50 ? '...' : ''}`,
+                    status: 'in_progress',
+                    category: 'processing'
+                });
+                this.addTodo(processingTodo);
+            }
+
+            logger.stage('RouterLangGraphAgent', 'Processing with State Management', input.slice(0, 100));
 
             // Use Deep Research integration for intelligent processing
             const result = await this.routerAgent.processMessage(input, context);
 
+            // Update state based on processing result
+            if (this.sessionState) {
+                const processingTodo = this.sessionState.todoList.find(
+                    t => t.category === 'processing' && t.status === 'in_progress'
+                );
+                if (processingTodo) {
+                    this.updateTodoStatus(processingTodo.id!, 'completed');
+                }
+            }
+
             if (result.usedDeepResearch && result.result !== 'FALLBACK_TO_ORIGINAL') {
-                console.log(`[RouterLangGraphAgent] Deep Research completed in ${result.processingTime}ms`);
+                logger.success('RouterLangGraphAgent', `Deep Research completed in ${result.processingTime}ms`);
+                this.updateStatus(ResearchStatus.SYNTHESIZING);
                 return result.result;
             } else if (result.usedToolAgent) {
-                console.log(`[RouterLangGraphAgent] Tool Agent completed in ${result.processingTime}ms`);
+                logger.success('RouterLangGraphAgent', `Tool Agent completed in ${result.processingTime}ms`);
+                this.updateStatus(ResearchStatus.COMPLETE);
                 return result.result;
             } else {
                 // For direct response cases
-                console.log(`[RouterLangGraphAgent] Direct response completed in ${result.processingTime}ms`);
+                logger.success('RouterLangGraphAgent', `Direct response completed in ${result.processingTime}ms`);
+                this.updateStatus(ResearchStatus.COMPLETE);
                 return result.result;
             }
 
         } catch (error) {
-            console.error('[RouterLangGraphAgent] Processing error:', error);
+            logger.error('RouterLangGraphAgent', 'Processing error', error);
+            this.updateStatus(ResearchStatus.ERROR);
             return `I encountered an error: ${(error as Error).message}`;
         }
     }
@@ -363,7 +539,7 @@ graph TD
         try {
             // First, save the mermaid code to a temporary file
             const mermaidPath = outputPath.replace(/\.png$/i, '.mmd');
-            await fs.writeFile(mermaidPath, mermaidCode, 'utf8');
+            await fs.writeFile(mermaidPath, mermaidCode, 'utf-8');
             console.log(`📝 [RouterLangGraphAgent] Mermaid code saved to: ${mermaidPath}`);
 
             // Try to use mermaid-cli if available

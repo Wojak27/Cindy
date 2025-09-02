@@ -6,6 +6,20 @@
 import { BaseMessage } from '@langchain/core/messages';
 import { Annotation, MessagesAnnotation } from '@langchain/langgraph';
 
+/**
+ * Todo item structure for task management
+ * Matches the existing system interface in TodoListStep.tsx
+ */
+export interface TodoItem {
+    content: string;
+    status: 'pending' | 'in_progress' | 'completed';
+    activeForm: string;
+    id?: string;
+    timestamp?: Date;
+    category?: string;
+}
+
+
 //##################
 // Structured Outputs
 //##################
@@ -127,6 +141,12 @@ export const AgentStateAnnotation = Annotation.Root({
         reducer: (current, update) => update ?? current,
         default: () => '',
     }),
+    
+    // Todo management for research tasks
+    todo_list: Annotation<TodoItem[]>({
+        reducer: overrideReducer,
+        default: () => [],
+    }),
 });
 
 export type AgentState = typeof AgentStateAnnotation.State;
@@ -159,6 +179,18 @@ export const SupervisorStateAnnotation = Annotation.Root({
         reducer: overrideReducer,
         default: () => [],
     }),
+    
+    // Todo management for supervisor tasks
+    supervisor_todos: Annotation<TodoItem[]>({
+        reducer: overrideReducer,
+        default: () => [],
+    }),
+    
+    // Research planning and tracking
+    research_plan: Annotation<string>({
+        reducer: (current, update) => update ?? current,
+        default: () => '',
+    }),
 });
 
 export type SupervisorState = typeof SupervisorStateAnnotation.State;
@@ -190,6 +222,18 @@ export const ResearcherStateAnnotation = Annotation.Root({
     raw_notes: Annotation<string[]>({
         reducer: overrideReducer,
         default: () => [],
+    }),
+    
+    // Todo management for individual researchers
+    researcher_todos: Annotation<TodoItem[]>({
+        reducer: overrideReducer,
+        default: () => [],
+    }),
+    
+    // Task-specific metadata
+    task_metadata: Annotation<{ [key: string]: any }>({
+        reducer: (current, update) => ({ ...current, ...update }),
+        default: () => ({}),
     }),
 });
 
@@ -255,6 +299,9 @@ export const RESEARCH_CONFIG = {
     MIN_RESEARCH_TOPIC_LENGTH: 50,
     MAX_RESEARCH_TOPIC_LENGTH: 2000,
     DEFAULT_RESEARCH_DEPTH: 3,
+    // Todo management configuration
+    MAX_TODOS_PER_TASK: 20,
+    DEFAULT_TODO_CATEGORIES: ['planning', 'research', 'analysis', 'synthesis', 'validation']
 } as const;
 
 /**
@@ -281,3 +328,89 @@ export interface ExtendedAgentState extends AgentState {
         description: string;
     };
 }
+
+//##################
+// Todo Management Helper Functions
+//##################
+
+/**
+ * Create a new todo item with proper structure
+ */
+export function createTodoItem({
+    content,
+    activeForm,
+    status = 'pending',
+    category,
+    id
+}: {
+    content: string;
+    activeForm: string;
+    status?: 'pending' | 'in_progress' | 'completed';
+    category?: string;
+    id?: string;
+}): TodoItem {
+    return {
+        id: id || `todo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        content,
+        activeForm,
+        status,
+        timestamp: new Date(),
+        category
+    };
+}
+
+/**
+ * Update todo status in a todo list
+ */
+export function updateTodoStatus(
+    todos: TodoItem[],
+    todoId: string,
+    newStatus: 'pending' | 'in_progress' | 'completed'
+): TodoItem[] {
+    return todos.map(todo => 
+        todo.id === todoId 
+            ? { ...todo, status: newStatus }
+            : todo
+    );
+}
+
+/**
+ * Add todo to list with proper override structure
+ */
+export function addTodoToState(todos: TodoItem[], newTodo: TodoItem): { type: 'override'; value: TodoItem[] } {
+    const updatedTodos = [...todos, newTodo];
+    return createOverride(updatedTodos);
+}
+
+/**
+ * Remove completed todos from list
+ */
+export function removeCompletedTodos(todos: TodoItem[]): { type: 'override'; value: TodoItem[] } {
+    const activeTodos = todos.filter(todo => todo.status !== 'completed');
+    return createOverride(activeTodos);
+}
+
+/**
+ * Get todo statistics
+ */
+export function getTodoStats(todos: TodoItem[]): {
+    total: number;
+    pending: number;
+    inProgress: number;
+    completed: number;
+    completionRate: number;
+} {
+    const total = todos.length;
+    const pending = todos.filter(todo => todo.status === 'pending').length;
+    const inProgress = todos.filter(todo => todo.status === 'in_progress').length;
+    const completed = todos.filter(todo => todo.status === 'completed').length;
+    
+    return {
+        total,
+        pending,
+        inProgress,
+        completed,
+        completionRate: total > 0 ? (completed / total) * 100 : 0
+    };
+}
+

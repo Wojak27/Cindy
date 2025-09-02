@@ -10,6 +10,7 @@ import { BaseMessage, HumanMessage, AIMessage, SystemMessage } from '@langchain/
 import { wrapSDK } from "langsmith/wrappers";
 import axios from 'axios';
 import { logger } from '../utils/ColorLogger';
+import { getLangSmithService } from './LangSmithService';
 
 interface LLMConfig {
     provider: 'openai' | 'ollama' | 'anthropic' | 'google' | 'cohere' | 'azure' | 'huggingface' | 'openrouter' | 'groq' | 'auto';
@@ -138,7 +139,33 @@ export class LLMProvider extends EventEmitter {
             await this.testConnections();
 
             // Create the model based on available providers
-            this.model = wrapSDK(this.createModel());
+            const baseModel = this.createModel();
+            
+            // Enhanced LangSmith wrapping with proper error handling
+            const langSmithService = getLangSmithService();
+            try {
+                if (langSmithService.isConfigured()) {
+                    // Test connection first
+                    const connectionTest = await langSmithService.testConnection();
+                    if (connectionTest.success) {
+                        this.model = langSmithService.wrapModel(baseModel, {
+                            provider: this.currentProvider,
+                            modelInitialization: true,
+                            timestamp: new Date().toISOString()
+                        });
+                        logger.success('LLMProvider', `Model wrapped with enhanced LangSmith service for ${this.currentProvider}`);
+                    } else {
+                        logger.warn('LLMProvider', 'LangSmith connection test failed, using basic wrapper', connectionTest.error);
+                        this.model = wrapSDK(baseModel);
+                    }
+                } else {
+                    this.model = wrapSDK(baseModel);
+                    logger.info('LLMProvider', 'Using basic LangSmith wrapper (enhanced service not configured)');
+                }
+            } catch (langsmithError) {
+                logger.warn('LLMProvider', 'LangSmith integration failed, using unwrapped model', langsmithError);
+                this.model = baseModel;
+            }
 
             if (!this.model) {
                 throw new Error('No LLM providers are available');

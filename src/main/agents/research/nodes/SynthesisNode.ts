@@ -7,6 +7,7 @@ import { BaseMessage, HumanMessage, AIMessage } from '@langchain/core/messages';
 import { LLMProvider } from '../../../services/LLMProvider';
 import { AgentState } from '../DeepResearchState';
 import { DeepResearchConfiguration } from '../DeepResearchConfig';
+import { logger } from '../../../utils/ColorLogger';
 
 /**
  * Synthesis node that creates the final research report
@@ -16,12 +17,12 @@ export function createSynthesisNode(
     config: DeepResearchConfiguration
 ) {
     return async (state: AgentState): Promise<Partial<AgentState>> => {
-        console.log('[SynthesisNode] ===== SYNTHESIS NODE STARTING =====');
-        console.log('[SynthesisNode] Input state analysis:');
-        console.log(`[SynthesisNode] - research_brief: ${state.research_brief ? 'EXISTS' : 'NULL'} (${state.research_brief?.length || 0} chars)`);
-        console.log(`[SynthesisNode] - notes: ${state.notes?.length || 0} items`);
-        console.log(`[SynthesisNode] - raw_notes: ${state.raw_notes?.length || 0} items`);
-        console.log(`[SynthesisNode] - supervisor_messages: ${state.supervisor_messages?.length || 0} items`);
+        logger.stage('SynthesisNode', 'Starting Report Synthesis', 'Compiling research into final report');
+        logger.info('SynthesisNode', 'Input state analysis');
+        logger.keyValue('SynthesisNode', 'research_brief', state.research_brief ? `EXISTS (${state.research_brief.length} chars)` : 'NULL', 1);
+        logger.keyValue('SynthesisNode', 'notes', `${state.notes?.length || 0} items`, 1);
+        logger.keyValue('SynthesisNode', 'raw_notes', `${state.raw_notes?.length || 0} items`, 1);
+        logger.keyValue('SynthesisNode', 'supervisor_messages', `${state.supervisor_messages?.length || 0} items`, 1);
         
         try {
             // Collect all research materials
@@ -32,48 +33,50 @@ export function createSynthesisNode(
                 supervisorMessages: state.supervisor_messages || []
             };
 
-            console.log(`[SynthesisNode] Material analysis:`);
-            console.log(`[SynthesisNode] - processedNotes: ${researchMaterials.processedNotes.length} items`);
-            console.log(`[SynthesisNode] - rawNotes: ${researchMaterials.rawNotes.length} items`);
-            console.log(`[SynthesisNode] - supervisorMessages: ${researchMaterials.supervisorMessages.length} items`);
+            logger.info('SynthesisNode', 'Material analysis complete');
+            logger.keyValue('SynthesisNode', 'processedNotes', `${researchMaterials.processedNotes.length} items`, 1);
+            logger.keyValue('SynthesisNode', 'rawNotes', `${researchMaterials.rawNotes.length} items`, 1);
+            logger.keyValue('SynthesisNode', 'supervisorMessages', `${researchMaterials.supervisorMessages.length} items`, 1);
 
             // Debug: Show sample content if available
             if (researchMaterials.processedNotes.length > 0) {
-                console.log(`[SynthesisNode] - First processed note preview: ${researchMaterials.processedNotes[0].substring(0, 100)}...`);
+                logger.debug('SynthesisNode', 'First processed note preview', 
+                    researchMaterials.processedNotes[0].substring(0, 100) + '...');
             }
             if (researchMaterials.rawNotes.length > 0) {
-                console.log(`[SynthesisNode] - First raw note preview: ${researchMaterials.rawNotes[0].substring(0, 100)}...`);
+                logger.debug('SynthesisNode', 'First raw note preview', 
+                    researchMaterials.rawNotes[0].substring(0, 100) + '...');
             }
 
             // Generate the final report
-            console.log('[SynthesisNode] Calling generateFinalReport...');
+            logger.step('SynthesisNode', 'Generating final report', 'running');
             const finalReport = await generateFinalReport(
                 researchMaterials,
                 llmProvider,
                 config
             );
 
-            console.log(`[SynthesisNode] ===== FINAL REPORT GENERATED =====`);
-            console.log(`[SynthesisNode] Report length: ${finalReport.length} characters`);
-            console.log(`[SynthesisNode] Report preview: ${finalReport.substring(0, 200)}...`);
+            logger.complete('SynthesisNode', 'Final report generated');
+            logger.keyValue('SynthesisNode', 'Report length', `${finalReport.length} characters`);
+            logger.debug('SynthesisNode', 'Report preview', finalReport.substring(0, 200) + '...');
 
             const result = {
                 final_report: finalReport,
                 messages: [...state.messages, new AIMessage({ content: finalReport })]
             };
 
-            console.log('[SynthesisNode] ===== SYNTHESIS NODE COMPLETE =====');
-            console.log('[SynthesisNode] Returning state with final_report set');
+            logger.success('SynthesisNode', 'Synthesis node completed successfully');
+            logger.info('SynthesisNode', 'Returning state with final_report set');
 
             return result;
 
         } catch (error: any) {
-            console.error('[SynthesisNode] ===== SYNTHESIS ERROR =====');
-            console.error('[SynthesisNode] Error during synthesis:', error);
-            console.error('[SynthesisNode] Error stack:', error.stack);
+            logger.error('SynthesisNode', 'Synthesis error occurred');
+            logger.error('SynthesisNode', 'Error during synthesis', error);
+            // Error details already logged by logger.error
             
             const errorReport = generateErrorReport(state, error);
-            console.log(`[SynthesisNode] Generated error report (${errorReport.length} characters)`);
+            logger.warn('SynthesisNode', `Generated error report (${errorReport.length} characters)`);
             
             return {
                 final_report: errorReport,
@@ -97,34 +100,38 @@ async function generateFinalReport(
     config: DeepResearchConfiguration
 ): Promise<string> {
     
-    console.log('[generateFinalReport] Preparing research content...');
+    logger.step('generateFinalReport', 'Preparing research content', 'running');
     // Prepare research content for synthesis
     const researchContent = prepareResearchContent(materials);
-    console.log(`[generateFinalReport] Research content prepared (${researchContent.length} characters)`);
+    logger.success('generateFinalReport', `Research content prepared (${researchContent.length} characters)`);
     
     // Build the synthesis prompt
-    console.log('[generateFinalReport] Building synthesis prompt...');
+    logger.step('generateFinalReport', 'Building synthesis prompt', 'running');
     const synthesisPrompt = buildSynthesisPrompt(materials.researchBrief, researchContent);
-    console.log(`[generateFinalReport] Synthesis prompt built (${synthesisPrompt.length} characters)`);
+    logger.success('generateFinalReport', `Synthesis prompt built (${synthesisPrompt.length} characters)`);
     
     try {
-        console.log('[generateFinalReport] Invoking LLM provider...');
+        logger.info('generateFinalReport', 'Invoking LLM provider for final report generation');
+        const startTime = Date.now();
         const result = await llmProvider.invoke([
             new HumanMessage({ content: synthesisPrompt })
         ]);
 
         const finalReport = (result.content as string).trim();
-        console.log(`[generateFinalReport] LLM response received (${finalReport.length} characters)`);
+        const duration = Date.now() - startTime;
+        logger.success('generateFinalReport', `LLM response received in ${duration}ms (${finalReport.length} characters)`);
 
         if (!finalReport || finalReport.length < 50) {
-            console.warn('[generateFinalReport] Warning: Generated report seems too short');
-            console.warn(`[generateFinalReport] Report content: "${finalReport}"`);
+            logger.warn('generateFinalReport', 'Generated report seems too short', {
+                length: finalReport.length,
+                content: finalReport
+            });
         }
 
         return finalReport;
 
     } catch (error) {
-        console.error('[generateFinalReport] Error generating final report:', error);
+        logger.error('generateFinalReport', 'Error generating final report', error);
         throw error;
     }
 }
@@ -138,16 +145,16 @@ function prepareResearchContent(materials: {
     rawNotes: string[];
     supervisorMessages: BaseMessage[];
 }): string {
-    console.log('[prepareResearchContent] Preparing research content...');
-    console.log(`[prepareResearchContent] - processedNotes: ${materials.processedNotes.length} items`);
-    console.log(`[prepareResearchContent] - rawNotes: ${materials.rawNotes.length} items`);
-    console.log(`[prepareResearchContent] - supervisorMessages: ${materials.supervisorMessages.length} items`);
+    logger.info('prepareResearchContent', 'Preparing research content');
+    logger.keyValue('prepareResearchContent', 'processedNotes', `${materials.processedNotes.length} items`, 1);
+    logger.keyValue('prepareResearchContent', 'rawNotes', `${materials.rawNotes.length} items`, 1);
+    logger.keyValue('prepareResearchContent', 'supervisorMessages', `${materials.supervisorMessages.length} items`, 1);
     
     let content = '';
 
     // Add processed research notes (primary source)
     if (materials.processedNotes.length > 0) {
-        console.log('[prepareResearchContent] Adding processed research findings...');
+        logger.step('prepareResearchContent', 'Adding processed research findings', 'running');
         content += '## Processed Research Findings\n\n';
         materials.processedNotes.forEach((note, index) => {
             content += `### Research Finding ${index + 1}\n${note}\n\n`;
@@ -156,14 +163,14 @@ function prepareResearchContent(materials: {
 
     // Add relevant supervisor insights
     if (materials.supervisorMessages.length > 0) {
-        console.log('[prepareResearchContent] Adding supervisor insights...');
+        logger.step('prepareResearchContent', 'Adding supervisor insights', 'running');
         content += '## Research Process Notes\n\n';
         const relevantMessages = materials.supervisorMessages
             .filter(msg => msg._getType() === 'ai')
             .slice(-3) // Last 3 supervisor messages
             .map(msg => msg.content);
         
-        console.log(`[prepareResearchContent] Found ${relevantMessages.length} relevant supervisor messages`);
+        logger.debug('prepareResearchContent', `Found ${relevantMessages.length} relevant supervisor messages`);
         if (relevantMessages.length > 0) {
             content += relevantMessages.join('\n\n') + '\n\n';
         }
@@ -171,10 +178,10 @@ function prepareResearchContent(materials: {
 
     // Add raw notes as supporting material (if processed notes are insufficient)
     if (materials.processedNotes.length < 2 && materials.rawNotes.length > 0) {
-        console.log('[prepareResearchContent] Adding raw notes as supporting material...');
+        logger.step('prepareResearchContent', 'Adding raw notes as supporting material', 'running');
         content += '## Additional Research Data\n\n';
         const validRawNotes = materials.rawNotes.filter(note => note.length > 50);
-        console.log(`[prepareResearchContent] Found ${validRawNotes.length} valid raw notes`);
+        logger.debug('prepareResearchContent', `Found ${validRawNotes.length} valid raw notes`);
         
         validRawNotes
             .slice(-5) // Last 5 raw notes
@@ -184,11 +191,11 @@ function prepareResearchContent(materials: {
     }
 
     if (!content || content.trim() === '') {
-        console.warn('[prepareResearchContent] ⚠️ No research content available, generating basic content');
+        logger.warn('prepareResearchContent', 'No research content available, generating basic content');
         content = `## Research Request\n${materials.researchBrief}\n\n## Status\nNo research data was collected. This may be due to:\n- Search tools being unavailable\n- Network connectivity issues\n- Tool configuration problems\n\nPlease try the research request again or check the system configuration.`;
     }
 
-    console.log(`[prepareResearchContent] Prepared content length: ${content.length} characters`);
+    logger.complete('prepareResearchContent', `Prepared content (${content.length} characters)`);
     return content;
 }
 

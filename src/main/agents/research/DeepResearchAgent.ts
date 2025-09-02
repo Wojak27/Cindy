@@ -189,7 +189,9 @@ export class DeepResearchAgent {
                     research_brief: trimThinkTags(state.research_brief) || '',
                     notes: [],
                     research_iterations: 0,
-                    raw_notes: []
+                    raw_notes: [],
+                    supervisor_todos: [],
+                    research_plan: ''
                 };
 
 
@@ -340,7 +342,9 @@ Generate specific, actionable research topics (one per line) that will help comp
             tool_call_iterations: 0,
             research_topic: researchTopic,
             compressed_research: '',
-            raw_notes: []
+            raw_notes: [],
+            researcher_todos: [],
+            task_metadata: {}
         };
 
         const result = await this.researcherGraph.invoke(researcherState);
@@ -362,7 +366,8 @@ Generate specific, actionable research topics (one per line) that will help comp
                 research_brief: null,
                 raw_notes: [],
                 notes: [],
-                final_report: ''
+                final_report: '',
+                todo_list: []
             };
 
             console.log('[DeepResearchAgent] Initial state created:');
@@ -449,7 +454,8 @@ Generate specific, actionable research topics (one per line) that will help comp
                 research_brief: null,
                 raw_notes: [],
                 notes: [],
-                final_report: ''
+                final_report: '',
+                todo_list: []
             };
 
             // Stream through the graph (if supported)

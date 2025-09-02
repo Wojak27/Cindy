@@ -16,6 +16,8 @@ import { HumanMessage } from '@langchain/core/messages';
 import { parseRoutingResponse } from '../schemas/routing';
 import { getApiKeyService } from '../../services/ApiKeyService';
 import { logger } from '../../utils/ColorLogger';
+import { setupLangSmithForResearch } from '../../services/LangSmithService';
+import { z } from 'zod';
 
 /**
  * Integration options for Deep Research
@@ -112,16 +114,16 @@ export class DeepResearchIntegration {
             // Prefer APIs with available keys (priority order: most reliable first)
             if (apiKeys.braveApiKey) {
                 logger.success('DeepResearchIntegration', 'Using Brave Search (primary - reliable, privacy-focused)');
-                return 'brave';        
+                return 'brave';
             } else if (apiKeys.tavilyApiKey) {
                 logger.success('DeepResearchIntegration', 'Using Tavily Search (secondary - AI-optimized)');
-                return 'tavily';       
+                return 'tavily';
             } else if (apiKeys.serpApiKey) {
                 logger.success('DeepResearchIntegration', 'Using SerpAPI (tertiary - Google results)');
-                return 'serpapi';      
+                return 'serpapi';
             } else {
                 logger.warn('DeepResearchIntegration', 'Using DuckDuckGo (fallback - free but VQD issues)');
-                return 'duckduckgo';   
+                return 'duckduckgo';
             }
         } catch (error) {
             logger.error('DeepResearchIntegration', 'Error checking API keys, using DuckDuckGo fallback', error);
@@ -166,12 +168,18 @@ export class DeepResearchIntegration {
             // Use centralized API key service for consistent key loading
             const apiKeyService = getApiKeyService(this.settingsService);
             const apiKeys = apiKeyService.getAllApiKeys();
-            
+
             logger.stage('DeepResearchIntegration', 'Tool Initialization', 'Loading tools with centralized API key service');
+
+            // Initialize LangSmith for research tracing
+            const langSmithSession = await setupLangSmithForResearch('deep-research-agent');
+            if (langSmithSession) {
+                logger.success('DeepResearchIntegration', `LangSmith session started: ${langSmithSession.sessionId}`);
+            }
             logger.section('DeepResearchIntegration', 'API Key Diagnostics', () => {
                 apiKeyService.logDiagnostics();
             });
-            
+
             const toolConfig = {
                 // API keys from centralized service
                 braveApiKey: apiKeys.braveApiKey,
@@ -207,16 +215,26 @@ export class DeepResearchIntegration {
         route: 'deep_research' | 'tool_agent' | 'direct_response';
         response?: string;
     }> {
+        const responseSchema = z.object({
+            route: z.enum(['DEEP_RESEARCH', 'TOOL_AGENT', 'DIRECT']),
+            response: z.string().min(1).optional()
+        });
+        const routingPrompt = `Route this message to one of three options. Respond with ONLY one of these exact phrases if they apply:
 
-        const routingPrompt = `Route this message to one of three options. Respond with ONLY one of these exact phrases:
+            DEEP_RESEARCH - for research requests
+            TOOL_AGENT - for weather, maps, searches  
 
-            ROUTE_DEEP_RESEARCH - for research requests
-            ROUTE_TOOL_AGENT - for weather, maps, searches  
-            ROUTE_DIRECT [your response] - for simple questions
+            For simple questions you can answer directly, respond with:
 
-            Message: "${message}"
+            DIRECT your response to the human
 
-            Your routing decision:`;
+            Examples:
+            Message: "What's the weather in New York?" => TOOL_AGENT
+            Message: "Explain quantum computing in simple terms" => DEEP_RESEARCH
+            Message: "Who won the World Series in 2020?" => DIRECT The Los Angeles Dodgers won the World Series in 2020.
+            Message: "Tell me a joke" => DIRECT Why don't scientists trust atoms? Because they make up everything!
+
+            Message: "${message}"`;
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
@@ -227,10 +245,33 @@ export class DeepResearchIntegration {
                 const result = await this.llmProvider.invoke([
                     new HumanMessage({ content: routingPrompt })
                 ]);
-
                 // Clean response text and remove thinking tags
                 const thinkTagRegex = /<think[^>]*>([\s\S]*?)<\/think>/g;
                 const cleanResponse = (result.content as string).replace(thinkTagRegex, '').trim();
+                // Validate response using Zod schema
+                const parseResult = responseSchema.safeParse({
+                    route: cleanResponse.trim().toUpperCase().startsWith('DEEP_RESEARCH') ? 'DEEP_RESEARCH' :
+                        cleanResponse.trim().toUpperCase().startsWith('TOOL_AGENT') ? 'TOOL_AGENT' :
+                            cleanResponse.trim().toUpperCase().startsWith('DIRECT') ? 'DIRECT' : '',
+                    response: cleanResponse.trim().toUpperCase().startsWith('DIRECT') ?
+                        cleanResponse.trim().substring(6).trim() : undefined
+                });
+                if (!parseResult.success) {
+                    logger.warn('DeepResearchIntegration', `Routing response validation failed on attempt ${attempt}`, {
+                        errors: parseResult.error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`),
+                        response: result.content
+                    });
+                    if (attempt < maxRetries) {
+                        logger.info('DeepResearchIntegration', `Retrying routing decision (attempt ${attempt + 1}/${maxRetries})`);
+                        // Add a small delay before retry
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                        continue;
+                    } else {
+                        logger.error('DeepResearchIntegration', 'All routing attempts failed validation');
+                        break;
+                    }
+                }
+
 
                 logger.debug('DeepResearchIntegration', `Routing response (attempt ${attempt})`, { response: cleanResponse });
 

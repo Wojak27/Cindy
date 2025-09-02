@@ -9,6 +9,7 @@ import { toolRegistry } from '../../tools/ToolRegistry';
 import { ResearcherState, ResearcherOutputState } from '../DeepResearchState';
 import { DeepResearchConfiguration } from '../DeepResearchConfig';
 import { logger } from '../../../utils/ColorLogger';
+import { getLangSmithService } from '../../../services/LangSmithService';
 
 /**
  * Researcher node that conducts detailed research on specific topics
@@ -46,11 +47,22 @@ export function createResearcherNode(
 
             logger.complete('ResearcherNode', 'Research node completed', compressedResearch.length);
             logger.keyValue('ResearcherNode', 'Compressed research length', `${compressedResearch.length} characters`);
+            //display the first 500 characters of the compressed research in the logs
+            logger.bullet('ResearcherNode', `Compressed Research Preview: ${compressedResearch.slice(0, 500)}${compressedResearch.length > 500 ? '...' : ''}`, 1);
 
             const result = {
                 compressed_research: compressedResearch,
                 raw_notes: researchResults.rawNotes
             };
+
+            // Log agent execution to LangSmith
+            const langSmithService = getLangSmithService();
+            langSmithService.logAgentExecution(
+                'ResearcherNode',
+                { research_topic: state.research_topic },
+                result,
+                { iterations: state.tool_call_iterations }
+            );
 
             return result;
 
@@ -128,12 +140,12 @@ async function conductResearchWithTools(
                     logger.toolStatus('conductResearchWithTools', searchTool, 'starting', 'Executing search');
                     const searchResult = await toolRegistry.executeTool(searchTool, { input: query });
                     const duration = Date.now() - startTime;
-                    
+
                     logger.toolStatus('conductResearchWithTools', searchTool, 'success', `Completed in ${duration}ms`);
                     const resultText = typeof searchResult === 'string' ? searchResult : JSON.stringify(searchResult);
-                    
-                    logger.toolCall('conductResearchWithTools', searchTool, 
-                        { input: query }, 
+
+                    logger.toolCall('conductResearchWithTools', searchTool,
+                        { input: query },
                         resultText.slice(0, 500) + (resultText.length > 500 ? '...' : ''),
                         duration
                     );

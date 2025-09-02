@@ -13,7 +13,7 @@ import { createSerpAPISearchTool } from './search/SerpAPISearchTool';
 import { createTavilySearchTool } from './search/TavilySearchTool';
 import { createVectorSearchTool } from './vector/VectorSearchTool';
 import { createAccuWeatherTool } from './weather/AccuWeatherTool';
-import { getApiKeyService, ApiKeyConfig } from '../../services/ApiKeyService';
+import { getApiKeyService } from '../../services/ApiKeyService';
 import { createMapsDisplayTool } from './maps/MapsDisplayTool';
 import { createEmailSearchTool } from './connectors/EmailSearchTool';
 import { createReferenceSearchTool } from './connectors/ReferenceSearchTool';
@@ -142,9 +142,9 @@ export class ToolLoader {
         // Use centralized API key service for consistent key loading
         const apiKeyService = getApiKeyService();
         const apiKeys = apiKeyService.getAllApiKeys();
-        
+
         console.log('[ToolLoader] Loading search tools with centralized API key service');
-        
+
         // Brave Search (primary - reliable with API key)
         if (enabledTools.brave !== false && apiKeys.braveApiKey) {
             try {
@@ -268,11 +268,11 @@ export class ToolLoader {
             try {
                 const apiKeyService = getApiKeyService();
                 const apiKeys = apiKeyService.getAllApiKeys();
-                
+
                 // Use API key from service, fallback to hardcoded for testing
                 const accuWeatherKey = apiKeys.accuWeatherApiKey || "7FW644HhxLVHH7r5bVYchwTPle2jo0sC";
                 const spec = createAccuWeatherTool(accuWeatherKey);
-                
+
                 if (spec && !this.loadedTools.has(spec.name)) {
                     toolRegistry.registerTool(spec);
                     this.loadedTools.add(spec.name);
@@ -326,7 +326,7 @@ export class ToolLoader {
         if (enabledTools.email !== false && (connectors.gmail || connectors.outlook)) {
             try {
                 const emailConnectors: { gmail?: GmailConnector; outlook?: OutlookConnector } = {};
-                
+
                 if (connectors.gmail && connectors.gmail.isConnected()) {
                     emailConnectors.gmail = connectors.gmail;
                 }
@@ -353,7 +353,7 @@ export class ToolLoader {
         if (enabledTools.references !== false && (connectors.zotero || connectors.mendeley)) {
             try {
                 const refConnectors: { zotero?: ZoteroConnector; mendeley?: MendeleyConnector } = {};
-                
+
                 if (connectors.zotero && connectors.zotero.isConnected()) {
                     refConnectors.zotero = connectors.zotero;
                 }
@@ -459,7 +459,7 @@ export class ToolLoader {
                 case 'email_search':
                     if (config.connectors && (config.connectors.gmail || config.connectors.outlook)) {
                         const emailConnectors: { gmail?: GmailConnector; outlook?: OutlookConnector } = {};
-                        
+
                         if (config.connectors.gmail && config.connectors.gmail.isConnected()) {
                             emailConnectors.gmail = config.connectors.gmail;
                         }
@@ -481,7 +481,7 @@ export class ToolLoader {
                 case 'reference_search':
                     if (config.connectors && (config.connectors.zotero || config.connectors.mendeley)) {
                         const refConnectors: { zotero?: ZoteroConnector; mendeley?: MendeleyConnector } = {};
-                        
+
                         if (config.connectors.zotero && config.connectors.zotero.isConnected()) {
                             refConnectors.zotero = config.connectors.zotero;
                         }

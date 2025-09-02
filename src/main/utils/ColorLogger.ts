@@ -54,12 +54,11 @@ export class ColorLogger {
     static log(level: LogLevel, component: string, message: string, data?: any): void {
         const color = this.colors[level];
         const emoji = this.emojis[level];
-        const timestamp = new Date().toISOString().split('T')[1].split('.')[0];
-        
+
         const formattedMessage = `${emoji} ${color(`[${component}]`)} ${message}`;
-        
+
         console.log(formattedMessage);
-        
+
         if (data !== undefined) {
             console.log(this.colors.data(`   ${JSON.stringify(data, null, 2).split('\n').join('\n   ')}`));
         }
@@ -71,7 +70,7 @@ export class ColorLogger {
     static stage(component: string, title: string, details?: string): void {
         const separator = '═'.repeat(80);
         const emoji = this.emojis.stage;
-        
+
         console.log();
         console.log(this.colors.stage(separator));
         console.log(this.colors.stage(`${emoji} [${component}] ${title.toUpperCase()}`));
@@ -108,9 +107,9 @@ export class ColorLogger {
     static error(component: string, message: string, error?: any): void {
         const emoji = this.emojis.error;
         const errorMsg = `${emoji} ${this.backgrounds.error(`[${component}]`)} ${message}`;
-        
+
         console.error(errorMsg);
-        
+
         if (error) {
             if (error.stack) {
                 console.error(this.colors.error(`   Stack: ${error.stack}`));
@@ -143,12 +142,12 @@ export class ColorLogger {
         const toolIcon = '🛠️';
         const inputIcon = '📥';
         const outputIcon = '📤';
-        
+
         // Tool header
         console.log();
         console.log(`${toolIcon} ${this.colors.tool(`[${component}] TOOL CALL: ${toolName}`)}`);
         console.log(this.colors.data('─'.repeat(60)));
-        
+
         // Input parameters
         console.log(`${inputIcon} ${this.colors.info('Input:')}`);
         if (typeof input === 'object') {
@@ -157,7 +156,7 @@ export class ColorLogger {
         } else {
             console.log(this.colors.data(`   ${input}`));
         }
-        
+
         // Output results (if provided)
         if (output !== undefined) {
             console.log(`${outputIcon} ${this.colors.success('Output:')}`);
@@ -175,13 +174,13 @@ export class ColorLogger {
                 }
             }
         }
-        
+
         // Duration (if provided)
         if (duration !== undefined) {
             const durationColor = duration > 5000 ? this.colors.warning : this.colors.success;
             console.log(`⏱️ ${this.colors.info('Duration:')} ${durationColor(`${duration}ms`)}`);
         }
-        
+
         console.log(this.colors.data('─'.repeat(60)));
         console.log();
     }
@@ -196,48 +195,48 @@ export class ColorLogger {
             success: '✅',
             error: '❌'
         };
-        
+
         const statusColors = {
             starting: chalk.blue,
             running: chalk.yellow,
             success: chalk.green,
             error: chalk.red
         };
-        
+
         const emoji = statusEmojis[status];
         const color = statusColors[status];
         const statusMsg = message || status.toUpperCase();
-        
+
         console.log(`${emoji} ${this.colors.tool(`[${component}]`)} ${color(toolName)}: ${color(statusMsg)}`);
     }
 
     /**
      * Log multiple tool results in a summary format
      */
-    static toolSummary(component: string, toolResults: Array<{tool: string; success: boolean; duration?: number; error?: string}>): void {
+    static toolSummary(component: string, toolResults: Array<{ tool: string; success: boolean; duration?: number; error?: string }>): void {
         console.log();
         console.log(`📋 ${this.colors.stage(`[${component}] TOOL EXECUTION SUMMARY`)}`);
         console.log(this.colors.data('═'.repeat(80)));
-        
+
         let totalDuration = 0;
         let successCount = 0;
         let failureCount = 0;
-        
+
         toolResults.forEach((result, index) => {
             const status = result.success ? '✅' : '❌';
             const statusColor = result.success ? this.colors.success : this.colors.error;
             const duration = result.duration ? ` (${result.duration}ms)` : '';
-            
+
             console.log(`   ${index + 1}. ${status} ${statusColor(result.tool)}${this.colors.data(duration)}`);
-            
+
             if (!result.success && result.error) {
                 console.log(`      ${this.colors.error(`Error: ${result.error}`)}`);
             }
-            
+
             if (result.duration) totalDuration += result.duration;
             result.success ? successCount++ : failureCount++;
         });
-        
+
         console.log(this.colors.data('─'.repeat(80)));
         console.log(`📊 ${this.colors.info('Results:')} ${this.colors.success(`${successCount} successful`)} | ${this.colors.error(`${failureCount} failed`)} | ${this.colors.data(`${totalDuration}ms total`)}`);
         console.log();
@@ -260,17 +259,17 @@ export class ColorLogger {
             complete: '✅',
             failed: '❌'
         };
-        
+
         const statusColors = {
             pending: chalk.yellow,
             running: chalk.blue,
             complete: chalk.green,
             failed: chalk.red
         };
-        
+
         const emoji = statusEmojis[status];
         const color = statusColors[status];
-        
+
         console.log(`   ${emoji} ${color(step)}`);
     }
 
@@ -290,10 +289,10 @@ export class ColorLogger {
         const indentation = '  '.repeat(indent);
         const arrow = this.emojis.arrow;
         const formattedKey = this.colors.info(key);
-        const formattedValue = typeof value === 'string' ? 
-            this.colors.data(value) : 
+        const formattedValue = typeof value === 'string' ?
+            this.colors.data(value) :
             this.colors.data(JSON.stringify(value));
-        
+
         console.log(`${indentation}${arrow} ${formattedKey}: ${formattedValue}`);
     }
 

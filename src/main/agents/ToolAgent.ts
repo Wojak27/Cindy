@@ -7,6 +7,7 @@ import { LLMProvider } from '../services/LLMProvider';
 import { toolRegistry } from './tools/ToolRegistry';
 import { HumanMessage } from '@langchain/core/messages';
 import { logger } from '../utils/ColorLogger';
+import { getLangSmithService } from '../services/LangSmithService';
 
 /**
  * Configuration options for the Tool Agent
@@ -60,6 +61,20 @@ export class ToolAgent {
                 try {
                     const result = await toolRegistry.executeTool(toolCall.tool, toolCall.params);
                     const duration = Date.now() - startTime;
+                    
+                    // Log to LangSmith for monitoring
+                    try {
+                        const langSmithService = getLangSmithService();
+                    langSmithService.logToolExecution(
+                        toolCall.tool, 
+                        toolCall.params, 
+                        result.result, 
+                        duration,
+                        { agent: 'ToolAgent', success: result.success }
+                    );
+                    } catch (langsmithError) {
+                        // Ignore LangSmith errors to prevent disrupting tool execution
+                    }
                     
                     // Log detailed tool call with input/output
                     logger.toolCall('ToolAgent', toolCall.tool, toolCall.params, result, duration);
@@ -165,6 +180,20 @@ export class ToolAgent {
                 try {
                     const result = await toolRegistry.executeTool(toolCall.tool, toolCall.params);
                     const duration = Date.now() - startTime;
+                    
+                    // Log to LangSmith for monitoring
+                    try {
+                        const langSmithService = getLangSmithService();
+                    langSmithService.logToolExecution(
+                        toolCall.tool, 
+                        toolCall.params, 
+                        result.result, 
+                        duration,
+                        { agent: 'ToolAgent', success: result.success }
+                    );
+                    } catch (langsmithError) {
+                        // Ignore LangSmith errors to prevent disrupting tool execution
+                    }
                     
                     // Log detailed tool call (but don't stream the full output to avoid UI clutter)
                     logger.toolCall('ToolAgent', toolCall.tool, toolCall.params, result, duration);
@@ -395,11 +424,12 @@ Only include citations for web search, wikipedia, or research tools that provide
                 // If no title-URL pairs found, extract standalone URLs and try to infer titles
                 if (sources.length === 0) {
                     urls.forEach((url, index) => {
-                        if (!sources.find(s => s.url === url)) {
+                        if (typeof url === 'string' && !sources.find(s => s.url === url)) {
                             // Try to extract domain as title
-                            const domain = url.match(/https?:\/\/([^\/]+)/)?.[1] || 'Source';
+                            const urlString: string = url;
+                            const domain = urlString.match(/https?:\/\/([^\/]+)/)?.[1] || 'Source';
                             const title = `${domain.replace('www.', '')} - Result ${index + 1}`;
-                            sources.push({ title, url });
+                            sources.push({ title, url: urlString });
                         }
                     });
                 }

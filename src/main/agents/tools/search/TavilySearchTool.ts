@@ -6,6 +6,7 @@ import { Tool } from '@langchain/core/tools';
 import { ToolCategory } from '../ToolDefinitions';
 import type { ToolSpecification } from '../ToolDefinitions';
 import { toolRegistry } from '../ToolRegistry';
+import { logger } from '../../../utils/ColorLogger';
 
 // Dynamic import to handle optional dependency
 let TavilySearchResults: any = null;
@@ -34,7 +35,7 @@ export class TavilySearchTool extends Tool {
         super();
         this.apiKey = options.apiKey || '';
         this.maxResults = options.maxResults || 5;
-        
+
         if (TavilySearchResults && this.apiKey) {
             this.tavilySearch = new TavilySearchResults({
                 maxResults: this.maxResults,
@@ -61,8 +62,9 @@ export class TavilySearchTool extends Tool {
         }
 
         try {
-            console.log(`[TavilySearchTool] Searching with Tavily for: "${input}"`);
-            
+            // console.log(`[TavilySearchTool] Searching with Tavily for: "${input}"`);
+            logger.info('TavilySearchTool', `Searching with Tavily for: "${input}"`);
+
             if (!input || input.trim().length === 0) {
                 return 'Please provide a search query for Tavily.';
             }
@@ -75,38 +77,38 @@ export class TavilySearchTool extends Tool {
 
             // Use the underlying Tavily tool
             const result = await this.tavilySearch._call(sanitizedQuery);
-            
+
             if (!result || result.length === 0) {
                 return `No search results found for "${sanitizedQuery}" using Tavily AI Search.`;
             }
 
             console.log(`[TavilySearchTool] Successfully retrieved Tavily results`);
             return result;
-            
+
         } catch (error: any) {
             console.error('[TavilySearchTool] Search error:', error);
-            
+
             // Handle common Tavily API errors
             if (error.message.includes('API key') || error.message.includes('401')) {
                 return `Tavily API authentication failed. Please check your API key configuration.`;
             }
-            
+
             if (error.message.includes('credits') || error.message.includes('quota') || error.message.includes('limit')) {
                 return `Tavily API quota exceeded. Please check your account limits or upgrade your plan.`;
             }
-            
+
             if (error.message.includes('rate limit') || error.message.includes('429')) {
                 return `Tavily API rate limit exceeded. Please try again in a moment.`;
             }
-            
+
             if (error.message.includes('400')) {
                 return `Invalid search query for Tavily: "${input}". Please try a different search term.`;
             }
-            
+
             if (error.message.includes('timeout') || error.message.includes('network')) {
                 return `Network error with Tavily API. Please check your internet connection and try again.`;
             }
-            
+
             return `Tavily search failed: ${error.message}`;
         }
     }
@@ -128,11 +130,11 @@ export class TavilySearchTool extends Tool {
         if (options.apiKey !== undefined) {
             this.apiKey = options.apiKey;
         }
-        
+
         if (options.maxResults !== undefined) {
             this.maxResults = Math.max(1, Math.min(20, options.maxResults));
         }
-        
+
         // Recreate the Tavily tool with new settings
         if (TavilySearchResults && this.apiKey) {
             this.tavilySearch = new TavilySearchResults({
@@ -178,16 +180,16 @@ export function createTavilySearchTool(options?: {
     }
 
     const tool = new TavilySearchTool(options);
-    
+
     const specification: ToolSpecification = {
         name: 'tavily_search',
         description: tool.description,
         parameters: {
             type: 'object',
             properties: {
-                input: { 
-                    type: 'string', 
-                    description: 'Search query for Tavily' 
+                input: {
+                    type: 'string',
+                    description: 'Search query for Tavily'
                 }
             },
             required: ['input']
@@ -208,7 +210,7 @@ export function createTavilySearchTool(options?: {
             maxResults: options?.maxResults
         }
     };
-    
+
     return specification;
 }
 
