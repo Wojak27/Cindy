@@ -7,6 +7,7 @@ import { ChatCohere } from '@langchain/cohere';
 import { ChatGroq } from '@langchain/groq';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { BaseMessage, HumanMessage, AIMessage, SystemMessage } from '@langchain/core/messages';
+import { wrapSDK } from "langsmith/wrappers";
 import axios from 'axios';
 
 interface LLMConfig {
@@ -136,7 +137,7 @@ export class LLMProvider extends EventEmitter {
             await this.testConnections();
 
             // Create the model based on available providers
-            this.model = await this.createModel();
+            this.model = wrapSDK(this.createModel());
 
             if (!this.model) {
                 throw new Error('No LLM providers are available');
@@ -220,7 +221,7 @@ export class LLMProvider extends EventEmitter {
         console.log('[LLMProvider] Connection test results:', this.connectionStatus);
     }
 
-    private async createModel(): Promise<BaseChatModel | null> {
+    private createModel(): BaseChatModel | null {
         const provider = this.determineProvider();
 
         if (!provider) {
@@ -488,7 +489,6 @@ export class LLMProvider extends EventEmitter {
                             maxRetries: 3,
                         };
 
-                        const { ChatOpenAI } = require('@langchain/openai');
                         this.model = new ChatOpenAI(configWithoutTemp);
                         console.log('[LLMProvider] Recreated model without temperature parameter');
 
@@ -602,7 +602,6 @@ export class LLMProvider extends EventEmitter {
                             maxRetries: 3,
                         };
 
-                        const { ChatOpenAI } = require('@langchain/openai');
                         this.model = new ChatOpenAI(configWithoutTemp);
                         console.log('[LLMProvider] Recreated streaming model without temperature parameter');
 

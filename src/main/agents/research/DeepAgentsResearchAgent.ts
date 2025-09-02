@@ -82,7 +82,7 @@ async function performWebSearch(query: string, maxResults: number): Promise<stri
     try {
         // Import the tool registry dynamically to avoid circular dependencies
         const { toolRegistry } = await import('../tools/ToolRegistry');
-        
+
         // Check if DuckDuckGo search tool is available
         const availableTools = toolRegistry.getAvailableTools();
         if (availableTools.includes('duckduckgo_search')) {
@@ -92,10 +92,10 @@ async function performWebSearch(query: string, maxResults: number): Promise<stri
                 return result;
             }
         }
-        
+
         // Fallback for development/testing
         return `Search results for "${query}" (max ${maxResults} results) - Search tools currently unavailable, using placeholder results for testing.`;
-        
+
     } catch (error) {
         console.error('Error performing web search:', error);
         return `Search failed: ${error instanceof Error ? error.message : String(error)}`;
@@ -140,7 +140,7 @@ Remember: Your response will be the complete research output for this specific t
  * Critique SubAgent for reviewing research
  */
 const critiqueSubAgent: SubAgent = {
-    name: "critique-agent", 
+    name: "critique-agent",
     description: "Used to critique the final report. Give this agent information about how you want it to critique the report.",
     prompt: `You are a dedicated editor and critic. You are tasked with critiquing research reports.
 
@@ -278,7 +278,7 @@ You have access to several tools including internet_search for gathering informa
         if (!deepAgentsModule) {
             throw new Error('DeepAgents module could not be loaded');
         }
-        
+
         const agent = deepAgentsModule.createDeepAgent({
             // Include custom search tool plus all built-in file system tools
             tools: [
@@ -293,7 +293,7 @@ You have access to several tools including internet_search for gathering informa
             subagents: [researchSubAgent, critiqueSubAgent],
             model: this.llmProvider as any, // Cast to compatible type
         });
-        
+
         // Note: withConfig may not be available in current version
         return agent;
     }
@@ -336,13 +336,13 @@ You have access to several tools including internet_search for gathering informa
             // Analyze files in result
             if (result.files) {
                 console.log(`[DeepAgentsResearchAgent] Files found: [${Object.keys(result.files).join(', ')}]`);
-                
+
                 // Check for final_report.md
                 if (result.files['final_report.md']) {
                     const reportContent = result.files['final_report.md'];
                     console.log(`[DeepAgentsResearchAgent] ✅ final_report.md found (${reportContent.length} characters)`);
                     console.log(`[DeepAgentsResearchAgent] Report preview: ${reportContent.substring(0, 200)}...`);
-                    
+
                     if (reportContent.trim().length > 50) {
                         console.log('[DeepAgentsResearchAgent] ===== RETURNING FINAL REPORT =====');
                         return reportContent;
@@ -353,7 +353,7 @@ You have access to several tools including internet_search for gathering informa
                 } else {
                     console.warn('[DeepAgentsResearchAgent] ⚠️ final_report.md not found in files');
                 }
-                
+
                 // Check for other relevant files
                 const otherFiles = Object.keys(result.files).filter(key => key !== 'final_report.md');
                 if (otherFiles.length > 0) {
@@ -375,11 +375,11 @@ You have access to several tools including internet_search for gathering informa
                     const lastMessage = result.messages[result.messages.length - 1];
                     console.log(`[DeepAgentsResearchAgent] Last message type: ${typeof lastMessage}`);
                     console.log(`[DeepAgentsResearchAgent] Last message keys: [${Object.keys(lastMessage || {}).join(', ')}]`);
-                    
+
                     if (lastMessage.content) {
                         console.log(`[DeepAgentsResearchAgent] Last message content length: ${lastMessage.content.length}`);
                         console.log(`[DeepAgentsResearchAgent] Last message preview: ${lastMessage.content.substring(0, 200)}...`);
-                        
+
                         if (lastMessage.content.trim().length > 50) {
                             console.log('[DeepAgentsResearchAgent] ===== RETURNING LAST MESSAGE CONTENT =====');
                             return lastMessage.content;
@@ -401,7 +401,7 @@ You have access to several tools including internet_search for gathering informa
             console.error('[DeepAgentsResearchAgent] 2. Research process completed without synthesis');
             console.error('[DeepAgentsResearchAgent] 3. Tool execution failures preventing research');
             console.error('[DeepAgentsResearchAgent] 4. Agent initialization or configuration issues');
-            
+
             return 'Research completed but no final report generated. The DeepAgent may have encountered issues during the research process. Please check the logs above for detailed diagnostic information.';
 
         } catch (error: any) {
@@ -428,10 +428,6 @@ You have access to several tools including internet_search for gathering informa
         try {
             yield { type: 'progress', content: 'Starting research process...', status: ResearchStatus.CLARIFYING };
 
-            yield { type: 'progress', content: 'Analyzing research requirements...', status: ResearchStatus.PLANNING };
-
-            yield { type: 'progress', content: 'Conducting comprehensive research...', status: ResearchStatus.RESEARCHING };
-
             // Use our enhanced processResearch method which has all the detailed logging
             console.log('[DeepAgentsResearchAgent] Delegating to enhanced processResearch method...');
             const finalReport = await this.processResearch(message);
@@ -454,7 +450,7 @@ You have access to several tools including internet_search for gathering informa
             console.error('[DeepAgentsResearchAgent] Error type:', typeof error);
             console.error('[DeepAgentsResearchAgent] Error message:', error.message);
             console.error('[DeepAgentsResearchAgent] Error stack:', error.stack);
-            
+
             yield {
                 type: 'result',
                 content: `Research failed: ${error.message}`,

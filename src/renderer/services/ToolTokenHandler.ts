@@ -57,15 +57,9 @@ export class ToolTokenHandler {
      * @returns Processed content with tool calls separated
      */
     public processChunk(chunk: string, conversationId: string): ProcessedContent {
-        console.log('🔧 Tool Handler (Renderer) - processChunk called:', {
-            chunkLength: chunk?.length || 0,
-            chunkPreview: chunk?.substring(0, 100) + '...',
-            conversationId,
-            currentStackDepth: this.toolStack.length
-        });
+
 
         if (!chunk) {
-            console.log('🔧 Tool Handler (Renderer): Empty chunk, returning empty result');
             return {
                 displayContent: '',
                 toolCalls: [],
@@ -108,28 +102,19 @@ export class ToolTokenHandler {
             // Handle the token
             if (token === this.TOOL_START_TOKEN || token === this.ERROR_START_TOKEN) {
                 // Start of tool or error block
-                console.log(`🔧 Tool Handler (Renderer): Found ${token}, starting new block`);
                 this.toolStack.push('');
                 inToolBlock = true;
             } else if (token === this.TOOL_END_TOKEN || token === this.ERROR_END_TOKEN) {
                 // End of tool or error block
-                console.log(`🔧 Tool Handler (Renderer): Found ${token}, finishing block`);
                 if (this.toolStack.length > 0) {
                     const toolContent = this.toolStack.pop() || '';
                     const isError = token === this.ERROR_END_TOKEN;
                     const toolCall = this.parseToolCall(toolContent, conversationId, isError);
 
                     if (toolCall) {
-                        console.log('🔧 Tool Handler (Renderer): Successfully parsed tool call:', {
-                            id: toolCall.id,
-                            name: toolCall.name,
-                            parameters: toolCall.parameters,
-                            status: toolCall.status,
-                            error: toolCall.error
-                        });
+
                         result.toolCalls.push(toolCall);
                     } else {
-                        console.warn('🔧 Tool Handler (Renderer): Failed to parse tool call, content was:', toolContent);
                         // If parsing fails, treat it as display content
                         const startToken = isError ? this.ERROR_START_TOKEN : this.TOOL_START_TOKEN;
                         displayContent += startToken + toolContent + token;
@@ -151,12 +136,7 @@ export class ToolTokenHandler {
 
         result.displayContent = displayContent;
 
-        console.log('🔧 Tool Handler (Renderer) - processChunk result:', {
-            displayContentLength: result.displayContent.length,
-            displayContentPreview: result.displayContent.substring(0, 50) + '...',
-            toolCallsCount: result.toolCalls.length,
-            finalStackDepth: this.toolStack.length
-        });
+
 
         return result;
     }
@@ -172,22 +152,18 @@ export class ToolTokenHandler {
         try {
             // Clean up the content by removing trailing backslashes and whitespace
             let cleanContent = content.trim();
-            
+
             // Remove trailing backslashes that might appear from malformed XML
             cleanContent = cleanContent.replace(/\\+$/, '');
-            
+
             // Remove any trailing newlines or extra characters
             cleanContent = cleanContent.replace(/[\n\r\s]*$/, '');
-            
-            console.log('🔧 Tool Handler (Renderer): Cleaning content:', { 
-                original: content, 
-                cleaned: cleanContent 
-            });
-            
+
+
+
             const parsed = JSON.parse(cleanContent);
-            
+
             if (!parsed.name) {
-                console.error('🔧 Tool Handler (Renderer): Tool call missing required "name" field');
                 return null;
             }
 
@@ -200,16 +176,10 @@ export class ToolTokenHandler {
                 startTime: Date.now()
             };
 
-            console.log('🔧 Tool Handler (Renderer): Successfully parsed tool call:', {
-                id: toolCall.id,
-                name: toolCall.name,
-                parameters: toolCall.parameters
-            });
+
 
             return toolCall;
         } catch (error) {
-            console.error('🔧 Tool Handler (Renderer): Failed to parse tool call JSON:', error);
-            console.error('🔧 Tool Handler (Renderer): Content that failed to parse:', content);
             return null;
         }
     }
@@ -222,7 +192,7 @@ export class ToolTokenHandler {
      */
     public getIncompleteToolCalls(conversationId: string): ToolCall[] {
         const incompleteToolCalls: ToolCall[] = [];
-        
+
         // Process current tool stack content
         this.toolStack.forEach((toolContent, index) => {
             if (toolContent.trim()) {
@@ -259,17 +229,17 @@ export class ToolTokenHandler {
         try {
             // Clean up content
             let cleanContent = content.trim();
-            
+
             // Try to extract name from partial JSON
             let toolName = 'parsing...';
             let toolParameters = {};
-            
+
             // Look for name field
             const nameMatch = cleanContent.match(/"name"\s*:\s*"([^"]+)"/);
             if (nameMatch) {
                 toolName = nameMatch[1];
             }
-            
+
             // Look for parameters field
             const parametersMatch = cleanContent.match(/"parameters"\s*:\s*(\{[^}]*\}?)/);
             if (parametersMatch) {
@@ -286,7 +256,7 @@ export class ToolTokenHandler {
                     toolParameters = { parsing: 'in progress...' };
                 }
             }
-            
+
             return {
                 id: `incomplete-tool-${conversationId}-${index}`,
                 name: toolName,
@@ -294,9 +264,8 @@ export class ToolTokenHandler {
                 status: 'pending',
                 startTime: Date.now()
             };
-            
+
         } catch (error) {
-            console.log('🔧 Tool Handler (Renderer): Could not parse partial tool call:', error);
             return null;
         }
     }
@@ -321,7 +290,6 @@ export class ToolTokenHandler {
     public reset(): void {
         this.toolStack = [];
         this.currentToolId = 0;
-        console.log('🔧 Tool Handler (Renderer): State reset');
     }
 }
 

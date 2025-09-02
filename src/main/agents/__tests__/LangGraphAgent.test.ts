@@ -2,7 +2,7 @@
  * Unit tests for LangGraphAgent
  */
 
-import { LangGraphAgent, LangGraphAgentOptions } from '../LangGraphAgent';
+import { RouterLangGraphAgent, RouterLangGraphAgentOptions } from '../RouterLangGraphAgent';
 import { LLMProvider } from '../../services/LLMProvider';
 import { LangChainMemoryService } from '../../services/LangChainMemoryService';
 
@@ -58,8 +58,8 @@ jest.mock('../tools/ToolRegistry', () => ({
 jest.mock('../../services/SettingsService');
 
 describe('LangGraphAgent', () => {
-    let agent: LangGraphAgent;
-    let agentOptions: LangGraphAgentOptions;
+    let agent: RouterLangGraphAgent;
+    let agentOptions: RouterLangGraphAgentOptions;
 
     beforeEach(() => {
         jest.clearAllMocks();
@@ -70,7 +70,7 @@ describe('LangGraphAgent', () => {
             config: { enableStreaming: true }
         };
 
-        agent = new LangGraphAgent(agentOptions);
+        agent = new RouterLangGraphAgent(agentOptions);
     });
 
     afterEach(() => {
@@ -79,7 +79,7 @@ describe('LangGraphAgent', () => {
 
     describe('constructor', () => {
         it('should create LangGraphAgent instance', () => {
-            expect(agent).toBeInstanceOf(LangGraphAgent);
+            expect(agent).toBeInstanceOf(RouterLangGraphAgent);
         });
 
         it('should initialize DeepResearchIntegration with correct options', () => {
@@ -101,13 +101,13 @@ describe('LangGraphAgent', () => {
         it('should log initialization details', () => {
             const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
 
-            new LangGraphAgent(agentOptions);
+            new RouterLangGraphAgent(agentOptions);
 
             expect(consoleSpy).toHaveBeenCalledWith(
-                '[LangGraphAgent] Initialized with Deep Research architecture'
+                '[RouterLangGraphAgent] Initialized with Deep Research architecture'
             );
             expect(consoleSpy).toHaveBeenCalledWith(
-                '[LangGraphAgent] Using provider:', 'openai'
+                '[RouterLangGraphAgent] Using provider:', 'openai'
             );
 
             consoleSpy.mockRestore();
@@ -478,7 +478,7 @@ describe('LangGraphAgent', () => {
             await agent.updateSettings();
 
             expect(consoleSpy).toHaveBeenCalledWith(
-                '[LangGraphAgent] Error updating settings:', 
+                '[RouterLangGraphAgent] Error updating settings:',
                 expect.any(Error)
             );
 
@@ -491,7 +491,7 @@ describe('LangGraphAgent', () => {
             await agent.updateSettings();
 
             expect(consoleSpy).toHaveBeenCalledWith(
-                '[LangGraphAgent] Settings updated successfully'
+                '[RouterLangGraphAgent] Settings updated successfully'
             );
 
             consoleSpy.mockRestore();
@@ -539,10 +539,10 @@ describe('LangGraphAgent', () => {
             const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
 
             agent.setDeepResearchEnabled(true);
-            expect(consoleSpy).toHaveBeenCalledWith('[LangGraphAgent] Deep Research enabled');
+            expect(consoleSpy).toHaveBeenCalledWith('[RouterLangGraphAgent] Deep Research enabled');
 
             agent.setDeepResearchEnabled(false);
-            expect(consoleSpy).toHaveBeenCalledWith('[LangGraphAgent] Deep Research disabled');
+            expect(consoleSpy).toHaveBeenCalledWith('[RouterLangGraphAgent] Deep Research disabled');
 
             consoleSpy.mockRestore();
         });
@@ -564,12 +564,12 @@ describe('LangGraphAgent', () => {
 
             agent.setFallbackEnabled(true);
             expect(consoleSpy).toHaveBeenCalledWith(
-                '[LangGraphAgent] Fallback to standard processing enabled'
+                '[RouterLangGraphAgent] Fallback to standard processing enabled'
             );
 
             agent.setFallbackEnabled(false);
             expect(consoleSpy).toHaveBeenCalledWith(
-                '[LangGraphAgent] Fallback to standard processing disabled'
+                '[RouterLangGraphAgent] Fallback to standard processing disabled'
             );
 
             consoleSpy.mockRestore();

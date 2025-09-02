@@ -33,7 +33,6 @@ const ChatList: React.FC<{
             setIsLoading(true);
             const convos = await ipcRenderer.invoke(IPC_CHANNELS.GET_CONVERSATIONS);
             // Log the raw conversation data for debugging
-            console.log('Raw conversations data:', convos);
             if (Array.isArray(convos)) {
                 convos.forEach((convo, index) => {
                     if (typeof convo.title === 'object' && convo.title !== null) {

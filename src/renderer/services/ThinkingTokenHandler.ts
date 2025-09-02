@@ -160,12 +160,6 @@ export class ThinkingTokenHandler {
 
         result.displayContent = displayContent;
 
-        console.log('🐛 DEBUG - ThinkingTokenHandler.processChunk result:', {
-            displayContentLength: result.displayContent.length,
-            displayContentPreview: result.displayContent.substring(0, 50) + '...',
-            thinkingBlocksCount: result.thinkingBlocks.length,
-            finalStackDepth: this.thinkingStack.length
-        });
 
         return result;
     }

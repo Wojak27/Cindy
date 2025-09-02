@@ -3,6 +3,7 @@ import { DuckDBSettingsService } from './DuckDBSettingsService';
 import { LLMProvider } from './LLMProvider';
 import { toolRegistry } from '../agents/tools/ToolRegistry';
 import { toolLoader } from '../agents/tools/ToolLoader';
+import { RouterLangGraphAgent } from '../agents/RouterLangGraphAgent';
 
 /**
  * ServiceManager - Handles dynamic loading of heavy LangChain services
@@ -61,23 +62,23 @@ export class ServiceManager extends EventEmitter {
 
             // Get settings for tool configuration
             const settingsData = await this.settingsService?.getAll();
-            
+
             // Build tool configuration
             const toolConfig = {
                 // Search API keys
                 braveApiKey: settingsData?.search?.braveApiKey,
                 serpApiKey: settingsData?.search?.serpApiKey,
                 tavilyApiKey: settingsData?.search?.tavilyApiKey,
-                
+
                 // Weather API keys
                 // accuWeatherApiKey: settingsData?.general?.accuWeatherApiKey, // TODO: add to settings
-                
+
                 // Vector store for document search
                 vectorStore: duckdbVectorStore,
-                
+
                 // Connector instances for email and reference tools
                 connectors: connectorInstances || {},
-                
+
                 // Enable all tools by default
                 enabledTools: {
                     duckduckgo: true,
@@ -99,7 +100,7 @@ export class ServiceManager extends EventEmitter {
 
             console.log('[ServiceManager] Tools initialized successfully via ToolLoader');
             console.log('[ServiceManager] Available tools:', toolRegistry.getToolNames());
-            
+
             this.toolsInitialized = true;
             this.emit('toolsInitialized');
 
@@ -215,13 +216,12 @@ export class ServiceManager extends EventEmitter {
             await this.initializeTools(duckdbVectorStore);
 
             // Dynamic import to avoid loading at startup - using new LangGraphAgent
-            const { LangGraphAgent } = await import('../agents/LangGraphAgent');
 
             // Get agent config from settings
             const agentConfig = await this.settingsService.get('general') || {};
 
             // Initialize thinking agent with enhanced capabilities
-            this.langChainCindyAgent = new LangGraphAgent({
+            this.langChainCindyAgent = new RouterLangGraphAgent({
                 memoryService: memoryService,
                 config: {
                     enableStreaming: true,

@@ -1,7 +1,7 @@
+import 'dotenv/config'; // same as: import { config } from 'dotenv'; config();
 import { app, BrowserWindow, Menu, nativeImage, NativeImage, ipcMain, desktopCapturer, shell } from 'electron';
 import * as path from 'path';
 import * as os from 'os';
-import * as fs from 'fs';
 import { CindyMenu } from './menu';
 import { DuckDBSettingsService, Settings } from './services/DuckDBSettingsService';
 import { TrayService } from './services/TrayService';
@@ -1465,7 +1465,7 @@ const createWindow = async (): Promise<void> => {
         });
 
         console.log('🔧 DEBUG: BrowserWindow created successfully!');
-        
+
         // Make mainWindow globally accessible for tools like MapsDisplayTool
         (global as any).mainWindow = mainWindow;
         console.log('🔧 DEBUG: MainWindow assigned to global scope');
@@ -1684,7 +1684,7 @@ app.on('ready', async () => {
             });
             await agenticMemoryService.initialize();
             console.log('✅ DEBUG: AgenticMemoryService initialized successfully');
-            
+
             // Set up periodic forgetting curve application
             setInterval(() => {
                 agenticMemoryService?.applyForgettingCurve();
@@ -1789,16 +1789,16 @@ app.on('ready', async () => {
     // Initialize ServiceManager for dynamic loading of heavy services
     serviceManager = new ServiceManager(settingsService, llmProvider);
     console.log('🔧 DEBUG: ServiceManager initialized for dynamic service loading');
-    
+
     // Initialize tools immediately to ensure maps tool is available
     setTimeout(async () => {
         try {
             console.log('🔧 DEBUG: Early tool initialization...');
-            
+
             // Get connected connectors for tool loading
             const connectors = connectorManagerService?.getConnectedConnectors() || {};
             console.log('🔧 DEBUG: Connected connectors for tool loading:', Object.keys(connectors));
-            
+
             await serviceManager?.initializeTools(duckDBVectorStore, connectors);
             console.log('✅ DEBUG: Early tool initialization completed');
         } catch (error) {
@@ -2501,9 +2501,6 @@ app.on('ready', async () => {
 
         try {
             // Check current settings and update LLM provider if needed
-            console.log('🔍 DEBUG: Checking provider switching conditions...');
-            console.log('🔍 DEBUG: settingsService available:', !!settingsService);
-            console.log('🔍 DEBUG: llmProvider available:', !!llmProvider);
 
             if (settingsService) {
                 const currentSettings = await settingsService.get('llm');
@@ -2814,7 +2811,7 @@ app.on('ready', async () => {
                 // Build enhanced agent context with conversation history and memories
                 let conversationHistory: any[] = [];
                 let relevantMemories: any[] = [];
-                
+
                 // Get recent conversation history for context
                 if (chatStorageService) {
                     try {
@@ -2829,13 +2826,13 @@ app.on('ready', async () => {
                         console.error('Failed to get conversation history:', error);
                     }
                 }
-                
+
                 // Retrieve relevant memories from A-Mem
                 if (agenticMemoryService) {
                     try {
                         relevantMemories = await agenticMemoryService.retrieveMemories(message, 5);
                         console.log('🧠 DEBUG: Retrieved', relevantMemories.length, 'relevant memories from A-Mem');
-                        
+
                         // Also add this message to memory for future retrieval
                         agenticMemoryService.addMemory(message, conversationId)
                             .then(memoryNote => {
@@ -2856,14 +2853,14 @@ app.on('ready', async () => {
                                     }
                                 });
                             })
-                            .catch(err => 
+                            .catch(err =>
                                 console.error('Failed to add message to memory:', err)
                             );
                     } catch (error) {
                         console.error('Failed to retrieve memories:', error);
                     }
                 }
-                
+
                 const agentContext = {
                     conversationId,
                     userId: undefined,
@@ -2880,29 +2877,29 @@ app.on('ready', async () => {
                 try {
                     // Set current conversation ID globally for tools to access
                     (global as any).currentConversationId = conversationId;
-                    
+
                     // Emit flow events for agent processing with context
-                    const processingStep = generateStepDescription('PROCESSING_REQUEST', { 
-                        userQuery: message 
+                    const processingStep = generateStepDescription('PROCESSING_REQUEST', {
+                        userQuery: message
                     });
-                    
+
                     emitFlowEvent('step-update', {
                         stepId: 'initial',
                         status: 'completed',
                         title: processingStep.title,
                         details: processingStep.description
                     });
-                    
+
                     const agentStep = generateStepDescription('AGENT_ROUTING', {
                         agentType: 'conversational'
                     });
-                    
+
                     emitFlowEvent('step-add', {
                         stepId: 'agent-processing',
                         title: agentStep.title,
                         details: agentStep.description
                     });
-                    
+
                     // Use streaming processing from the agent
                     for await (const chunk of langChainCindyAgent.processStreaming(message, agentContext)) {
                         assistantContent += chunk;
@@ -2917,7 +2914,7 @@ app.on('ready', async () => {
                             try {
                                 const toolCallData = JSON.parse(toolMatch[1]);
                                 console.log('🔧 DEBUG: Emitting tool execution update:', toolCallData);
-                                
+
                                 // Check if this is a TodoWrite tool execution
                                 if (toolCallData.function?.name === 'TodoWrite' || toolCallData.name === 'TodoWrite') {
                                     try {
@@ -2936,7 +2933,7 @@ app.on('ready', async () => {
                                         console.error('🔧 DEBUG: Failed to parse TodoWrite arguments:', todoError);
                                     }
                                 }
-                                
+
                                 event.sender.send('tool-execution-update', {
                                     toolCall: toolCallData,
                                     conversationId
@@ -2954,13 +2951,13 @@ app.on('ready', async () => {
 
                     console.log('🔧 DEBUG: Sending stream-complete event for conversation:', conversationId);
                     event.sender.send('stream-complete', { conversationId });
-                    
+
                     // Save assistant message to backend storage
                     if (chatStorageService && assistantContent.trim()) {
                         try {
                             // Clean the final assistant content before saving
                             const cleanedContent = filterInternalContent(assistantContent);
-                            
+
                             const assistantMessage = {
                                 conversationId,
                                 role: 'assistant' as const,
@@ -2973,13 +2970,13 @@ app.on('ready', async () => {
                             console.error('🚨 DEBUG: Failed to persist assistant message:', saveError);
                         }
                     }
-                    
+
                     // Add assistant response to A-Mem for future context
                     if (agenticMemoryService && assistantContent.trim()) {
                         try {
                             const memoryNote = await agenticMemoryService.addMemory(assistantContent, conversationId);
                             console.log('🧠 DEBUG: Assistant response added to A-Mem:', memoryNote.id);
-                            
+
                             // Emit memory saved event to frontend
                             event.sender.send('memory-saved', {
                                 type: 'assistant_response',
@@ -2999,19 +2996,19 @@ app.on('ready', async () => {
                             console.error('Failed to add assistant response to memory:', memoryError);
                         }
                     }
-                    
+
                     // Mark agent processing as complete
                     const completeStep = generateStepDescription('ANALYSIS_COMPLETE', {
                         outputLength: assistantContent.length
                     });
-                    
+
                     emitFlowEvent('step-update', {
                         stepId: 'agent-processing',
                         status: 'completed',
                         title: completeStep.title,
                         details: completeStep.description
                     });
-                    
+
                     return assistantContent;
 
                 } catch (agentError) {
@@ -3141,7 +3138,7 @@ graph TD
     style Note fill:#fff8e1
 `;
             }
-            
+
             if (!langChainCindyAgent) {
                 console.warn('Main process - agent:mermaid: LangGraphAgent not available after initialization attempt');
                 return `
@@ -3226,7 +3223,7 @@ graph TD
     style Tools fill:#f1f8e9
     style Response fill:#fafafa
 `;
-            
+
             return fallbackMermaid;
 
         } catch (error) {
@@ -3252,7 +3249,7 @@ graph TD
                 console.error('Main process - create-conversation: chatStorageService not available');
                 return Date.now().toString(); // Fallback ID
             }
-            
+
             const newId = await chatStorageService.createConversation();
             console.log('Main process - create-conversation: created new conversation with ID:', newId);
             return newId;
@@ -3318,12 +3315,12 @@ graph TD
                 }
             }
             const memory = await agenticMemoryService.addMemory(content, conversationId);
-            
+
             // Emit update event to frontend
             if (mainWindow) {
                 mainWindow.webContents.send('memory-graph:updated', await agenticMemoryService.getMemoryGraphData());
             }
-            
+
             return memory;
         } catch (error) {
             console.error('[IPC] Error adding memory:', error);

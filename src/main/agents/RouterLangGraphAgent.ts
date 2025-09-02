@@ -3,11 +3,14 @@ import { LangChainMemoryService } from '../services/LangChainMemoryService';
 import { toolRegistry } from './tools/ToolRegistry';
 import { SettingsService } from '../services/SettingsService';
 import { DeepResearchIntegration } from './research/DeepResearchIntegration';
+import fs from 'fs/promises';
+import path from 'path';
+import { spawn } from 'child_process';
 
 /**
  * Configuration options for the LangGraphAgent
  */
-export interface LangGraphAgentOptions {
+export interface RouterLangGraphAgentOptions {
     llmProvider: LLMProvider;
     memoryService: LangChainMemoryService;
     config?: any;
@@ -17,27 +20,27 @@ export interface LangGraphAgentOptions {
  * Deep Research-enhanced LangGraph Agent.
  * Intelligent routing between Deep Research capabilities and standard processing.
  */
-export class LangGraphAgent {
-    private deepResearchIntegration: DeepResearchIntegration;
+export class RouterLangGraphAgent {
+    private routerAgent: DeepResearchIntegration;
     private llmProvider: LLMProvider;
     private settingsService: SettingsService | null = null;
 
-    constructor(options: LangGraphAgentOptions) {
+    constructor(options: RouterLangGraphAgentOptions) {
         this.llmProvider = options.llmProvider;
 
         // Create a minimal settings service for compatibility
         this.settingsService = this.createCompatibilitySettingsService();
 
         // Initialize Deep Research integration
-        this.deepResearchIntegration = new DeepResearchIntegration({
+        this.routerAgent = new DeepResearchIntegration({
             llmProvider: this.llmProvider,
             settingsService: this.settingsService,
             enableDeepResearch: true,
             fallbackToOriginal: true
         });
 
-        console.log('[LangGraphAgent] Initialized with Deep Research architecture');
-        console.log('[LangGraphAgent] Using provider:', this.llmProvider.getCurrentProvider());
+        console.log('[RouterLangGraphAgent] Initialized ');
+        console.log('[RouterLangGraphAgent] Using provider:', this.llmProvider.getCurrentProvider());
     }
 
     /**
@@ -56,25 +59,25 @@ export class LangGraphAgent {
      */
     async process(input: string, context?: any): Promise<string> {
         try {
-            console.log('[LangGraphAgent] Processing input with Deep Research routing:', input);
+            console.log('[RouterLangGraphAgent] Processing input with Deep Research routing:', input);
 
             // Use Deep Research integration for intelligent processing
-            const result = await this.deepResearchIntegration.processMessage(input, context);
+            const result = await this.routerAgent.processMessage(input, context);
 
             if (result.usedDeepResearch && result.result !== 'FALLBACK_TO_ORIGINAL') {
-                console.log(`[LangGraphAgent] Deep Research completed in ${result.processingTime}ms`);
+                console.log(`[RouterLangGraphAgent] Deep Research completed in ${result.processingTime}ms`);
                 return result.result;
             } else if (result.usedToolAgent) {
-                console.log(`[LangGraphAgent] Tool Agent completed in ${result.processingTime}ms`);
+                console.log(`[RouterLangGraphAgent] Tool Agent completed in ${result.processingTime}ms`);
                 return result.result;
             } else {
                 // For direct response cases
-                console.log(`[LangGraphAgent] Direct response completed in ${result.processingTime}ms`);
+                console.log(`[RouterLangGraphAgent] Direct response completed in ${result.processingTime}ms`);
                 return result.result;
             }
 
         } catch (error) {
-            console.error('[LangGraphAgent] Processing error:', error);
+            console.error('[RouterLangGraphAgent] Processing error:', error);
             return `I encountered an error: ${(error as Error).message}`;
         }
     }
@@ -85,15 +88,13 @@ export class LangGraphAgent {
      */
     async *processStreaming(input: string, context?: any): AsyncGenerator<string> {
         try {
-            console.log("\n🎬 [LangGraphAgent] STARTING DEEP RESEARCH STREAMING");
+            console.log("\n🎬 [RouterLangGraphAgent] ROUTING");
             console.log("═".repeat(80));
             console.log(`📥 INPUT: "${input}"`);
             console.log("═".repeat(80));
 
-            // Stream processing through Deep Research integration
-            console.log("[LangGraphAgent] Processing through Deep Research integration");
 
-            for await (const update of this.deepResearchIntegration.streamMessage(input, context)) {
+            for await (const update of this.routerAgent.streamMessage(input, context)) {
                 if (update.usedDeepResearch) {
                     // Deep Research mode
                     if (update.type === 'progress') {
@@ -103,7 +104,7 @@ export class LangGraphAgent {
                     }
                 } else if (update.usedToolAgent) {
                     // Tool Agent mode
-                    console.log("[LangGraphAgent] Using Tool Agent");
+                    console.log("[RouterLangGraphAgent] Using Tool Agent");
                     if (update.type === 'progress') {
                         yield `🔧 ${update.content}\n\n`;
                     } else if (update.type === 'tool_result') {
@@ -124,15 +125,14 @@ export class LangGraphAgent {
                     }
                 } else {
                     // Direct LLM response mode
-                    console.log("[LangGraphAgent] Using direct LLM response");
                     yield update.content;
                 }
             }
 
         } catch (error) {
-            console.log("\n❌ [LangGraphAgent] Streaming process error");
+            console.log("\n❌ [RouterLangGraphAgent] Streaming process error");
             console.log("═".repeat(80));
-            console.error("[LangGraphAgent] Streaming error:", error);
+            console.error("[RouterLangGraphAgent] Streaming error:", error);
             yield `\n❌ **Error:** I encountered an issue while processing your request: ${(error as Error).message}`;
         }
     }
@@ -156,10 +156,10 @@ export class LangGraphAgent {
      */
     async updateSettings(): Promise<void> {
         try {
-            await this.deepResearchIntegration.updateSettings();
-            console.log('[LangGraphAgent] Settings updated successfully');
+            await this.routerAgent.updateSettings();
+            console.log('[RouterLangGraphAgent] Settings updated successfully');
         } catch (error) {
-            console.error('[LangGraphAgent] Error updating settings:', error);
+            console.error('[RouterLangGraphAgent] Error updating settings:', error);
         }
     }
 
@@ -174,7 +174,7 @@ export class LangGraphAgent {
         return {
             provider: this.getCurrentProvider(),
             availableTools: this.getAvailableTools(),
-            deepResearchStatus: this.deepResearchIntegration.getStatus()
+            deepResearchStatus: this.routerAgent.getStatus()
         };
     }
 
@@ -182,23 +182,23 @@ export class LangGraphAgent {
      * Enable or disable Deep Research capabilities
      */
     setDeepResearchEnabled(enabled: boolean): void {
-        this.deepResearchIntegration.setEnabled(enabled);
-        console.log(`[LangGraphAgent] Deep Research ${enabled ? 'enabled' : 'disabled'}`);
+        this.routerAgent.setEnabled(enabled);
+        console.log(`[RouterLangGraphAgent] Deep Research ${enabled ? 'enabled' : 'disabled'}`);
     }
 
     /**
      * Set fallback behavior for when Deep Research fails
      */
     setFallbackEnabled(enabled: boolean): void {
-        this.deepResearchIntegration.setFallbackEnabled(enabled);
-        console.log(`[LangGraphAgent] Fallback to standard processing ${enabled ? 'enabled' : 'disabled'}`);
+        this.routerAgent.setFallbackEnabled(enabled);
+        console.log(`[RouterLangGraphAgent] Fallback to standard processing ${enabled ? 'enabled' : 'disabled'}`);
     }
 
     /**
      * Get the Deep Research integration (for advanced configuration)
      */
     getDeepResearchIntegration(): DeepResearchIntegration {
-        return this.deepResearchIntegration;
+        return this.routerAgent;
     }
 
     /**
@@ -216,7 +216,7 @@ export class LangGraphAgent {
         } = options;
 
         try {
-            console.log('🎨 [LangGraphAgent] Generating graph visualization...');
+            console.log('🎨 [RouterLangGraphAgent] Generating graph visualization...');
 
             // Setup LangSmith if requested
             if (enableLangSmith) {
@@ -224,16 +224,16 @@ export class LangGraphAgent {
             }
 
             // Get the Deep Research agent
-            const deepResearchAgent = this.deepResearchIntegration.getDeepResearchAgent();
+            const deepResearchAgent = this.routerAgent.getDeepResearchAgent();
 
             // Generate and export the graph
             const finalPath = await this.generateGraphPNG(deepResearchAgent, outputPath);
 
-            console.log(`✅ [LangGraphAgent] Graph exported to: ${finalPath}`);
+            console.log(`✅ [RouterLangGraphAgent] Graph exported to: ${finalPath}`);
             return finalPath;
 
         } catch (error) {
-            console.error('❌ [LangGraphAgent] Graph export failed:', error);
+            console.error('❌ [RouterLangGraphAgent] Graph export failed:', error);
             throw error;
         }
     }
@@ -275,7 +275,7 @@ export class LangGraphAgent {
      */
     private async generateGraphPNG(deepResearchAgent: any, outputPath: string): Promise<string> {
         try {
-            console.log('🔧 [LangGraphAgent] Accessing graph structure...');
+            console.log('🔧 [RouterLangGraphAgent] Accessing graph structure...');
 
             // Get the main graph from the Deep Research agent
             const mainGraph = deepResearchAgent.getMainGraph();
@@ -284,7 +284,7 @@ export class LangGraphAgent {
                 throw new Error('Graph structure not accessible from Deep Research agent');
             }
 
-            console.log('📊 [LangGraphAgent] Generating mermaid diagram...');
+            console.log('📊 [RouterLangGraphAgent] Generating mermaid diagram...');
 
             // Get the graph representation
             const graph = mainGraph.get_graph();
@@ -299,7 +299,7 @@ export class LangGraphAgent {
                 mermaidCode = this.generateFallbackMermaidCode();
             }
 
-            console.log('🖼️ [LangGraphAgent] Converting to PNG...');
+            console.log('🖼️ [RouterLangGraphAgent] Converting to PNG...');
 
             // Convert mermaid to PNG using mermaid-cli or puppeteer
             const finalPath = await this.convertMermaidToPNG(mermaidCode, outputPath);
@@ -307,10 +307,10 @@ export class LangGraphAgent {
             return finalPath;
 
         } catch (error) {
-            console.error('❌ [LangGraphAgent] Error generating PNG:', error);
+            console.error('❌ [RouterLangGraphAgent] Error generating PNG:', error);
 
             // Fallback: create a basic visualization
-            console.log('🔄 [LangGraphAgent] Using fallback visualization...');
+            console.log('🔄 [RouterLangGraphAgent] Using fallback visualization...');
             return await this.createFallbackVisualization(outputPath);
         }
     }
@@ -357,17 +357,14 @@ graph TD
      * Convert mermaid code to PNG using available tools
      */
     private async convertMermaidToPNG(mermaidCode: string, outputPath: string): Promise<string> {
-        const fs = require('fs').promises;
-        const path = require('path');
 
         try {
             // First, save the mermaid code to a temporary file
             const mermaidPath = outputPath.replace(/\.png$/i, '.mmd');
             await fs.writeFile(mermaidPath, mermaidCode, 'utf8');
-            console.log(`📝 [LangGraphAgent] Mermaid code saved to: ${mermaidPath}`);
+            console.log(`📝 [RouterLangGraphAgent] Mermaid code saved to: ${mermaidPath}`);
 
             // Try to use mermaid-cli if available
-            const { spawn } = require('child_process');
 
             return new Promise((resolve, reject) => {
                 // Try mmdc (mermaid-cli) first
@@ -377,10 +374,10 @@ graph TD
 
                 mmdc.on('close', async (code: number) => {
                     if (code === 0) {
-                        console.log('✅ [LangGraphAgent] PNG generated using mermaid-cli');
+                        console.log('✅ [RouterLangGraphAgent] PNG generated using mermaid-cli');
                         resolve(path.resolve(outputPath));
                     } else {
-                        console.log('⚠️ [LangGraphAgent] mermaid-cli not available, using fallback...');
+                        console.log('⚠️ [RouterLangGraphAgent] mermaid-cli not available, using fallback...');
                         try {
                             const fallbackPath = await this.createFallbackVisualization(outputPath);
                             resolve(fallbackPath);
@@ -391,7 +388,7 @@ graph TD
                 });
 
                 mmdc.on('error', async () => {
-                    console.log('⚠️ [LangGraphAgent] mermaid-cli not found, using fallback...');
+                    console.log('⚠️ [RouterLangGraphAgent] mermaid-cli not found, using fallback...');
                     try {
                         const fallbackPath = await this.createFallbackVisualization(outputPath);
                         resolve(fallbackPath);
@@ -402,7 +399,7 @@ graph TD
             });
 
         } catch (error) {
-            console.warn('⚠️ [LangGraphAgent] Mermaid conversion failed, using fallback');
+            console.warn('⚠️ [RouterLangGraphAgent] Mermaid conversion failed, using fallback');
             return await this.createFallbackVisualization(outputPath);
         }
     }
@@ -411,8 +408,6 @@ graph TD
      * Create a fallback visualization using simple text-based approach
      */
     private async createFallbackVisualization(outputPath: string): Promise<string> {
-        const fs = require('fs').promises;
-        const path = require('path');
 
         try {
             // Check if we can use node-canvas for better visualization
@@ -422,7 +417,7 @@ graph TD
                 const canvas = require('canvas');
                 createCanvas = canvas.createCanvas;
             } catch (canvasError) {
-                console.log('⚠️ [LangGraphAgent] node-canvas not available, creating text diagram...');
+                console.log('⚠️ [RouterLangGraphAgent] node-canvas not available, creating text diagram...');
                 return await this.createTextDiagram(outputPath);
             }
 
@@ -443,11 +438,11 @@ graph TD
             const buffer = canvas.toBuffer('image/png');
             await fs.writeFile(outputPath, buffer);
 
-            console.log('✅ [LangGraphAgent] Canvas-based PNG created');
+            console.log('✅ [RouterLangGraphAgent] Canvas-based PNG created');
             return path.resolve(outputPath);
 
         } catch (error) {
-            console.warn('⚠️ [LangGraphAgent] Canvas fallback failed, creating text diagram');
+            console.warn('⚠️ [RouterLangGraphAgent] Canvas fallback failed, creating text diagram');
             return await this.createTextDiagram(outputPath);
         }
     }
@@ -582,8 +577,8 @@ Command: npm install -g @mermaid-js/mermaid-cli
         const textPath = outputPath.replace(/\.png$/i, '.txt');
         await fs.writeFile(textPath, textDiagram, 'utf8');
 
-        console.log(`📄 [LangGraphAgent] Text diagram created: ${textPath}`);
-        console.log('💡 [LangGraphAgent] Install mermaid-cli for PNG generation: npm install -g @mermaid-js/mermaid-cli');
+        console.log(`📄 [RouterLangGraphAgent] Text diagram created: ${textPath}`);
+        console.log('💡 [RouterLangGraphAgent] Install mermaid-cli for PNG generation: npm install -g @mermaid-js/mermaid-cli');
 
         return path.resolve(textPath);
     }

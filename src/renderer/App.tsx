@@ -668,11 +668,6 @@ const App: React.FC = () => {
             agentFlowTracker.reset();
             setCurrentFlowMessageId(assistantMessageId);
 
-            // Start the first flow step
-            const initialStepId = agentFlowTracker.startNewStep({
-                title: 'Processing request',
-                details: 'Analyzing user input and determining response strategy'
-            });
 
             // Create new AbortController for this request
             streamController.current = new AbortController();

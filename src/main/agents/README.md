@@ -6,13 +6,6 @@ This directory contains the intelligent agents that power Cindy's AI capabilitie
 
 ### 🧠 Main Agents
 
-#### `ThinkingCindyAgent.ts`
-The primary conversational agent with thinking capabilities:
-- **Thinking Process**: Internal reasoning before responding
-- **Context Awareness**: Maintains conversation context
-- **Tool Integration**: Can use tools when appropriate
-- **Streaming Responses**: Real-time response generation
-
 #### `LangGraphAgent.ts` 
 Advanced agent using LangGraph for complex workflows:
 - **State Management**: Maintains complex state across interactions

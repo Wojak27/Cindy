@@ -224,7 +224,6 @@ const messagesReducer = (state = initialState, action: any) => {
         : action.payload;
       if (blockExists) {
         // If the block already exists, we can either update it or ignore
-        console.warn('Preventing duplicate thinking block:', enhancedBlock.id);
         return {
           ...state,
           thinkingBlocks: state.thinkingBlocks.map(block =>
