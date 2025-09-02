@@ -9,13 +9,13 @@ import { LLMProvider } from '../../services/LLMProvider';
 // Import built-in DeepAgents tools with type bypassing to avoid compilation issues
 import { z } from 'zod';
 
+
 // Dynamic imports to avoid type recursion issues
 let deepAgents: any = null;
 
 async function getDeepAgents() {
     if (!deepAgents) {
         try {
-            deepAgents = await import('deepagents');
         } catch (error) {
             console.error('[DeepAgentsResearchAgent] Could not import DeepAgents:', error);
             deepAgents = null;

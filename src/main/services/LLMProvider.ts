@@ -861,6 +861,180 @@ export class LLMProvider extends EventEmitter {
             return [];
         }
     }
+
+    /**
+     * Structured output with Zod validation and retry logic
+     * @param messages - Array of messages
+     * @param schema - Zod schema for validation
+     * @param options - Optional invoke options with retry config
+     */
+    async invokeStructured<T>(
+        messages: ChatMessage[] | BaseMessage[],
+        schema: { safeParse: (data: unknown) => { success: boolean; data?: T; error?: any } },
+        options: InvokeOptions & { 
+            maxRetries?: number;
+            retryDelay?: number;
+            fallback?: T;
+        } = {}
+    ): Promise<{
+        success: true;
+        data: T;
+        attempts: number;
+    } | {
+        success: false;
+        error: string;
+        attempts: number;
+        fallback?: T;
+    }> {
+        const { maxRetries = 3, retryDelay = 1000, fallback, ...invokeOptions } = options;
+        let lastError = '';
+        
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                console.log(`[LLMProvider] Structured output attempt ${attempt}/${maxRetries}`);
+                
+                const result = await this.invoke(messages, invokeOptions);
+                const content = result.content as string;
+                
+                // Remove <think> tags if present
+                const thinkTagRegex = /<think[^>]*>([\s\S]*?)<\/think>/g;
+                const cleanedContent = content.replace(thinkTagRegex, '').trim();
+                
+                // Try to parse as JSON first
+                let parsedData: unknown;
+                try {
+                    parsedData = JSON.parse(cleanedContent);
+                } catch (jsonError) {
+                    // If JSON parsing fails, try the raw content
+                    parsedData = cleanedContent;
+                }
+                
+                // Validate with schema
+                const validation = schema.safeParse(parsedData);
+                
+                if (validation.success) {
+                    return {
+                        success: true,
+                        data: validation.data!,
+                        attempts: attempt
+                    };
+                }
+                
+                // Log validation error for retry
+                lastError = `Schema validation failed: ${validation.error ? JSON.stringify(validation.error) : 'Unknown validation error'}`;
+                console.warn(`[LLMProvider] Attempt ${attempt} validation failed:`, lastError);
+                
+                if (attempt < maxRetries) {
+                    console.log(`[LLMProvider] Retrying in ${retryDelay}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, retryDelay));
+                }
+                
+            } catch (error) {
+                lastError = `Invocation failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
+                console.error(`[LLMProvider] Attempt ${attempt} failed:`, lastError);
+                
+                if (attempt < maxRetries) {
+                    console.log(`[LLMProvider] Retrying in ${retryDelay}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, retryDelay));
+                }
+            }
+        }
+        
+        // All attempts failed
+        return {
+            success: false,
+            error: lastError,
+            attempts: maxRetries,
+            fallback
+        };
+    }
+
+    /**
+     * Streaming structured output with validation
+     * @param messages - Array of messages
+     * @param schema - Zod schema for validation
+     * @param options - Optional streaming options
+     */
+    async *streamStructured<T>(
+        messages: ChatMessage[] | BaseMessage[],
+        schema: { safeParse: (data: unknown) => { success: boolean; data?: T; error?: any } },
+        options: InvokeOptions & { 
+            validateChunks?: boolean;
+            finalValidation?: boolean;
+        } = {}
+    ): AsyncGenerator<{
+        type: 'chunk';
+        content: string;
+    } | {
+        type: 'validation';
+        success: boolean;
+        data?: T;
+        error?: string;
+    }> {
+        const { validateChunks = false, finalValidation = true, ...streamOptions } = options;
+        
+        let fullContent = '';
+        
+        try {
+            for await (const chunk of this.stream(messages, streamOptions)) {
+                fullContent += chunk;
+                
+                yield {
+                    type: 'chunk',
+                    content: chunk
+                };
+                
+                // Optional: validate each chunk if requested
+                if (validateChunks) {
+                    try {
+                        const cleanedContent = fullContent.replace(/<think[^>]*>([\s\S]*?)<\/think>/g, '').trim();
+                        const parsedData = JSON.parse(cleanedContent);
+                        const validation = schema.safeParse(parsedData);
+                        
+                        if (validation.success) {
+                            yield {
+                                type: 'validation',
+                                success: true,
+                                data: validation.data
+                            };
+                        }
+                    } catch (error) {
+                        // Ignore parsing errors during streaming
+                    }
+                }
+            }
+            
+            // Final validation
+            if (finalValidation) {
+                const cleanedContent = fullContent.replace(/<think[^>]*>([\s\S]*?)<\/think>/g, '').trim();
+                
+                try {
+                    const parsedData = JSON.parse(cleanedContent);
+                    const validation = schema.safeParse(parsedData);
+                    
+                    yield {
+                        type: 'validation',
+                        success: validation.success,
+                        data: validation.success ? validation.data : undefined,
+                        error: validation.success ? undefined : 'Schema validation failed'
+                    };
+                } catch (error) {
+                    yield {
+                        type: 'validation',
+                        success: false,
+                        error: 'JSON parsing failed'
+                    };
+                }
+            }
+            
+        } catch (error) {
+            yield {
+                type: 'validation',
+                success: false,
+                error: error instanceof Error ? error.message : 'Streaming failed'
+            };
+        }
+    }
 }
 
 // Export types for external use

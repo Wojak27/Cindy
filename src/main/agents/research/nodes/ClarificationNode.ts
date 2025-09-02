@@ -7,6 +7,7 @@ import { BaseMessage, HumanMessage, AIMessage } from '@langchain/core/messages';
 import { LLMProvider } from '../../../services/LLMProvider';
 import { AgentState, ClarifyWithUser } from '../DeepResearchState';
 import { DeepResearchConfiguration } from '../DeepResearchConfig';
+import { ClarificationSchema, validateClarification, parseClarificationFromText } from '../../schemas/clarification';
 
 /**
  * Clarification node that asks the user for more information if needed
@@ -77,28 +78,47 @@ For the verification message when no clarification is needed:
 - Keep the message concise and professional
             `.trim();
 
-            // Get LLM response
-            const result = await llmProvider.invoke([
+            // Get structured LLM response using Zod validation
+            const structuredResult = await llmProvider.invokeStructured([
                 new HumanMessage({ content: clarificationPrompt })
-            ]);
-
-            const response = result.content as string;
-
-            // Parse the JSON response
-            let clarificationResult: ClarifyWithUser;
-            try {
-                // remove <think ...> tags if present
-                const thinkTagRegex = /<think[^>]*>([\s\S]*?)<\/think>/g;
-                const cleanedResponse = response.replace(thinkTagRegex, '').trim();
-                clarificationResult = JSON.parse(cleanedResponse);
-            } catch (parseError) {
-                console.error('[ClarificationNode] Failed to parse LLM response as JSON:', parseError);
-                // Fallback: assume no clarification needed
-                clarificationResult = {
+            ], ClarificationSchema, {
+                maxRetries: config.max_structured_output_retries || 3,
+                fallback: {
                     need_clarification: false,
                     question: '',
                     verification: 'I have sufficient information to proceed with the research.'
-                };
+                }
+            });
+
+            let clarificationResult: ClarifyWithUser;
+            
+            if (structuredResult.success) {
+                console.log(`[ClarificationNode] Structured parsing successful on attempt ${structuredResult.attempts}`);
+                clarificationResult = structuredResult.data as ClarifyWithUser;
+            } else {
+                console.warn(`[ClarificationNode] Structured parsing failed after ${structuredResult.attempts} attempts:`, 
+                    'error' in structuredResult ? structuredResult.error : 'Unknown error');
+                
+                // Fallback to manual parsing
+                const response = (await llmProvider.invoke([
+                    new HumanMessage({ content: clarificationPrompt })
+                ])).content as string;
+                
+                const fallbackResult = parseClarificationFromText(response);
+                if (fallbackResult && 
+                    typeof fallbackResult.need_clarification === 'boolean' &&
+                    typeof fallbackResult.question === 'string' &&
+                    typeof fallbackResult.verification === 'string') {
+                    clarificationResult = fallbackResult as ClarifyWithUser;
+                } else {
+                    clarificationResult = {
+                        need_clarification: false,
+                        question: '',
+                        verification: 'I have sufficient information to proceed with the research.'
+                    };
+                }
+                
+                console.log('[ClarificationNode] Using fallback parsing result');
             }
 
             console.log('[ClarificationNode] Clarification result:', clarificationResult);

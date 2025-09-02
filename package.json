@@ -98,7 +98,7 @@
         "three": "^0.179.1",
         "whisper-node": "^1.1.1",
         "word-extractor": "^1.0.4",
-        "zod": "^3.22.4",
+        "zod": "^3.25.76",
         "zotero-api-client": "^0.47.0"
     },
     "devDependencies": {

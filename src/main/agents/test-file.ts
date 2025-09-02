@@ -30,6 +30,7 @@ async function initializeAgent(): Promise<RouterLangGraphAgent> {
             maxTokens: 4000
         },
         ollama: {
+            // model: 'gemma3:1b',  // or any local model you have
             model: 'qwen3:1.7b',  // or any local model you have
             baseUrl: 'http://127.0.0.1:11434',
             temperature: 0.7
@@ -145,7 +146,7 @@ async function testDeepResearchMode(agent: RouterLangGraphAgent) {
     console.log('🧪 Testing Deep Research Mode');
     console.log('═══════════════════════════════════════════════════════════════\n');
 
-    const researchQuery = "Research the web and write a research article about early humans in Africa and their migration patterns during the Paleolithic era.";
+    const researchQuery = "Research the web and write a research article about early humans in Africa.";
 
     console.log(`📝 Research Query: "${researchQuery}"`);
     console.log('─'.repeat(60));

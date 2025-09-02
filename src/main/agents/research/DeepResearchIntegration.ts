@@ -12,6 +12,8 @@ import { DeepResearchAgent } from './DeepResearchAgent'; // LangGraph implementa
 import { DeepResearchConfiguration, DeepResearchConfigManager } from './DeepResearchConfig';
 import { ToolAgent } from '../ToolAgent';
 import { generateStepDescription, extractResearchContext, AGENT_STEP_TEMPLATES } from '../../../shared/AgentFlowStandard';
+import { HumanMessage } from '@langchain/core/messages';
+import { parseRoutingResponse } from '../schemas/routing';
 
 /**
  * Integration options for Deep Research
@@ -183,56 +185,50 @@ export class DeepResearchIntegration {
     }
 
     /**
-     * Intelligent routing using LLM to decide between Deep Research, Tool Agent, or Direct Response
-     * Returns routing decision and response with retry logic
+     * Intelligent routing using LLM to decide between Deep Research, Tool Agent, or Direct Response  
+     * Now uses Zod schemas for structured output validation
      */
     async routeMessage(message: string, maxRetries: number = 3): Promise<{
         route: 'deep_research' | 'tool_agent' | 'direct_response';
         response?: string;
     }> {
-        // First, try simple pattern-based routing as fallback
-        const simpleRoute = this.getSimpleRoute(message);
-        if (simpleRoute) {
-            console.log(`[DeepResearchIntegration] Using simple pattern-based routing: ${simpleRoute}`);
-            return { route: simpleRoute as any };
-        }
 
         const routingPrompt = `Route this message to one of three options. Respond with ONLY one of these exact phrases:
 
-ROUTE_DEEP_RESEARCH - for research requests
-ROUTE_TOOL_AGENT - for weather, maps, searches  
-ROUTE_DIRECT [your response] - for simple questions
+            ROUTE_DEEP_RESEARCH - for research requests
+            ROUTE_TOOL_AGENT - for weather, maps, searches  
+            ROUTE_DIRECT [your response] - for simple questions
 
-Message: "${message}"
+            Message: "${message}"
 
-Your routing decision:`;
+            Your routing decision:`;
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
                 console.log(`[DeepResearchIntegration] Routing attempt ${attempt}/${maxRetries} for message: "${message.substring(0, 50)}..."`);
 
                 const result = await this.llmProvider.invoke([
-                    { role: 'user', content: routingPrompt }
+                    new HumanMessage({ content: routingPrompt })
                 ]);
+
+                // Clean response text and remove thinking tags
                 const thinkTagRegex = /<think[^>]*>([\s\S]*?)<\/think>/g;
-                result.content = (result.content as string).replace(thinkTagRegex, '').trim();
+                const cleanResponse = (result.content as string).replace(thinkTagRegex, '').trim();
 
-                const response = (result.content as string).trim();
-                console.log(`[DeepResearchIntegration] Routing response (attempt ${attempt}): "${response}"`);
+                console.log(`[DeepResearchIntegration] Routing response (attempt ${attempt}): "${cleanResponse}"`);
 
-                // Validate response using the validation helper
-                const validation = this.validateRoutingResponse(response);
+                // Parse using the Zod-based routing parser
+                const routingDecision = parseRoutingResponse(cleanResponse);
 
-                if (validation.isValid) {
-                    console.log(`[DeepResearchIntegration] ✅ Valid routing decision: ${validation.route}`);
+                if (routingDecision) {
+                    console.log(`[DeepResearchIntegration] ✅ Valid routing decision: ${routingDecision.route}`);
                     return {
-                        route: validation.route!,
-                        response: validation.directResponse
+                        route: routingDecision.route,
+                        response: routingDecision.response
                     };
                 } else {
                     console.warn(`[DeepResearchIntegration] ⚠️ Invalid routing format on attempt ${attempt}:`);
-                    console.warn(`[DeepResearchIntegration]   Response: "${response}"`);
-                    console.warn(`[DeepResearchIntegration]   Issues: ${validation.issues.join(', ')}`);
+                    console.warn(`[DeepResearchIntegration]   Response: "${cleanResponse}"`);
                 }
 
                 // If we got here, the response format was invalid
@@ -271,60 +267,6 @@ Your routing decision:`;
         }
     }
 
-    /**
-     * Simple pattern-based routing for common cases
-     */
-    private getSimpleRoute(message: string): 'deep_research' | 'tool_agent' | 'direct_response' | null {
-        const lowerMessage = message.toLowerCase().trim();
-
-        // Research keywords
-        const researchKeywords = [
-            'research', 'study', 'analyze', 'analysis', 'investigate', 'exploration',
-            'comprehensive', 'detailed', 'thorough', 'compare', 'comparison',
-            'pros and cons', 'advantages and disadvantages', 'literature review'
-        ];
-
-        // Tool agent keywords  
-        const toolKeywords = [
-            'weather', 'temperature', 'forecast', 'map', 'location', 'directions',
-            'search for', 'find', 'look up', 'google', 'browse', 'website'
-        ];
-
-        // Direct response patterns
-        const directPatterns = [
-            'hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening',
-            'how are you', 'what is your name', 'who are you', 'thanks', 'thank you'
-        ];
-
-        // Check for direct response patterns first
-        if (directPatterns.some(pattern => lowerMessage.includes(pattern))) {
-            return 'direct_response';
-        }
-
-        // Check for tool keywords
-        if (toolKeywords.some(keyword => lowerMessage.includes(keyword))) {
-            return 'tool_agent';
-        }
-
-        // Check for research keywords
-        if (researchKeywords.some(keyword => lowerMessage.includes(keyword))) {
-            return 'deep_research';
-        }
-
-        // Check for question length heuristic (longer questions often need research)
-        if (lowerMessage.includes('?') && lowerMessage.length > 100) {
-            return 'deep_research';
-        }
-
-        // Check for simple questions
-        if (lowerMessage.startsWith('what is') || lowerMessage.startsWith('who is') ||
-            lowerMessage.startsWith('when is') || lowerMessage.startsWith('where is') ||
-            lowerMessage.startsWith('how do') || lowerMessage.startsWith('can you')) {
-            return lowerMessage.length > 50 ? 'tool_agent' : 'direct_response';
-        }
-
-        return null; // Let LLM decide
-    }
 
     /**
      * Check if required tools are available for a given message type
@@ -420,55 +362,6 @@ Your routing decision:`;
         return 'direct_response';
     }
 
-    /**
-     * Validate and debug routing response format
-     */
-    private validateRoutingResponse(response: string): {
-        isValid: boolean;
-        route?: 'deep_research' | 'tool_agent' | 'direct_response';
-        directResponse?: string;
-        issues: string[];
-    } {
-        const issues: string[] = [];
-        const trimmed = response.trim();
-
-        // Check for exact matches first
-        if (trimmed === 'ROUTE_DEEP_RESEARCH') {
-            return { isValid: true, route: 'deep_research', issues: [] };
-        }
-
-        if (trimmed.startsWith('ROUTE_TOOL_AGENT')) {
-            return { isValid: true, route: 'tool_agent', issues: [] };
-        }
-
-        if (trimmed.startsWith('ROUTE_DIRECT ')) {
-            const directResponse = trimmed.substring('ROUTE_DIRECT '.length).trim();
-            if (directResponse.length === 0) {
-                issues.push('Empty direct response after ROUTE_DIRECT');
-                return { isValid: false, issues };
-            }
-            return { isValid: true, route: 'direct_response', directResponse, issues: [] };
-        }
-
-        // Analyze what went wrong
-        if (trimmed.toLowerCase().includes('route_deep_research')) {
-            issues.push('Incorrect casing or format for ROUTE_DEEP_RESEARCH');
-        }
-        if (trimmed.toLowerCase().includes('route_tool_agent')) {
-            issues.push('Incorrect casing or format for ROUTE_TOOL_AGENT');
-        }
-        if (trimmed.toLowerCase().includes('route_direct')) {
-            issues.push('Incorrect casing or format for ROUTE_DIRECT');
-        }
-        if (trimmed.length === 0) {
-            issues.push('Empty response');
-        }
-        if (trimmed.includes('explanation') || trimmed.includes('because') || trimmed.includes('reasoning')) {
-            issues.push('Response contains explanation instead of just routing decision');
-        }
-
-        return { isValid: false, issues };
-    }
 
     /**
      * Legacy method for backward compatibility

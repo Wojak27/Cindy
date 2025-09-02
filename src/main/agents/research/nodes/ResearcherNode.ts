@@ -234,7 +234,9 @@ Return only the search queries, one per line, without numbering or additional te
             new HumanMessage({ content: queryPrompt })
         ]);
 
-        const response = result.content as string;
+        let response = result.content as string;
+        // remove <think> tags if present
+        response = response.replace(/<think>.*?<\/think>/gs, '').trim();
         const queries = response.split('\n')
             .map(line => line.trim())
             .filter(line => line.length > 5 && !line.match(/^\d+\./))
