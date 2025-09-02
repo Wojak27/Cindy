@@ -14,6 +14,8 @@ import { ToolAgent } from '../ToolAgent';
 import { generateStepDescription, extractResearchContext, AGENT_STEP_TEMPLATES } from '../../../shared/AgentFlowStandard';
 import { HumanMessage } from '@langchain/core/messages';
 import { parseRoutingResponse } from '../schemas/routing';
+import { getApiKeyService } from '../../services/ApiKeyService';
+import { logger } from '../../utils/ColorLogger';
 
 /**
  * Integration options for Deep Research
@@ -61,7 +63,7 @@ export class DeepResearchIntegration {
         // Initialize tools
         this.initializeTools();
 
-        console.log('[DeepResearchIntegration] Initialized with settings:', {
+        logger.success('DeepResearchIntegration', 'Initialized with multi-agent routing system', {
             enabled: this.enabled,
             fallback: this.fallbackToOriginal,
             searchAPI: this.configManager.getConfig().search_api
@@ -91,36 +93,38 @@ export class DeepResearchIntegration {
             return DeepResearchConfigManager.fromEnvironmentAndSettings(settings);
 
         } catch (error) {
-            console.error('[DeepResearchIntegration] Error creating config from settings:', error);
+            logger.error('DeepResearchIntegration', 'Error creating config from settings', error);
             return new DeepResearchConfigManager();
         }
     }
 
     /**
-     * Get search API preference from settings
+     * Get search API preference using centralized API key service
      */
     private getSearchAPIFromSettings(): string {
         try {
-            // Check for API keys in settings to determine which search APIs are available
-            const settings = this.settingsService as any;
+            // Use centralized API key service for consistent API key loading
+            const apiKeyService = getApiKeyService(this.settingsService);
+            const apiKeys = apiKeyService.getAllApiKeys();
 
-            // Check for search API keys
-            const hasBraveKey = settings?.get?.('braveApiKey') || process.env.BRAVE_API_KEY;
-            const hasTavilyKey = settings?.get?.('tavilyApiKey') || process.env.TAVILY_API_KEY;
-            const hasSerpApiKey = settings?.get?.('serpApiKey') || process.env.SERP_API_KEY;
+            logger.info('DeepResearchIntegration', 'Checking API keys for search provider selection...');
 
-            // Prefer APIs with available keys
-            if (hasTavilyKey) {
-                return 'tavily';
-            } else if (hasBraveKey) {
-                return 'brave';
-            } else if (hasSerpApiKey) {
-                return 'serpapi';
+            // Prefer APIs with available keys (priority order: most reliable first)
+            if (apiKeys.braveApiKey) {
+                logger.success('DeepResearchIntegration', 'Using Brave Search (primary - reliable, privacy-focused)');
+                return 'brave';        
+            } else if (apiKeys.tavilyApiKey) {
+                logger.success('DeepResearchIntegration', 'Using Tavily Search (secondary - AI-optimized)');
+                return 'tavily';       
+            } else if (apiKeys.serpApiKey) {
+                logger.success('DeepResearchIntegration', 'Using SerpAPI (tertiary - Google results)');
+                return 'serpapi';      
             } else {
-                return 'duckduckgo'; // Free fallback - no API key required
+                logger.warn('DeepResearchIntegration', 'Using DuckDuckGo (fallback - free but VQD issues)');
+                return 'duckduckgo';   
             }
         } catch (error) {
-            console.warn('[DeepResearchIntegration] Could not check API keys from settings, using DuckDuckGo fallback');
+            logger.error('DeepResearchIntegration', 'Error checking API keys, using DuckDuckGo fallback', error);
             return 'duckduckgo';
         }
     }
@@ -141,11 +145,11 @@ export class DeepResearchIntegration {
 
             // For now, return false to disable vector store until proper file detection is implemented
             // TODO: Implement proper vector store file count check
-            console.log('[DeepResearchIntegration] Vector store file check: disabled pending proper implementation');
+            logger.debug('DeepResearchIntegration', 'Vector store file check: disabled pending proper implementation');
             return false;
 
         } catch (error) {
-            console.warn('[DeepResearchIntegration] Error checking vector store files:', error);
+            logger.warn('DeepResearchIntegration', 'Error checking vector store files', error);
             return false;
         }
     }
@@ -158,29 +162,40 @@ export class DeepResearchIntegration {
             // Check if vector store has user files before enabling
             const hasVectorStoreFiles = await this.checkVectorStoreHasFiles();
 
-            // Load tools with current settings (simplified for compatibility)
+            // Load tools with priority order (reliable providers first, DuckDuckGo as fallback)
+            // Use centralized API key service for consistent key loading
+            const apiKeyService = getApiKeyService(this.settingsService);
+            const apiKeys = apiKeyService.getAllApiKeys();
+            
+            logger.stage('DeepResearchIntegration', 'Tool Initialization', 'Loading tools with centralized API key service');
+            logger.section('DeepResearchIntegration', 'API Key Diagnostics', () => {
+                apiKeyService.logDiagnostics();
+            });
+            
             const toolConfig = {
-                // braveApiKey: undefined, // Simplified for compatibility
-                // serpApiKey: undefined,
-                // tavilyApiKey: undefined,
-                // vectorStore: undefined, // Use existing vector store
+                // API keys from centralized service
+                braveApiKey: apiKeys.braveApiKey,
+                serpApiKey: apiKeys.serpApiKey,
+                tavilyApiKey: apiKeys.tavilyApiKey,
+                accuWeatherApiKey: apiKeys.accuWeatherApiKey,
                 enabledTools: {
-                    duckduckgo: true,
-                    brave: false,
-                    wikipedia: true,
-                    serpapi: false,
-                    tavily: false,
+                    // Search providers in priority order (most reliable first)
+                    brave: true,       // Primary if API key available
+                    tavily: true,      // Secondary if API key available  
+                    serpapi: true,     // Tertiary if API key available
+                    wikipedia: true,   // Always available (reliable for factual info)
+                    duckduckgo: true,  // Fallback (free but VQD issues)
                     vector: hasVectorStoreFiles, // Only enable if there are user files
-                    weather: true // Always enable weather tool (works with mock data)
+                    weather: true      // Always enable weather tool
                 }
             };
 
             await toolLoader.loadAllTools(toolConfig);
 
-            console.log('[DeepResearchIntegration] Tools initialized:', toolRegistry.getStats());
+            logger.success('DeepResearchIntegration', 'Tools initialized successfully', toolRegistry.getStats());
 
         } catch (error) {
-            console.error('[DeepResearchIntegration] Error initializing tools:', error);
+            logger.error('DeepResearchIntegration', 'Error initializing tools', error);
         }
     }
 
@@ -205,7 +220,9 @@ export class DeepResearchIntegration {
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-                console.log(`[DeepResearchIntegration] Routing attempt ${attempt}/${maxRetries} for message: "${message.substring(0, 50)}..."`);
+                logger.info('DeepResearchIntegration', `Routing attempt ${attempt}/${maxRetries}`, {
+                    message: message.substring(0, 50) + (message.length > 50 ? '...' : '')
+                });
 
                 const result = await this.llmProvider.invoke([
                     new HumanMessage({ content: routingPrompt })
@@ -215,45 +232,45 @@ export class DeepResearchIntegration {
                 const thinkTagRegex = /<think[^>]*>([\s\S]*?)<\/think>/g;
                 const cleanResponse = (result.content as string).replace(thinkTagRegex, '').trim();
 
-                console.log(`[DeepResearchIntegration] Routing response (attempt ${attempt}): "${cleanResponse}"`);
+                logger.debug('DeepResearchIntegration', `Routing response (attempt ${attempt})`, { response: cleanResponse });
 
                 // Parse using the Zod-based routing parser
                 const routingDecision = parseRoutingResponse(cleanResponse);
 
                 if (routingDecision) {
-                    console.log(`[DeepResearchIntegration] ✅ Valid routing decision: ${routingDecision.route}`);
+                    logger.success('DeepResearchIntegration', `Valid routing decision: ${routingDecision.route}`);
+                    logger.transition('DeepResearchIntegration', 'Message Analysis', routingDecision.route.toUpperCase());
                     return {
                         route: routingDecision.route,
                         response: routingDecision.response
                     };
                 } else {
-                    console.warn(`[DeepResearchIntegration] ⚠️ Invalid routing format on attempt ${attempt}:`);
-                    console.warn(`[DeepResearchIntegration]   Response: "${cleanResponse}"`);
+                    logger.warn('DeepResearchIntegration', `Invalid routing format on attempt ${attempt}`, { response: cleanResponse });
                 }
 
                 // If we got here, the response format was invalid
                 if (attempt < maxRetries) {
-                    console.log(`[DeepResearchIntegration] Retrying routing decision (attempt ${attempt + 1}/${maxRetries})`);
+                    logger.info('DeepResearchIntegration', `Retrying routing decision (attempt ${attempt + 1}/${maxRetries})`);
                     // Add a small delay before retry
                     await new Promise(resolve => setTimeout(resolve, 500));
                 }
 
             } catch (error) {
-                console.error(`[DeepResearchIntegration] Error in routing attempt ${attempt}:`, error);
+                logger.error('DeepResearchIntegration', `Error in routing attempt ${attempt}`, error);
 
                 if (attempt < maxRetries) {
-                    console.log(`[DeepResearchIntegration] Retrying after error (attempt ${attempt + 1}/${maxRetries})`);
+                    logger.info('DeepResearchIntegration', `Retrying after error (attempt ${attempt + 1}/${maxRetries})`);
                     await new Promise(resolve => setTimeout(resolve, 1000));
                 } else {
-                    console.error('[DeepResearchIntegration] All routing attempts failed due to errors');
+                    logger.error('DeepResearchIntegration', 'All routing attempts failed due to errors');
                 }
             }
         }
 
         // All retries exhausted - use intelligent fallback
-        console.error('[DeepResearchIntegration] ❌ All routing attempts failed, using intelligent fallback');
+        logger.error('DeepResearchIntegration', 'All routing attempts failed, using intelligent fallback');
         const fallbackRoute = this.getIntelligentFallback(message);
-        console.log(`[DeepResearchIntegration] Using intelligent fallback route: ${fallbackRoute}`);
+        logger.warn('DeepResearchIntegration', `Using intelligent fallback route: ${fallbackRoute}`);
 
         if (fallbackRoute === 'direct_response') {
             return {
@@ -393,7 +410,7 @@ export class DeepResearchIntegration {
             // Check if required tools are available before proceeding
             const toolCheck = this.checkRequiredTools(message, routing.route);
             if (!toolCheck.available && toolCheck.errorMessage) {
-                console.warn(`[DeepResearchIntegration] Missing required tools for ${routing.route}:`, toolCheck.missingTools);
+                logger.warn('DeepResearchIntegration', `Missing required tools for ${routing.route}`, { missingTools: toolCheck.missingTools });
                 return {
                     result: toolCheck.errorMessage,
                     usedDeepResearch: false,
@@ -404,7 +421,7 @@ export class DeepResearchIntegration {
 
             switch (routing.route) {
                 case 'deep_research':
-                    console.log('[DeepResearchIntegration] Using Deep Research for message');
+                    logger.stage('DeepResearchIntegration', 'Deep Research Mode', 'Using comprehensive research workflow');
                     const researchResult = await this.deepResearchAgent.processResearch(message);
                     return {
                         result: researchResult,
@@ -414,14 +431,14 @@ export class DeepResearchIntegration {
                     };
 
                 case 'tool_agent':
-                    console.log('[DeepResearchIntegration] Using Tool Agent for message');
+                    logger.stage('DeepResearchIntegration', 'Tool Agent Mode', 'Using specialized tool execution');
 
                     // Check tool availability before processing
                     const availableTools = this.toolAgent.getAvailableTools();
-                    console.log(`[DeepResearchIntegration] Available tools: ${availableTools.join(', ')}`);
+                    logger.info('DeepResearchIntegration', `Available tools: ${availableTools.join(', ')}`);
 
                     if (availableTools.length === 0) {
-                        console.warn('[DeepResearchIntegration] No tools available, returning helpful message');
+                        logger.warn('DeepResearchIntegration', 'No tools available, returning helpful message');
                         return {
                             result: 'I understand you need help with that request, but my tool services are currently unavailable. I can still provide general information or assistance through conversation. Could you try asking in a different way, or would you like me to help with something else?',
                             usedDeepResearch: false,
@@ -435,7 +452,7 @@ export class DeepResearchIntegration {
 
                         // Validate tool result to prevent hallucination
                         if (!toolResult || !toolResult.result) {
-                            console.warn('[DeepResearchIntegration] Tool agent returned empty result');
+                            logger.warn('DeepResearchIntegration', 'Tool agent returned empty result');
                             return {
                                 result: 'I tried to help with your request using my tools, but didn\'t get a proper response. This might be due to service availability or network issues. Please try again in a moment, or rephrase your request.',
                                 usedDeepResearch: false,
@@ -476,7 +493,7 @@ export class DeepResearchIntegration {
 
                 case 'direct_response':
                 default:
-                    console.log('[DeepResearchIntegration] Using direct response with memory context');
+                    logger.stage('DeepResearchIntegration', 'Direct Response Mode', 'Using memory-enhanced direct response');
                     try {
                         const directResult = await this.processDirectResponse(message, context);
                         return {
@@ -497,10 +514,10 @@ export class DeepResearchIntegration {
             }
 
         } catch (error: any) {
-            console.error('[DeepResearchIntegration] Error processing message:', error);
+            logger.error('DeepResearchIntegration', 'Error processing message', error);
 
             if (this.fallbackToOriginal) {
-                console.log('[DeepResearchIntegration] Falling back to original system');
+                logger.warn('DeepResearchIntegration', 'Falling back to original system');
                 return {
                     result: 'FALLBACK_TO_ORIGINAL',
                     usedDeepResearch: false,
@@ -533,7 +550,7 @@ export class DeepResearchIntegration {
             // Check if required tools are available before proceeding
             const toolCheck = this.checkRequiredTools(message, routing.route);
             if (!toolCheck.available && toolCheck.errorMessage) {
-                console.warn(`[DeepResearchIntegration] Missing required tools for ${routing.route}:`, toolCheck.missingTools);
+                logger.warn('DeepResearchIntegration', `Missing required tools for ${routing.route}`, { missingTools: toolCheck.missingTools });
                 yield {
                     type: 'result',
                     content: toolCheck.errorMessage,

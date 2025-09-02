@@ -9,6 +9,7 @@ import type {
     ToolSpecification, 
     ToolConfig
 } from './ToolDefinitions';
+import { logger } from '../../utils/ColorLogger';
 
 /**
  * Tool Registry for centralized tool management
@@ -30,7 +31,7 @@ export class ToolRegistry extends EventEmitter {
             this.toolsByCategory.set(category as ToolCategory, new Set());
         });
         
-        console.log('[ToolRegistry] Initialized');
+        logger.info('ToolRegistry', 'Initialized');
     }
 
     /**
@@ -50,7 +51,7 @@ export class ToolRegistry extends EventEmitter {
         const { name, metadata } = specification;
         
         if (this.tools.has(name)) {
-            console.warn(`[ToolRegistry] Tool ${name} already registered, updating...`);
+            logger.warn('ToolRegistry', `Tool ${name} already registered, updating`);
         }
         
         this.tools.set(name, specification);
@@ -61,7 +62,7 @@ export class ToolRegistry extends EventEmitter {
             categorySet.add(name);
         }
         
-        console.log(`[ToolRegistry] Registered tool: ${name} (${metadata.category})`);
+        logger.success('ToolRegistry', `Registered tool: ${name} (${metadata.category})`);
         this.emit('tool-registered', { name, specification });
     }
 
@@ -78,7 +79,7 @@ export class ToolRegistry extends EventEmitter {
     unregisterTool(name: string): boolean {
         const tool = this.tools.get(name);
         if (!tool) {
-            console.warn(`[ToolRegistry] Tool ${name} not found`);
+            logger.warn('ToolRegistry', `Tool ${name} not found`);
             return false;
         }
         
@@ -89,7 +90,7 @@ export class ToolRegistry extends EventEmitter {
         }
         
         this.tools.delete(name);
-        console.log(`[ToolRegistry] Unregistered tool: ${name}`);
+        logger.info('ToolRegistry', `Unregistered tool: ${name}`);
         this.emit('tool-unregistered', { name });
         return true;
     }
@@ -197,12 +198,13 @@ export class ToolRegistry extends EventEmitter {
         const startTime = Date.now();
         
         try {
-            console.log(`[ToolRegistry] Executing tool: ${toolName} with parameters:`, parameters);
+            logger.toolStatus('ToolRegistry', toolName, 'starting', 'Executing tool');
+            logger.data('ToolRegistry', `Tool parameters for ${toolName}`, parameters);
             
             const toolSpec = this.tools.get(toolName);
             if (!toolSpec) {
-                console.error(`[ToolRegistry] Tool not found: ${toolName}`);
-                console.error(`[ToolRegistry] Available tools: [${Array.from(this.tools.keys()).join(', ')}]`);
+                logger.error('ToolRegistry', `Tool not found: ${toolName}`);
+                logger.data('ToolRegistry', 'Available tools', Array.from(this.tools.keys()));
                 throw new Error(`Tool not found: ${toolName}`);
             }
 
@@ -214,13 +216,14 @@ export class ToolRegistry extends EventEmitter {
                 input = JSON.stringify(input);
             }
             
-            console.log(`[ToolRegistry] Passing to tool ${toolName}:`, input, typeof input);
+            logger.debug('ToolRegistry', `Passing to tool ${toolName}`, { input, type: typeof input });
             
             // Execute the tool
             const result = await toolSpec.tool.invoke(input);
             const duration = Date.now() - startTime;
             
-            console.log(`[ToolRegistry] Tool ${toolName} executed successfully in ${duration}ms`);
+            logger.toolCall('ToolRegistry', toolName, parameters, result, duration);
+            logger.toolStatus('ToolRegistry', toolName, 'success', `Completed in ${duration}ms`);
             
             return {
                 success: true,
@@ -230,7 +233,8 @@ export class ToolRegistry extends EventEmitter {
             
         } catch (error: any) {
             const duration = Date.now() - startTime;
-            console.error(`[ToolRegistry] Tool ${toolName} failed after ${duration}ms:`, error.message);
+            logger.toolStatus('ToolRegistry', toolName, 'error', `Failed after ${duration}ms`);
+            logger.error('ToolRegistry', `Tool ${toolName} execution failed`, error);
             
             return {
                 success: false,
@@ -267,12 +271,12 @@ export class ToolRegistry extends EventEmitter {
     configureTool(name: string, config: ToolConfig): boolean {
         const tool = this.tools.get(name);
         if (!tool) {
-            console.warn(`[ToolRegistry] Tool ${name} not found for configuration`);
+            logger.warn('ToolRegistry', `Tool ${name} not found for configuration`);
             return false;
         }
         
         tool.config = { ...tool.config, ...config };
-        console.log(`[ToolRegistry] Configured tool ${name}:`, config);
+        logger.info('ToolRegistry', `Configured tool ${name}`, config);
         this.emit('tool-configured', { name, config });
         return true;
     }
@@ -290,7 +294,7 @@ export class ToolRegistry extends EventEmitter {
     clear(): void {
         this.tools.clear();
         this.toolsByCategory.forEach(set => set.clear());
-        console.log('[ToolRegistry] All tools cleared');
+        logger.info('ToolRegistry', 'All tools cleared');
         this.emit('registry-cleared');
     }
 
@@ -336,17 +340,17 @@ export class ToolRegistry extends EventEmitter {
      */
     async initialize(): Promise<void> {
         if (this.initialized) {
-            console.log('[ToolRegistry] Already initialized');
+            logger.info('ToolRegistry', 'Already initialized');
             return;
         }
         
-        console.log('[ToolRegistry] Initializing with default tools...');
+        logger.stage('ToolRegistry', 'Initializing with default tools');
         
         // Tool initialization will be done by individual tool modules
         // They will self-register when imported
         
         this.initialized = true;
-        console.log('[ToolRegistry] Initialization complete');
+        logger.complete('ToolRegistry', 'Initialization complete');
         this.emit('registry-initialized');
     }
 

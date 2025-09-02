@@ -6,6 +6,7 @@
 import { LLMProvider } from '../services/LLMProvider';
 import { toolRegistry } from './tools/ToolRegistry';
 import { HumanMessage } from '@langchain/core/messages';
+import { logger } from '../utils/ColorLogger';
 
 /**
  * Configuration options for the Tool Agent
@@ -24,7 +25,7 @@ export class ToolAgent {
     constructor(options: ToolAgentOptions) {
         this.llmProvider = options.llmProvider;
 
-        console.log('[ToolAgent] Initialized for quick tool-based requests');
+        logger.success('ToolAgent', 'Initialized for quick tool-based requests');
     }
 
     /**
@@ -36,7 +37,7 @@ export class ToolAgent {
         sideViewData?: any;
     }> {
         try {
-            console.log('[ToolAgent] Processing tool request:', input);
+            logger.stage('ToolAgent', 'Processing Tool Request', `Analyzing: "${input.substring(0, 50)}..."`);
 
             // Analyze the request and determine which tools to use
             const toolPlan = await this.planToolExecution(input);
@@ -52,10 +53,17 @@ export class ToolAgent {
 
             // Execute tools in sequence
             for (const toolCall of toolPlan.tools) {
-                console.log(`[ToolAgent] Executing tool: ${toolCall.tool} with params:`, toolCall.params);
-
+                const startTime = Date.now();
+                
+                logger.toolStatus('ToolAgent', toolCall.tool, 'starting');
+                
                 try {
                     const result = await toolRegistry.executeTool(toolCall.tool, toolCall.params);
+                    const duration = Date.now() - startTime;
+                    
+                    // Log detailed tool call with input/output
+                    logger.toolCall('ToolAgent', toolCall.tool, toolCall.params, result, duration);
+                    
                     toolResults.push({
                         tool: toolCall.tool,
                         params: toolCall.params,
@@ -65,15 +73,22 @@ export class ToolAgent {
                     // Check if this is weather data for side view
                     if (toolCall.tool === 'weather' && result) {
                         sideViewData = this.formatWeatherForSideView(result, toolCall.params);
+                        logger.info('ToolAgent', 'Weather data formatted for side view');
                     }
 
                     // Check if this is maps data for side view
                     if (toolCall.tool === 'display_map' && result) {
                         sideViewData = this.formatMapsForSideView(result, toolCall.params);
+                        logger.info('ToolAgent', 'Maps data formatted for side view');
                     }
+                    
+                    logger.toolStatus('ToolAgent', toolCall.tool, 'success', `Completed in ${duration}ms`);
 
                 } catch (toolError) {
-                    console.error(`[ToolAgent] Tool execution failed for ${toolCall.tool}:`, toolError);
+                    const duration = Date.now() - startTime;
+                    logger.toolStatus('ToolAgent', toolCall.tool, 'error', toolError.message);
+                    logger.toolCall('ToolAgent', toolCall.tool, toolCall.params, `ERROR: ${toolError.message}`, duration);
+                    
                     toolResults.push({
                         tool: toolCall.tool,
                         params: toolCall.params,
@@ -82,8 +97,21 @@ export class ToolAgent {
                 }
             }
 
+            // Generate tool execution summary
+            const summary = toolResults.map(tr => ({
+                tool: tr.tool,
+                success: !tr.error,
+                duration: undefined, // Duration was logged but not stored in results
+                error: tr.error
+            }));
+            
+            logger.toolSummary('ToolAgent', summary);
+
             // Generate final response based on tool results
+            logger.step('ToolAgent', 'Synthesizing tool results into response...', 'running');
             const finalResponse = await this.synthesizeToolResults(input, toolResults);
+            
+            logger.complete('ToolAgent', 'Tool processing completed successfully');
 
             return {
                 result: finalResponse,
@@ -92,7 +120,7 @@ export class ToolAgent {
             };
 
         } catch (error: any) {
-            console.error('[ToolAgent] Processing error:', error);
+            logger.error('ToolAgent', 'Processing error', error);
             return {
                 result: `I encountered an error while processing your request: ${error.message}`
             };
@@ -108,6 +136,7 @@ export class ToolAgent {
         data?: any;
     }> {
         try {
+            logger.stage('ToolAgent', 'Streaming Tool Execution', `Processing: "${input.substring(0, 50)}..."`);
             yield { type: 'progress', content: 'Analyzing your request...' };
 
             const thinkTagRegex = /<think[^>]*>([\s\S]*?)<\/think>/g;
@@ -128,10 +157,18 @@ export class ToolAgent {
             let sideViewData: any = null;
 
             for (const toolCall of toolPlan.tools) {
+                const startTime = Date.now();
+                
+                logger.toolStatus('ToolAgent', toolCall.tool, 'starting');
                 yield { type: 'progress', content: `Using ${toolCall.tool}...` };
 
                 try {
                     const result = await toolRegistry.executeTool(toolCall.tool, toolCall.params);
+                    const duration = Date.now() - startTime;
+                    
+                    // Log detailed tool call (but don't stream the full output to avoid UI clutter)
+                    logger.toolCall('ToolAgent', toolCall.tool, toolCall.params, result, duration);
+                    
                     toolResults.push({
                         tool: toolCall.tool,
                         params: toolCall.params,
@@ -141,6 +178,7 @@ export class ToolAgent {
                     // Check if this is weather data for side view
                     if (toolCall.tool === 'weather' && result) {
                         sideViewData = this.formatWeatherForSideView(result, toolCall.params);
+                        logger.info('ToolAgent', 'Weather data formatted for side view');
                         yield {
                             type: 'side_view',
                             content: 'Weather information',
@@ -151,6 +189,7 @@ export class ToolAgent {
                     // Check if this is maps data for side view
                     if (toolCall.tool === 'display_map' && result) {
                         sideViewData = this.formatMapsForSideView(result, toolCall.params);
+                        logger.info('ToolAgent', 'Maps data formatted for side view');
                         yield {
                             type: 'side_view',
                             content: 'Map location',
@@ -158,6 +197,7 @@ export class ToolAgent {
                         };
                     }
 
+                    logger.toolStatus('ToolAgent', toolCall.tool, 'success', `Completed in ${duration}ms`);
                     yield {
                         type: 'tool_result',
                         content: `${toolCall.tool} completed`,
@@ -165,7 +205,10 @@ export class ToolAgent {
                     };
 
                 } catch (toolError) {
-                    console.error(`[ToolAgent] Tool execution failed for ${toolCall.tool}:`, toolError);
+                    const duration = Date.now() - startTime;
+                    logger.toolStatus('ToolAgent', toolCall.tool, 'error', toolError.message);
+                    logger.toolCall('ToolAgent', toolCall.tool, toolCall.params, `ERROR: ${toolError.message}`, duration);
+                    
                     yield {
                         type: 'tool_result',
                         content: `${toolCall.tool} failed: ${toolError.message}`
@@ -179,7 +222,7 @@ export class ToolAgent {
             yield { type: 'result', content: finalResponse };
 
         } catch (error: any) {
-            console.error('[ToolAgent] Streaming error:', error);
+            logger.error('ToolAgent', 'Streaming error', error);
             yield { type: 'result', content: `Error: ${error.message}` };
         }
     }
@@ -238,16 +281,16 @@ If no tools are needed or available tools don't match the request, return empty 
                 const cleanedResponse = response.replace(thinkTagRegex, '').replace(/```json\n?|```\n?/g, '').trim();
                 const plan = JSON.parse(cleanedResponse);
 
-                console.log('[ToolAgent] Tool execution plan:', plan);
+                logger.info('ToolAgent', 'Tool execution plan generated', plan);
                 return plan;
 
             } catch (parseError) {
-                console.error('[ToolAgent] Failed to parse tool plan:', parseError);
+                logger.error('ToolAgent', 'Failed to parse tool plan', parseError);
                 return { tools: [], reasoning: 'Failed to parse tool execution plan' };
             }
 
         } catch (error) {
-            console.error('[ToolAgent] Error planning tool execution:', error);
+            logger.error('ToolAgent', 'Error planning tool execution', error);
             return { tools: [], reasoning: 'Error in tool planning' };
         }
     }
@@ -303,7 +346,7 @@ Only include citations for web search, wikipedia, or research tools that provide
             return response;
 
         } catch (error) {
-            console.error('[ToolAgent] Error synthesizing results:', error);
+            logger.error('ToolAgent', 'Error synthesizing results', error);
             return 'I gathered some information but had trouble putting it together. Please try again.';
         }
     }
@@ -389,8 +432,10 @@ Only include citations for web search, wikipedia, or research tools that provide
      */
     private formatWeatherForSideView(weatherResult: any, params: any): any {
         try {
-            console.log('[ToolAgent] formatWeatherForSideView - raw result:', weatherResult);
-            console.log('[ToolAgent] formatWeatherForSideView - params:', params);
+            logger.debug('ToolAgent', 'Formatting weather for side view', { 
+                rawResult: typeof weatherResult === 'object' ? 'OBJECT' : weatherResult?.toString?.() || weatherResult,
+                params 
+            });
             
             // Handle ToolRegistry result format: { success: true, result: "JSON_STRING", duration: ... }
             let weatherData = weatherResult;

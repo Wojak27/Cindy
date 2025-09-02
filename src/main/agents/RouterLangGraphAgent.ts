@@ -3,6 +3,7 @@ import { LangChainMemoryService } from '../services/LangChainMemoryService';
 import { toolRegistry } from './tools/ToolRegistry';
 import { SettingsService } from '../services/SettingsService';
 import { DeepResearchIntegration } from './research/DeepResearchIntegration';
+import { logger } from '../utils/ColorLogger';
 import fs from 'fs/promises';
 import path from 'path';
 import { spawn } from 'child_process';
@@ -39,8 +40,11 @@ export class RouterLangGraphAgent {
             fallbackToOriginal: true
         });
 
-        console.log('[RouterLangGraphAgent] Initialized ');
-        console.log('[RouterLangGraphAgent] Using provider:', this.llmProvider.getCurrentProvider());
+        logger.success('RouterLangGraphAgent', 'Initialized with Deep Research routing', {
+            provider: this.llmProvider.getCurrentProvider(),
+            deepResearchEnabled: true,
+            fallbackEnabled: true
+        });
     }
 
     /**
@@ -88,10 +92,10 @@ export class RouterLangGraphAgent {
      */
     async *processStreaming(input: string, context?: any): AsyncGenerator<string> {
         try {
-            console.log("\n🎬 [RouterLangGraphAgent] ROUTING");
-            console.log("═".repeat(80));
-            console.log(`📥 INPUT: "${input}"`);
-            console.log("═".repeat(80));
+            logger.stage('RouterLangGraphAgent', 'Intelligent Routing', `Processing: "${input}"`);
+            logger.section('RouterLangGraphAgent', 'Route Analysis', () => {
+                logger.keyValue('RouterLangGraphAgent', 'Input', input);
+            });
 
 
             for await (const update of this.routerAgent.streamMessage(input, context)) {
@@ -104,7 +108,7 @@ export class RouterLangGraphAgent {
                     }
                 } else if (update.usedToolAgent) {
                     // Tool Agent mode
-                    console.log("[RouterLangGraphAgent] Using Tool Agent");
+                    logger.info('RouterLangGraphAgent', 'Using Tool Agent for specialized execution');
                     if (update.type === 'progress') {
                         yield `🔧 ${update.content}\n\n`;
                     } else if (update.type === 'tool_result') {
@@ -130,9 +134,7 @@ export class RouterLangGraphAgent {
             }
 
         } catch (error) {
-            console.log("\n❌ [RouterLangGraphAgent] Streaming process error");
-            console.log("═".repeat(80));
-            console.error("[RouterLangGraphAgent] Streaming error:", error);
+            logger.error('RouterLangGraphAgent', 'Streaming process error', error);
             yield `\n❌ **Error:** I encountered an issue while processing your request: ${(error as Error).message}`;
         }
     }
@@ -157,9 +159,9 @@ export class RouterLangGraphAgent {
     async updateSettings(): Promise<void> {
         try {
             await this.routerAgent.updateSettings();
-            console.log('[RouterLangGraphAgent] Settings updated successfully');
+            logger.success('RouterLangGraphAgent', 'Settings updated successfully');
         } catch (error) {
-            console.error('[RouterLangGraphAgent] Error updating settings:', error);
+            logger.error('RouterLangGraphAgent', 'Error updating settings', error);
         }
     }
 

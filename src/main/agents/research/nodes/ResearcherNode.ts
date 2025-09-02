@@ -8,6 +8,7 @@ import { LLMProvider } from '../../../services/LLMProvider';
 import { toolRegistry } from '../../tools/ToolRegistry';
 import { ResearcherState, ResearcherOutputState } from '../DeepResearchState';
 import { DeepResearchConfiguration } from '../DeepResearchConfig';
+import { logger } from '../../../utils/ColorLogger';
 
 /**
  * Researcher node that conducts detailed research on specific topics
@@ -17,12 +18,11 @@ export function createResearcherNode(
     config: DeepResearchConfiguration
 ) {
     return async (state: ResearcherState): Promise<ResearcherOutputState> => {
-        console.log('[ResearcherNode] ===== RESEARCHER NODE STARTING =====');
-        console.log(`[ResearcherNode] Research topic: ${state.research_topic}`);
-        console.log(`[ResearcherNode] Current tool iterations: ${state.tool_call_iterations}`);
+        logger.stage('ResearcherNode', 'Starting Research', `Topic: ${state.research_topic}`);
+        logger.info('ResearcherNode', `Tool iterations: ${state.tool_call_iterations}`);
 
         try {
-            console.log('[ResearcherNode] Calling conductResearchWithTools...');
+            logger.step('ResearcherNode', 'Initiating research with tools', 'running');
             const researchResults = await conductResearchWithTools(
                 state.research_topic,
                 llmProvider,
@@ -30,12 +30,13 @@ export function createResearcherNode(
                 state.tool_call_iterations
             );
 
-            console.log(`[ResearcherNode] Research completed:`);
-            console.log(`[ResearcherNode] - Findings: ${researchResults.findings.length} items`);
-            console.log(`[ResearcherNode] - Raw notes: ${researchResults.rawNotes.length} items`);
+            logger.success('ResearcherNode', 'Research completed successfully', {
+                findings: researchResults.findings.length,
+                rawNotes: researchResults.rawNotes.length
+            });
 
             // Compress and summarize the research findings
-            console.log('[ResearcherNode] Compressing research findings...');
+            logger.step('ResearcherNode', 'Compressing research findings', 'running');
             const compressedResearch = await compressResearchFindings(
                 researchResults.findings,
                 state.research_topic,
@@ -43,8 +44,8 @@ export function createResearcherNode(
                 config
             );
 
-            console.log(`[ResearcherNode] ===== RESEARCHER NODE COMPLETE =====`);
-            console.log(`[ResearcherNode] Compressed research length: ${compressedResearch.length} characters`);
+            logger.complete('ResearcherNode', 'Research node completed', compressedResearch.length);
+            logger.keyValue('ResearcherNode', 'Compressed research length', `${compressedResearch.length} characters`);
 
             const result = {
                 compressed_research: compressedResearch,
@@ -54,9 +55,7 @@ export function createResearcherNode(
             return result;
 
         } catch (error: any) {
-            console.error('[ResearcherNode] ===== RESEARCHER ERROR =====');
-            console.error('[ResearcherNode] Research error:', error);
-            console.error('[ResearcherNode] Error stack:', error.stack);
+            logger.error('ResearcherNode', 'Research node failed', error);
 
             return {
                 compressed_research: `Research failed for topic: ${state.research_topic}. Error: ${error.message}`,
@@ -79,28 +78,28 @@ async function conductResearchWithTools(
     const rawNotes: string[] = [];
     const maxIterations = config.max_react_tool_calls;
 
-    console.log(`[ResearcherNode] Starting research with up to ${maxIterations} tool calls`);
+    logger.info('conductResearchWithTools', `Starting research with up to ${maxIterations} tool calls`);
 
     let toolCallCount = currentIterations;
 
     while (toolCallCount < maxIterations) {
         try {
             // Get available search tools
-            console.log('[conductResearchWithTools] Getting available search tools...');
+            logger.step('conductResearchWithTools', 'Getting available search tools', 'running');
             const availableTools = getAvailableSearchTools();
-            console.log(`[conductResearchWithTools] Available tools: [${availableTools.join(', ')}]`);
+            logger.info('conductResearchWithTools', `Available tools: [${availableTools.join(', ')}]`);
 
             if (availableTools.length === 0) {
-                console.warn('[conductResearchWithTools] ⚠️ No search tools available - cannot conduct research');
+                logger.warn('conductResearchWithTools', 'No search tools available - cannot conduct research');
                 // Return mock research data to test the pipeline
                 const mockFindings = [`Mock research for topic: ${researchTopic}. This is placeholder data since no search tools are available.`];
                 const mockRawNotes = [`Mock raw note: No search tools available for topic "${researchTopic}"`];
-                console.log('[conductResearchWithTools] Returning mock data for testing');
+                logger.info('conductResearchWithTools', 'Returning mock data for testing');
                 return { findings: mockFindings, rawNotes: mockRawNotes };
             }
 
             // Generate research queries
-            console.log('[conductResearchWithTools] Generating research queries...');
+            logger.step('conductResearchWithTools', 'Generating research queries', 'running');
             const researchQueries = await generateResearchQueries(
                 researchTopic,
                 findings,
@@ -108,50 +107,56 @@ async function conductResearchWithTools(
                 config
             );
 
-            console.log(`[conductResearchWithTools] Generated ${researchQueries.length} research queries:`);
+            logger.success('conductResearchWithTools', `Generated ${researchQueries.length} research queries`);
             researchQueries.forEach((query, index) => {
-                console.log(`[conductResearchWithTools] Query ${index + 1}: ${query}`);
+                logger.bullet('conductResearchWithTools', `Query ${index + 1}: ${query}`, 1);
             });
 
             // Execute research for each query
             for (const query of researchQueries.slice(0, 3)) { // Limit to 3 queries per iteration
                 if (toolCallCount >= maxIterations) {
-                    console.log(`[conductResearchWithTools] Reached max iterations (${maxIterations})`);
+                    logger.warn('conductResearchWithTools', `Reached max iterations (${maxIterations})`);
                     break;
                 }
 
                 try {
                     // Try different search tools based on configuration
                     const searchTool = selectSearchTool(config, availableTools);
-                    console.log(`[conductResearchWithTools] Using tool: ${searchTool} for query: "${query}"`);
+                    logger.info('conductResearchWithTools', `Using tool: ${searchTool} for query: "${query}"`);
 
-                    console.log(`[conductResearchWithTools] Executing toolRegistry.executeTool("${searchTool}", {input: "${query}"})...`);
+                    const startTime = Date.now();
+                    logger.toolStatus('conductResearchWithTools', searchTool, 'starting', 'Executing search');
                     const searchResult = await toolRegistry.executeTool(searchTool, { input: query });
-                    console.log(`[conductResearchWithTools] Tool execution completed. Result type: ${typeof searchResult}`);
-
+                    const duration = Date.now() - startTime;
+                    
+                    logger.toolStatus('conductResearchWithTools', searchTool, 'success', `Completed in ${duration}ms`);
                     const resultText = typeof searchResult === 'string' ? searchResult : JSON.stringify(searchResult);
-                    console.log(`[conductResearchWithTools] Result text length: ${resultText.length} characters`);
+                    
+                    logger.toolCall('conductResearchWithTools', searchTool, 
+                        { input: query }, 
+                        resultText.slice(0, 500) + (resultText.length > 500 ? '...' : ''),
+                        duration
+                    );
 
                     if (resultText && resultText.length > 10) {
                         findings.push(`Query: ${query}\nResults: ${resultText}`);
                         rawNotes.push(resultText);
                         toolCallCount++;
 
-                        console.log(`[conductResearchWithTools] ✅ Tool call ${toolCallCount} successful: Found ${resultText.length} chars of data`);
+                        logger.success('conductResearchWithTools', `Tool call ${toolCallCount} successful: Found ${resultText.length} chars of data`);
                     } else {
-                        console.warn(`[conductResearchWithTools] ⚠️ Tool call returned empty or very short result: "${resultText}"`);
+                        logger.warn('conductResearchWithTools', `Tool call returned empty or very short result: "${resultText}"`);
                     }
 
                 } catch (toolError: any) {
-                    console.error(`[conductResearchWithTools] ❌ Tool execution failed for query "${query}":`, toolError);
-                    console.error(`[conductResearchWithTools] Tool error details:`, toolError.message);
+                    logger.error('conductResearchWithTools', `Tool execution failed for query "${query}"`, toolError);
                     rawNotes.push(`Search failed for "${query}": ${toolError.message}`);
                 }
             }
 
             // Check if we have enough research
             if (findings.length >= 3) {
-                console.log('[ResearcherNode] Sufficient research findings collected');
+                logger.success('ResearcherNode', 'Sufficient research findings collected');
                 break;
             }
 
@@ -159,12 +164,12 @@ async function conductResearchWithTools(
             await new Promise(resolve => setTimeout(resolve, 1000));
 
         } catch (error: any) {
-            console.error(`[ResearcherNode] Error in research iteration ${toolCallCount}:`, error);
+            logger.error('ResearcherNode', `Error in research iteration ${toolCallCount}`, error);
             break;
         }
     }
 
-    console.log(`[ResearcherNode] Research completed with ${findings.length} findings after ${toolCallCount} tool calls`);
+    logger.complete('ResearcherNode', `Research completed with ${findings.length} findings after ${toolCallCount} tool calls`);
 
     return { findings, rawNotes };
 }
@@ -184,10 +189,10 @@ function selectSearchTool(config: DeepResearchConfiguration, availableTools: str
     // Priority order based on configuration
     const toolPriority = [
         'tavily_search',
-        'web_search',      // DuckDuckGo
         'brave_search',
         'serp_search',
-        'wikipedia_search'
+        'wikipedia_search',
+        'web_search',      // DuckDuckGo
     ];
 
     // Find the first available tool in priority order
@@ -245,7 +250,7 @@ Return only the search queries, one per line, without numbering or additional te
         return queries.length > 0 ? queries : [researchTopic];
 
     } catch (error) {
-        console.error('[ResearcherNode] Error generating queries:', error);
+        logger.error('ResearcherNode', 'Error generating queries', error);
         return [researchTopic];
     }
 }
@@ -298,7 +303,7 @@ Keep the summary comprehensive but focused, ensuring all important information f
         return (result.content as string).trim();
 
     } catch (error) {
-        console.error('[ResearcherNode] Error compressing findings:', error);
+        logger.error('ResearcherNode', 'Error compressing findings', error);
         return `Research summary for ${researchTopic}:\n\n${findings.join('\n\n')}`;
     }
 }

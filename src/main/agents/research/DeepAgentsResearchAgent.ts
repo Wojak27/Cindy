@@ -53,7 +53,7 @@ const createSearchTool = (llmProvider: LLMProvider): any => {
     return {
         name: "internet_search",
         description: "Search the internet for information on a given topic",
-        call: async ({ query, maxResults = 5 }: { query: string; maxResults?: number }): Promise<string> => {
+        call: async ({ query, maxResults = 2 }: { query: string; maxResults?: number }): Promise<string> => {
             try {
                 // Use existing search infrastructure
                 const searchResult = await performWebSearch(query, maxResults);

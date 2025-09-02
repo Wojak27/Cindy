@@ -13,6 +13,7 @@ import { createSerpAPISearchTool } from './search/SerpAPISearchTool';
 import { createTavilySearchTool } from './search/TavilySearchTool';
 import { createVectorSearchTool } from './vector/VectorSearchTool';
 import { createAccuWeatherTool } from './weather/AccuWeatherTool';
+import { getApiKeyService, ApiKeyConfig } from '../../services/ApiKeyService';
 import { createMapsDisplayTool } from './maps/MapsDisplayTool';
 import { createEmailSearchTool } from './connectors/EmailSearchTool';
 import { createReferenceSearchTool } from './connectors/ReferenceSearchTool';
@@ -137,30 +138,22 @@ export class ToolLoader {
         registeredTools: string[],
         failedTools: string[]
     ): Promise<void> {
-        // DuckDuckGo Search (free, no API key required)
-        if (enabledTools.duckduckgo !== false) {
+        // Load search providers in priority order (most reliable first, DuckDuckGo as fallback)
+        // Use centralized API key service for consistent key loading
+        const apiKeyService = getApiKeyService();
+        const apiKeys = apiKeyService.getAllApiKeys();
+        
+        console.log('[ToolLoader] Loading search tools with centralized API key service');
+        
+        // Brave Search (primary - reliable with API key)
+        if (enabledTools.brave !== false && apiKeys.braveApiKey) {
             try {
-                const spec: ToolSpecification | null = createDuckDuckGoSearchTool();
-                if (spec && !this.loadedTools.has(spec.name)) {
-                    // Don't auto-register since it's already done in the tool file
-                    // Just track that it's loaded
-                    this.loadedTools.add(spec.name);
-                    registeredTools.push(spec.name);
-                }
-            } catch (error: any) {
-                console.error('[ToolLoader] Failed to load DuckDuckGo search:', error.message);
-                failedTools.push('duckduckgo_search');
-            }
-        }
-
-        // Brave Search
-        if (enabledTools.brave !== false && config.braveApiKey) {
-            try {
-                const spec = createBraveSearchTool(config.braveApiKey);
+                const spec = createBraveSearchTool(apiKeys.braveApiKey);
                 if (spec && !this.loadedTools.has(spec.name)) {
                     toolRegistry.registerTool(spec);
                     this.loadedTools.add(spec.name);
                     registeredTools.push(spec.name);
+                    console.log('[ToolLoader] ✅ Brave Search loaded (primary search provider)');
                 }
             } catch (error: any) {
                 console.error('[ToolLoader] Failed to load Brave search:', error.message);
@@ -184,13 +177,14 @@ export class ToolLoader {
         }
 
         // SerpAPI Search
-        if (enabledTools.serpapi !== false && config.serpApiKey) {
+        if (enabledTools.serpapi !== false && apiKeys.serpApiKey) {
             try {
-                const spec = createSerpAPISearchTool(config.serpApiKey);
+                const spec = createSerpAPISearchTool(apiKeys.serpApiKey);
                 if (spec && !this.loadedTools.has(spec.name)) {
                     toolRegistry.registerTool(spec);
                     this.loadedTools.add(spec.name);
                     registeredTools.push(spec.name);
+                    console.log('[ToolLoader] ✅ SerpAPI Search loaded');
                 }
             } catch (error: any) {
                 console.error('[ToolLoader] Failed to load SerpAPI search:', error.message);
@@ -199,20 +193,38 @@ export class ToolLoader {
         }
 
         // Tavily Search
-        if (enabledTools.tavily !== false && config.tavilyApiKey) {
+        if (enabledTools.tavily !== false && apiKeys.tavilyApiKey) {
             try {
                 const spec = createTavilySearchTool({
-                    apiKey: config.tavilyApiKey,
+                    apiKey: apiKeys.tavilyApiKey,
                     maxResults: config.searchSettings?.maxResults
                 });
                 if (spec && !this.loadedTools.has(spec.name)) {
                     toolRegistry.registerTool(spec);
                     this.loadedTools.add(spec.name);
                     registeredTools.push(spec.name);
+                    console.log('[ToolLoader] ✅ Tavily Search loaded');
                 }
             } catch (error: any) {
                 console.error('[ToolLoader] Failed to load Tavily search:', error.message);
                 failedTools.push('tavily_search');
+            }
+        }
+
+        // DuckDuckGo Search (fallback - free but unreliable due to VQD issues)
+        if (enabledTools.duckduckgo !== false) {
+            try {
+                const spec: ToolSpecification | null = createDuckDuckGoSearchTool();
+                if (spec && !this.loadedTools.has(spec.name)) {
+                    // Don't auto-register since it's already done in the tool file
+                    // Just track that it's loaded
+                    this.loadedTools.add(spec.name);
+                    registeredTools.push(spec.name);
+                    console.log('[ToolLoader] ✅ DuckDuckGo Search loaded (fallback search provider)');
+                }
+            } catch (error: any) {
+                console.error('[ToolLoader] Failed to load DuckDuckGo search:', error.message);
+                failedTools.push('duckduckgo_search');
             }
         }
     }
@@ -251,15 +263,21 @@ export class ToolLoader {
         registeredTools: string[],
         failedTools: string[]
     ): Promise<void> {
-        // AccuWeather Tool (works with mock data when no API key)
+        // AccuWeather Tool (use API key from centralized service)
         if (enabledTools.weather !== false) {
             try {
-                const spec = createAccuWeatherTool("7FW644HhxLVHH7r5bVYchwTPle2jo0sC");
-                // const spec = createAccuWeatherTool(config.accuWeatherApiKey);
+                const apiKeyService = getApiKeyService();
+                const apiKeys = apiKeyService.getAllApiKeys();
+                
+                // Use API key from service, fallback to hardcoded for testing
+                const accuWeatherKey = apiKeys.accuWeatherApiKey || "7FW644HhxLVHH7r5bVYchwTPle2jo0sC";
+                const spec = createAccuWeatherTool(accuWeatherKey);
+                
                 if (spec && !this.loadedTools.has(spec.name)) {
                     toolRegistry.registerTool(spec);
                     this.loadedTools.add(spec.name);
                     registeredTools.push(spec.name);
+                    console.log(`[ToolLoader] ✅ AccuWeather loaded ${apiKeys.accuWeatherApiKey ? '(with API key)' : '(with fallback key)'}`);
                 }
             } catch (error: any) {
                 console.error('[ToolLoader] Failed to load AccuWeather tool:', error.message);

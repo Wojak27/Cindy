@@ -9,6 +9,7 @@ import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { BaseMessage, HumanMessage, AIMessage, SystemMessage } from '@langchain/core/messages';
 import { wrapSDK } from "langsmith/wrappers";
 import axios from 'axios';
+import { logger } from '../utils/ColorLogger';
 
 interface LLMConfig {
     provider: 'openai' | 'ollama' | 'anthropic' | 'google' | 'cohere' | 'azure' | 'huggingface' | 'openrouter' | 'groq' | 'auto';
@@ -144,63 +145,63 @@ export class LLMProvider extends EventEmitter {
             }
 
             this.isInitialized = true;
-            console.log('[LLMProvider] Initialized with provider:', this.currentProvider);
+            logger.success('LLMProvider', `Initialized with provider: ${this.currentProvider}`);
             this.emit('initialized', { provider: this.currentProvider, connectionStatus: this.connectionStatus });
         } catch (error) {
-            console.error('[LLMProvider] Failed to initialize:', error);
+            logger.error('LLMProvider', 'Failed to initialize', error);
             throw error;
         }
     }
 
     private async testConnections(): Promise<void> {
-        console.log('[LLMProvider] Testing provider connections...');
+        logger.stage('LLMProvider', 'Testing provider connections');
 
         // Test OpenAI connection
         if (this.config.openai?.apiKey && this.config.openai.apiKey.trim() !== '') {
             this.connectionStatus.openai = true;
-            console.log('[LLMProvider] OpenAI API key is configured');
+            logger.success('LLMProvider', 'OpenAI API key is configured');
         }
 
         // Test Anthropic connection
         if (this.config.anthropic?.apiKey && this.config.anthropic.apiKey.trim() !== '') {
             this.connectionStatus.anthropic = true;
-            console.log('[LLMProvider] Anthropic API key is configured');
+            logger.success('LLMProvider', 'Anthropic API key is configured');
         }
 
         // Test Google connection
         if (this.config.google?.apiKey && this.config.google.apiKey.trim() !== '') {
             this.connectionStatus.google = true;
-            console.log('[LLMProvider] Google API key is configured');
+            logger.success('LLMProvider', 'Google API key is configured');
         }
 
         // Test Cohere connection
         if (this.config.cohere?.apiKey && this.config.cohere.apiKey.trim() !== '') {
             this.connectionStatus.cohere = true;
-            console.log('[LLMProvider] Cohere API key is configured');
+            logger.success('LLMProvider', 'Cohere API key is configured');
         }
 
         // Test Azure connection
         if (this.config.azure?.apiKey && this.config.azure.apiKey.trim() !== '') {
             this.connectionStatus.azure = true;
-            console.log('[LLMProvider] Azure API key is configured');
+            logger.success('LLMProvider', 'Azure API key is configured');
         }
 
         // Test HuggingFace connection
         if (this.config.huggingface?.apiKey && this.config.huggingface.apiKey.trim() !== '') {
             this.connectionStatus.huggingface = true;
-            console.log('[LLMProvider] HuggingFace API key is configured');
+            logger.success('LLMProvider', 'HuggingFace API key is configured');
         }
 
         // Test OpenRouter connection
         if (this.config.openrouter?.apiKey && this.config.openrouter.apiKey.trim() !== '') {
             this.connectionStatus.openrouter = true;
-            console.log('[LLMProvider] OpenRouter API key is configured');
+            logger.success('LLMProvider', 'OpenRouter API key is configured');
         }
 
         // Test Groq connection
         if (this.config.groq?.apiKey && this.config.groq.apiKey.trim() !== '') {
             this.connectionStatus.groq = true;
-            console.log('[LLMProvider] Groq API key is configured');
+            logger.success('LLMProvider', 'Groq API key is configured');
         }
 
         // Test Ollama connection
@@ -211,14 +212,18 @@ export class LLMProvider extends EventEmitter {
                     validateStatus: () => true
                 });
                 this.connectionStatus.ollama = response.status === 200;
-                console.log('[LLMProvider] Ollama connection:', this.connectionStatus.ollama ? 'available' : 'unavailable');
+                if (this.connectionStatus.ollama) {
+                    logger.success('LLMProvider', 'Ollama connection available');
+                } else {
+                    logger.warn('LLMProvider', 'Ollama connection unavailable');
+                }
             } catch (error) {
                 this.connectionStatus.ollama = false;
-                console.log('[LLMProvider] Ollama connection test failed');
+                logger.warn('LLMProvider', 'Ollama connection test failed');
             }
         }
 
-        console.log('[LLMProvider] Connection test results:', this.connectionStatus);
+        logger.data('LLMProvider', 'Connection test results', this.connectionStatus);
     }
 
     private createModel(): BaseChatModel | null {
@@ -401,7 +406,7 @@ export class LLMProvider extends EventEmitter {
             if (this.connectionStatus[this.config.provider]) {
                 return this.config.provider;
             }
-            console.error(`[LLMProvider] ${this.config.provider} provider requested but not available`);
+            logger.error('LLMProvider', `${this.config.provider} provider requested but not available`);
             return null;
         }
 
@@ -410,12 +415,12 @@ export class LLMProvider extends EventEmitter {
 
         for (const provider of providerPriority) {
             if (this.connectionStatus[provider]) {
-                console.log(`[LLMProvider] Auto mode: using ${provider}`);
+                logger.info('LLMProvider', `Auto mode: using ${provider}`);
                 return provider;
             }
         }
 
-        console.error('[LLMProvider] Auto mode: no providers available');
+        logger.error('LLMProvider', 'Auto mode: no providers available');
         return null;
     }
 
@@ -461,7 +466,9 @@ export class LLMProvider extends EventEmitter {
             : this.convertToBaseMessages(messages as ChatMessage[]);
 
         try {
-            console.log(`[LLMProvider] Invoking ${this.currentProvider} with ${baseMessages.length} messages`);
+            logger.info('LLMProvider', `Invoking ${this.currentProvider}`, {
+                messageCount: baseMessages.length
+            });
             this.emit('invokeStart', { provider: this.currentProvider, messageCount: baseMessages.length });
 
             const response = await this.model.invoke(baseMessages, {
@@ -471,7 +478,7 @@ export class LLMProvider extends EventEmitter {
             this.emit('invokeComplete', { provider: this.currentProvider });
             return response;
         } catch (error) {
-            console.error(`[LLMProvider] Error invoking ${this.currentProvider}:`, error);
+            logger.error('LLMProvider', `Error invoking ${this.currentProvider}`, error);
             this.emit('invokeError', { provider: this.currentProvider, error });
 
             // Handle specific temperature parameter errors
@@ -567,7 +574,9 @@ export class LLMProvider extends EventEmitter {
             : this.convertToBaseMessages(messages as ChatMessage[]);
 
         try {
-            console.log(`[LLMProvider] Streaming from ${this.currentProvider} with ${baseMessages.length} messages`);
+            logger.info('LLMProvider', `Streaming from ${this.currentProvider}`, {
+                messageCount: baseMessages.length
+            });
             this.emit('streamStart', { provider: this.currentProvider });
 
             const stream = await this.model.stream(baseMessages, {
@@ -584,7 +593,7 @@ export class LLMProvider extends EventEmitter {
 
             this.emit('streamComplete', { provider: this.currentProvider });
         } catch (error) {
-            console.error(`[LLMProvider] Streaming error with ${this.currentProvider}:`, error);
+            logger.error('LLMProvider', `Streaming error with ${this.currentProvider}`, error);
             this.emit('streamError', { provider: this.currentProvider, error });
 
             // Handle specific temperature parameter errors
@@ -891,7 +900,7 @@ export class LLMProvider extends EventEmitter {
         
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-                console.log(`[LLMProvider] Structured output attempt ${attempt}/${maxRetries}`);
+                logger.debug('LLMProvider', `Structured output attempt ${attempt}/${maxRetries}`);
                 
                 const result = await this.invoke(messages, invokeOptions);
                 const content = result.content as string;
@@ -922,19 +931,19 @@ export class LLMProvider extends EventEmitter {
                 
                 // Log validation error for retry
                 lastError = `Schema validation failed: ${validation.error ? JSON.stringify(validation.error) : 'Unknown validation error'}`;
-                console.warn(`[LLMProvider] Attempt ${attempt} validation failed:`, lastError);
+                logger.warn('LLMProvider', `Attempt ${attempt} validation failed: ${lastError}`);
                 
                 if (attempt < maxRetries) {
-                    console.log(`[LLMProvider] Retrying in ${retryDelay}ms...`);
+                    logger.info('LLMProvider', `Retrying in ${retryDelay}ms...`);
                     await new Promise(resolve => setTimeout(resolve, retryDelay));
                 }
                 
             } catch (error) {
                 lastError = `Invocation failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
-                console.error(`[LLMProvider] Attempt ${attempt} failed:`, lastError);
+                logger.error('LLMProvider', `Attempt ${attempt} failed: ${lastError}`);
                 
                 if (attempt < maxRetries) {
-                    console.log(`[LLMProvider] Retrying in ${retryDelay}ms...`);
+                    logger.info('LLMProvider', `Retrying in ${retryDelay}ms...`);
                     await new Promise(resolve => setTimeout(resolve, retryDelay));
                 }
             }

@@ -7,6 +7,7 @@ import { HumanMessage, AIMessage } from '@langchain/core/messages';
 import { LLMProvider } from '../../../services/LLMProvider';
 import { SupervisorState } from '../DeepResearchState';
 import { DeepResearchConfiguration } from '../DeepResearchConfig';
+import { logger } from '../../../utils/ColorLogger';
 
 /**
  * Supervisor node that orchestrates the research process
@@ -16,12 +17,13 @@ export function createSupervisorNode(
     config: DeepResearchConfiguration
 ) {
     return async (state: SupervisorState): Promise<Partial<SupervisorState>> => {
-        console.log('[SupervisorNode] Managing research iteration', state.research_iterations + 1);
+        logger.stage('SupervisorNode', `Research Iteration ${state.research_iterations + 1}`, 
+            `Managing research workflow (${state.notes.length} notes collected)`);
         
         try {
             // Check if we've reached the maximum iterations
             if (state.research_iterations >= config.max_researcher_iterations) {
-                console.log('[SupervisorNode] Maximum research iterations reached, completing research');
+                logger.info('SupervisorNode', `Maximum research iterations (${config.max_researcher_iterations}) reached, completing research`);
                 return {
                     research_iterations: state.research_iterations + 1
                 };
@@ -31,21 +33,29 @@ export function createSupervisorNode(
             const supervisorPrompt = buildSupervisorPrompt(state, config);
 
             // Get LLM response for research decisions
+            logger.step('SupervisorNode', 'Consulting supervisor LLM for research decision...', 'running');
             const result = await llmProvider.invoke([
                 new HumanMessage({ content: supervisorPrompt })
             ]);
             
             const response = result.content as string;
+            logger.debug('SupervisorNode', 'Supervisor response received', { 
+                response: response.substring(0, 200) + '...' 
+            });
 
             // Parse the response to determine next action
             const decision = parseSupervisionDecision(response);
+            logger.info('SupervisorNode', `Decision: ${decision.action}`, decision);
             
             const updatedMessages = [...state.supervisor_messages, 
                 new AIMessage({ content: response })
             ];
 
             if (decision.action === 'conduct_research') {
-                console.log('[SupervisorNode] Delegating research task:', decision.research_topic?.substring(0, 100) + '...');
+                logger.transition('SupervisorNode', 'Planning', 'Research Execution');
+                logger.info('SupervisorNode', 'Delegating research task', {
+                    topic: decision.research_topic?.substring(0, 100) + '...'
+                });
                 
                 return {
                     supervisor_messages: updatedMessages,
@@ -53,7 +63,8 @@ export function createSupervisorNode(
                     // The research topic will be picked up by the research workflow
                 };
             } else if (decision.action === 'research_complete') {
-                console.log('[SupervisorNode] Research determined to be complete');
+                logger.success('SupervisorNode', 'Research determined to be complete');
+                logger.transition('SupervisorNode', 'Research Phase', 'Synthesis Phase');
                 
                 return {
                     supervisor_messages: updatedMessages,
@@ -61,7 +72,7 @@ export function createSupervisorNode(
                 };
             } else {
                 // Default: continue research
-                console.log('[SupervisorNode] Continuing research process');
+                logger.info('SupervisorNode', 'Continuing research process');
                 
                 return {
                     supervisor_messages: updatedMessages,
@@ -70,7 +81,7 @@ export function createSupervisorNode(
             }
 
         } catch (error: any) {
-            console.error('[SupervisorNode] Error:', error);
+            logger.error('SupervisorNode', 'Supervisor error occurred', error);
             
             return {
                 supervisor_messages: [...state.supervisor_messages, 
@@ -174,7 +185,7 @@ function parseSupervisionDecision(response: string): {
         return { action: 'continue' };
         
     } catch (error) {
-        console.error('[SupervisorNode] Error parsing decision:', error);
+        logger.warn('SupervisorNode', 'Error parsing decision, defaulting to continue', error);
         return { action: 'continue' };
     }
 }
@@ -201,7 +212,7 @@ export function extractResearchTopicFromSupervision(response: string): string | 
         
         return null;
     } catch (error) {
-        console.error('[SupervisorNode] Error extracting research topic:', error);
+        logger.debug('SupervisorNode', 'Error extracting research topic', error);
         return null;
     }
 }

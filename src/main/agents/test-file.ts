@@ -146,7 +146,7 @@ async function testDeepResearchMode(agent: RouterLangGraphAgent) {
     console.log('🧪 Testing Deep Research Mode');
     console.log('═══════════════════════════════════════════════════════════════\n');
 
-    const researchQuery = "Research the web and write a research article about early humans in Africa.";
+    const researchQuery = "Research the web and write a research article about early humans in Africa. Target the period of 1.5 million years ago to 200,000 years ago. This question does not require any clarification.";
 
     console.log(`📝 Research Query: "${researchQuery}"`);
     console.log('─'.repeat(60));

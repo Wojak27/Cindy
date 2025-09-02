@@ -24,10 +24,10 @@ export enum SearchAPI {
 export interface MCPConfig {
     /** The URL of the MCP server */
     url?: string;
-    
+
     /** The tools to make available to the LLM */
     tools?: string[];
-    
+
     /** Whether the MCP server requires authentication */
     auth_required?: boolean;
 }
@@ -73,12 +73,12 @@ export interface DeepResearchConfiguration {
     max_structured_output_retries: number;
     allow_clarification: boolean;
     max_concurrent_research_units: number;
-    
+
     // Research Configuration
     search_api: SearchAPI;
     max_researcher_iterations: number;
     max_react_tool_calls: number;
-    
+
     // Model Configuration
     summarization_model: string;
     summarization_model_max_tokens: number;
@@ -89,11 +89,11 @@ export interface DeepResearchConfiguration {
     compression_model_max_tokens: number;
     final_report_model: string;
     final_report_model_max_tokens: number;
-    
+
     // MCP server configuration
     mcp_config?: MCPConfig;
     mcp_prompt?: string;
-    
+
     // Extended configuration for TypeScript implementation
     search_providers?: SearchProviderConfig[];
     model_configs?: Record<string, ModelConfig>;
@@ -112,12 +112,12 @@ export const DEFAULT_DEEP_RESEARCH_CONFIG: DeepResearchConfiguration = {
     max_structured_output_retries: 3,
     allow_clarification: true,
     max_concurrent_research_units: 5,
-    
+
     // Research Configuration
     search_api: SearchAPI.TAVILY,
-    max_researcher_iterations: 6,
+    max_researcher_iterations: 2,
     max_react_tool_calls: 10,
-    
+
     // Model Configuration
     summarization_model: 'openai:gpt-4o-mini',
     summarization_model_max_tokens: 8192,
@@ -128,7 +128,7 @@ export const DEFAULT_DEEP_RESEARCH_CONFIG: DeepResearchConfiguration = {
     compression_model_max_tokens: 8192,
     final_report_model: 'openai:gpt-4o',
     final_report_model_max_tokens: 10000,
-    
+
     // Extended configuration
     search_providers: [
         {
@@ -138,11 +138,11 @@ export const DEFAULT_DEEP_RESEARCH_CONFIG: DeepResearchConfiguration = {
         },
         {
             provider: SearchAPI.TAVILY,
-            maxResults: 5,
+            maxResults: 2,
             timeout: 30000
         }
     ],
-    
+
     model_configs: {
         'openai:gpt-4o': {
             name: 'gpt-4o',
@@ -163,7 +163,7 @@ export const DEFAULT_DEEP_RESEARCH_CONFIG: DeepResearchConfiguration = {
             provider: 'ollama'
         }
     },
-    
+
     vector_store_config: {
         enabled: true,
         provider: 'duckdb',
@@ -182,13 +182,13 @@ export const CONFIG_UI_METADATA: Record<keyof DeepResearchConfiguration, UIConfi
         max: 10,
         description: 'Maximum number of retries for structured output calls from models'
     },
-    
+
     allow_clarification: {
         type: 'boolean',
         default: true,
         description: 'Whether to allow the researcher to ask the user clarifying questions before starting research'
     },
-    
+
     max_concurrent_research_units: {
         type: 'slider',
         default: 5,
@@ -197,7 +197,7 @@ export const CONFIG_UI_METADATA: Record<keyof DeepResearchConfiguration, UIConfi
         step: 1,
         description: 'Maximum number of research units to run concurrently. Note: with more concurrency, you may run into rate limits.'
     },
-    
+
     search_api: {
         type: 'select',
         default: SearchAPI.TAVILY,
@@ -213,7 +213,7 @@ export const CONFIG_UI_METADATA: Record<keyof DeepResearchConfiguration, UIConfi
             { label: 'None', value: SearchAPI.NONE }
         ]
     },
-    
+
     max_researcher_iterations: {
         type: 'slider',
         default: 6,
@@ -222,7 +222,7 @@ export const CONFIG_UI_METADATA: Record<keyof DeepResearchConfiguration, UIConfi
         step: 1,
         description: 'Maximum number of research iterations for the Research Supervisor'
     },
-    
+
     max_react_tool_calls: {
         type: 'slider',
         default: 10,
@@ -231,19 +231,19 @@ export const CONFIG_UI_METADATA: Record<keyof DeepResearchConfiguration, UIConfi
         step: 1,
         description: 'Maximum number of tool calling iterations to make in a single researcher step'
     },
-    
+
     summarization_model: {
         type: 'text',
         default: 'openai:gpt-4o-mini',
         description: 'Model for summarizing research results from search results'
     },
-    
+
     summarization_model_max_tokens: {
         type: 'number',
         default: 8192,
         description: 'Maximum output tokens for summarization model'
     },
-    
+
     max_content_length: {
         type: 'number',
         default: 50000,
@@ -251,63 +251,63 @@ export const CONFIG_UI_METADATA: Record<keyof DeepResearchConfiguration, UIConfi
         max: 200000,
         description: 'Maximum character length for webpage content before summarization'
     },
-    
+
     research_model: {
         type: 'text',
         default: 'openai:gpt-4o',
         description: 'Model for conducting research'
     },
-    
+
     research_model_max_tokens: {
         type: 'number',
         default: 10000,
         description: 'Maximum output tokens for research model'
     },
-    
+
     compression_model: {
         type: 'text',
         default: 'openai:gpt-4o',
         description: 'Model for compressing research findings from sub-agents'
     },
-    
+
     compression_model_max_tokens: {
         type: 'number',
         default: 8192,
         description: 'Maximum output tokens for compression model'
     },
-    
+
     final_report_model: {
         type: 'text',
         default: 'openai:gpt-4o',
         description: 'Model for writing the final report from all research findings'
     },
-    
+
     final_report_model_max_tokens: {
         type: 'number',
         default: 10000,
         description: 'Maximum output tokens for final report model'
     },
-    
+
     mcp_config: {
         type: 'mcp',
         description: 'MCP server configuration'
     },
-    
+
     mcp_prompt: {
         type: 'text',
         description: 'Additional instructions regarding MCP tools available to the agent'
     },
-    
+
     search_providers: {
         type: 'text',
         description: 'Search provider configurations'
     },
-    
+
     model_configs: {
         type: 'text',
         description: 'Model configuration mappings'
     },
-    
+
     vector_store_config: {
         type: 'text',
         description: 'Vector store configuration'
@@ -319,31 +319,31 @@ export const CONFIG_UI_METADATA: Record<keyof DeepResearchConfiguration, UIConfi
  */
 export class DeepResearchConfigManager {
     private config: DeepResearchConfiguration;
-    
+
     constructor(initialConfig?: Partial<DeepResearchConfiguration>) {
         this.config = { ...DEFAULT_DEEP_RESEARCH_CONFIG, ...initialConfig };
     }
-    
+
     /**
      * Get the current configuration
      */
     getConfig(): DeepResearchConfiguration {
         return { ...this.config };
     }
-    
+
     /**
      * Update configuration with partial values
      */
     updateConfig(updates: Partial<DeepResearchConfiguration>): void {
         this.config = { ...this.config, ...updates };
     }
-    
+
     /**
      * Get configuration from environment variables and settings
      */
     static fromEnvironmentAndSettings(settings?: Record<string, any>): DeepResearchConfigManager {
         const config: Partial<DeepResearchConfiguration> = {};
-        
+
         // Load from environment variables
         const envMappings: Record<string, keyof DeepResearchConfiguration> = {
             'MAX_STRUCTURED_OUTPUT_RETRIES': 'max_structured_output_retries',
@@ -353,7 +353,7 @@ export class DeepResearchConfigManager {
             'MAX_RESEARCHER_ITERATIONS': 'max_researcher_iterations',
             'MAX_REACT_TOOL_CALLS': 'max_react_tool_calls',
         };
-        
+
         for (const [envKey, configKey] of Object.entries(envMappings)) {
             const envValue = process.env[envKey];
             if (envValue !== undefined) {
@@ -368,68 +368,68 @@ export class DeepResearchConfigManager {
                 }
             }
         }
-        
+
         // Override with settings if provided
         if (settings) {
             Object.assign(config, settings);
         }
-        
+
         return new DeepResearchConfigManager(config);
     }
-    
+
     /**
      * Validate configuration
      */
     validate(): { valid: boolean; errors: string[] } {
         const errors: string[] = [];
-        
+
         if (this.config.max_structured_output_retries < 1 || this.config.max_structured_output_retries > 10) {
             errors.push('max_structured_output_retries must be between 1 and 10');
         }
-        
+
         if (this.config.max_concurrent_research_units < 1 || this.config.max_concurrent_research_units > 20) {
             errors.push('max_concurrent_research_units must be between 1 and 20');
         }
-        
+
         if (this.config.max_researcher_iterations < 1 || this.config.max_researcher_iterations > 10) {
             errors.push('max_researcher_iterations must be between 1 and 10');
         }
-        
+
         if (this.config.max_react_tool_calls < 1 || this.config.max_react_tool_calls > 30) {
             errors.push('max_react_tool_calls must be between 1 and 30');
         }
-        
+
         if (!Object.values(SearchAPI).includes(this.config.search_api)) {
             errors.push(`Invalid search_api: ${this.config.search_api}`);
         }
-        
+
         return {
             valid: errors.length === 0,
             errors
         };
     }
-    
+
     /**
      * Get search provider configuration for a specific API
      */
     getSearchProviderConfig(api: SearchAPI): SearchProviderConfig | undefined {
         return this.config.search_providers?.find(provider => provider.provider === api);
     }
-    
+
     /**
      * Get model configuration for a specific model
      */
     getModelConfig(modelName: string): ModelConfig | undefined {
         return this.config.model_configs?.[modelName];
     }
-    
+
     /**
      * Export configuration as JSON
      */
     toJSON(): string {
         return JSON.stringify(this.config, null, 2);
     }
-    
+
     /**
      * Load configuration from JSON
      */

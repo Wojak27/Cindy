@@ -25,6 +25,8 @@ import { createClarificationNode } from './nodes/ClarificationNode';
 import { createSupervisorNode } from './nodes/SupervisorNode';
 import { createResearcherNode } from './nodes/ResearcherNode';
 import { createSynthesisNode } from './nodes/SynthesisNode';
+import { logger } from '../../utils/ColorLogger';
+import { trimThinkTags } from '../../utils/strings';
 
 /**
  * Configuration options for the Deep Research Agent
@@ -55,8 +57,7 @@ export class DeepResearchAgent {
         // Build the graphs
         this.buildGraphs();
 
-        console.log('[DeepResearchAgent] Initialized with Deep Research architecture');
-        console.log('[DeepResearchAgent] Configuration:', {
+        logger.success('DeepResearchAgent', 'Initialized with Deep Research architecture', {
             searchAPI: this.config.search_api,
             maxIterations: this.config.max_researcher_iterations,
             allowClarification: this.config.allow_clarification
@@ -174,39 +175,49 @@ export class DeepResearchAgent {
      */
     private createResearchProcessNode() {
         return async (state: AgentState): Promise<Partial<AgentState>> => {
-            console.log('[ResearchProcessNode] ===== RESEARCH PROCESS STARTING =====');
-            console.log(`[ResearchProcessNode] Input state:`);
-            console.log(`[ResearchProcessNode] - research_brief: ${state.research_brief ? 'EXISTS' : 'NULL'} (${state.research_brief?.length || 0} chars)`);
+            logger.stage('ResearchProcessNode', 'Research Process Starting', 'Orchestrating supervisor and researcher workflows');
+
+            logger.data('ResearchProcessNode', 'Input state analysis', {
+                research_brief: state.research_brief ? 'EXISTS' : 'NULL',
+                brief_length: state.research_brief?.length || 0
+            });
 
             try {
                 // Initialize supervisor state
                 const supervisorState: SupervisorState = {
                     supervisor_messages: state.supervisor_messages || [],
-                    research_brief: state.research_brief || '',
+                    research_brief: trimThinkTags(state.research_brief) || '',
                     notes: [],
                     research_iterations: 0,
                     raw_notes: []
                 };
 
-                console.log('[ResearchProcessNode] Supervisor state initialized:');
-                console.log(`[ResearchProcessNode] - research_brief: "${supervisorState.research_brief}"`);
-                console.log(`[ResearchProcessNode] - notes: ${supervisorState.notes.length} items`);
-                console.log(`[ResearchProcessNode] - raw_notes: ${supervisorState.raw_notes.length} items`);
-                console.log(`[ResearchProcessNode] - research_iterations: ${supervisorState.research_iterations}`);
+
+
+                logger.info('ResearchProcessNode', 'Supervisor state initialized', {
+                    research_brief: supervisorState.research_brief.substring(0, 100) + '...',
+                    notes: supervisorState.notes.length,
+                    raw_notes: supervisorState.raw_notes.length,
+                    research_iterations: supervisorState.research_iterations
+                });
 
                 // Run the supervisor workflow
-                console.log('[ResearchProcessNode] Invoking supervisor graph...');
+                logger.step('ResearchProcessNode', 'Invoking supervisor graph...', 'running');
                 const supervisorResult = await this.supervisorGraph.invoke(supervisorState);
 
-                console.log('[ResearchProcessNode] ===== SUPERVISOR WORKFLOW COMPLETE =====');
-                console.log(`[ResearchProcessNode] Supervisor results:`);
-                console.log(`[ResearchProcessNode] - notes: ${supervisorResult.notes?.length || 0} items`);
-                console.log(`[ResearchProcessNode] - raw_notes: ${supervisorResult.raw_notes?.length || 0} items`);
-                console.log(`[ResearchProcessNode] - supervisor_messages: ${supervisorResult.supervisor_messages?.length || 0} items`);
+                logger.stage('ResearchProcessNode', 'Supervisor Workflow Complete', 'Research execution completed');
+
+                logger.data('ResearchProcessNode', 'Supervisor results', {
+                    notes: supervisorResult.notes?.length || 0,
+                    raw_notes: supervisorResult.raw_notes?.length || 0,
+                    supervisor_messages: supervisorResult.supervisor_messages?.length || 0
+                });
 
                 // Debug: Show sample content
                 if (supervisorResult.notes && supervisorResult.notes.length > 0) {
-                    console.log(`[ResearchProcessNode] First note preview: ${supervisorResult.notes[0].substring(0, 100)}...`);
+                    logger.debug('ResearchProcessNode', 'First note preview', {
+                        preview: supervisorResult.notes[0].substring(0, 100) + '...'
+                    });
                 }
 
                 // Update main state with supervisor results
@@ -216,15 +227,12 @@ export class DeepResearchAgent {
                     supervisor_messages: supervisorResult.supervisor_messages || []
                 };
 
-                console.log('[ResearchProcessNode] ===== RESEARCH PROCESS COMPLETE =====');
-                console.log(`[ResearchProcessNode] Returning state update with ${stateUpdate.notes.length} notes`);
+                logger.complete('ResearchProcessNode', `Research process complete with ${stateUpdate.notes.length} notes`);
 
                 return stateUpdate;
 
             } catch (error: any) {
-                console.error('[ResearchProcessNode] ===== RESEARCH PROCESS ERROR =====');
-                console.error('[ResearchProcessNode] Research process error:', error);
-                console.error('[ResearchProcessNode] Error stack:', error.stack);
+                logger.error('ResearchProcessNode', 'Research process failed', error);
 
                 return {
                     notes: [`Research process failed: ${error.message}`],
@@ -239,7 +247,7 @@ export class DeepResearchAgent {
      */
     private createResearchDelegationNode() {
         return async (state: SupervisorState): Promise<Partial<SupervisorState>> => {
-            console.log('[DeepResearchAgent] Delegating research tasks...');
+            logger.info('DeepResearchAgent', 'Delegating research tasks...');
 
             try {
                 // Generate research topics based on current state
@@ -257,11 +265,14 @@ export class DeepResearchAgent {
 
                 researchResults.forEach((result, index) => {
                     if (result.status === 'fulfilled') {
-                        newNotes.push(result.value.compressed_research);
+                        // remove the <think> and </think> tags from the compressed_research
+                        const compressed_research_cleaned = trimThinkTags(result.value.compressed_research);
+                        newNotes.push(compressed_research_cleaned);
+                        newNotes.push();
                         newRawNotes.push(...result.value.raw_notes);
-                        console.log(`[DeepResearchAgent] Research task ${index + 1} completed successfully`);
+                        logger.success('DeepResearchAgent', `Research task ${index + 1} completed successfully`);
                     } else {
-                        console.error(`[DeepResearchAgent] Research task ${index + 1} failed:`, result.reason);
+                        logger.error('DeepResearchAgent', `Research task ${index + 1} failed`, result.reason);
                         newRawNotes.push(`Research task failed: ${result.reason.message}`);
                     }
                 });
@@ -395,14 +406,14 @@ Generate specific, actionable research topics (one per line) that will help comp
             } else {
                 console.warn('[DeepResearchAgent] ⚠️ No final report generated or report is empty');
                 console.log('[DeepResearchAgent] Debugging available data:');
-                
+
                 if (result.notes && result.notes.length > 0) {
                     console.log(`[DeepResearchAgent] - Found ${result.notes.length} processed notes`);
                     result.notes.forEach((note, index) => {
                         console.log(`[DeepResearchAgent] Note ${index + 1}: ${note.substring(0, 100)}...`);
                     });
                 }
-                
+
                 if (result.raw_notes && result.raw_notes.length > 0) {
                     console.log(`[DeepResearchAgent] - Found ${result.raw_notes.length} raw notes`);
                 }
