@@ -13,6 +13,7 @@ import { ChatPromptTemplate, MessagesPlaceholder } from '@langchain/core/prompts
 import { StructuredTool } from '@langchain/core/tools';
 import { Runnable, RunnableConfig } from '@langchain/core/runnables';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
+import { trimThinkTags } from '../utils/strings';
 
 
 /**
@@ -36,7 +37,7 @@ export class MainAgentExecution {
     private settingsService: SettingsService | null = null;
     private researchAgent;
     private writterAgent;
-    private workflow;
+    private workflow: Runnable;
 
     // State management properties
     private AgentState;
@@ -84,13 +85,13 @@ export class MainAgentExecution {
         // 1. Create the graph
         const workflow = new StateGraph(this.AgentState)
             // 2. Add the nodes; these will do the work
-            .addNode("Researcher", this.researchNode)
-            .addNode("Writer", this.writerNode)
+            .addNode("Researcher", this.researchNode.bind(this))
+            .addNode("Writer", this.writerNode.bind(this))
             .addNode("call_tool", toolNode);
 
         // 3. Define the edges. We will define both regular and conditional ones
         // After a worker completes, report to supervisor
-        workflow.addConditionalEdges("Researcher", this.router, {
+        workflow.addConditionalEdges("Researcher", this.router.bind(this), {
             // We will transition to the other agent
             continue: "Writer",
             call_tool: "call_tool",
@@ -114,13 +115,7 @@ export class MainAgentExecution {
         return graph;
     }
 
-    private async writerNode(state: typeof this.AgentState.State) {
-        return this.runAgentNode({
-            state: state,
-            agent: this.writterAgent,
-            name: "ChartGenerator",
-        });
-    }
+
     // Either agent can decide to end
     private router(state: typeof this.AgentState.State) {
         const messages = state.messages;
@@ -138,6 +133,12 @@ export class MainAgentExecution {
         }
         return "continue";
     }
+    public getStatus(): { provider: string, availableTools: string[] } {
+        return {
+            provider: this.llmProvider.getCurrentProvider(),
+            availableTools: toolRegistry.getAllToolNames()
+        };
+    }
 
 
 
@@ -152,17 +153,7 @@ export class MainAgentExecution {
         return this.workflow;
     }
 
-    private async researchNode(
-        state: typeof this.AgentState.State,
-        config?: RunnableConfig,
-    ) {
-        return this.runAgentNode({
-            state: state,
-            agent: this.researchAgent,
-            name: "Researcher",
-            config,
-        });
-    }
+
 
     private async runAgentNode(props: {
         state: typeof this.AgentState.State;
@@ -179,12 +170,32 @@ export class MainAgentExecution {
             // look like a human message.
             result = new HumanMessage({ ...result, name: name });
         }
+        result.content = trimThinkTags(result.content as string);
         return {
             messages: [result],
             // Since we have a strict workflow, we can
             // track the sender so we know who to pass to next.
             sender: name,
         };
+    }
+    private async writerNode(state: typeof this.AgentState.State) {
+        return this.runAgentNode({
+            state: state,
+            agent: this.writterAgent,
+            name: "ChartGenerator",
+        });
+    }
+
+    private async researchNode(
+        state: typeof this.AgentState.State,
+        config?: RunnableConfig,
+    ) {
+        return this.runAgentNode({
+            state: state,
+            agent: this.researchAgent,
+            name: "Researcher",
+            config,
+        });
     }
 
     private async createAgent({
@@ -273,52 +284,59 @@ export class MainAgentExecution {
     /**
      * Process a message through Deep Research with streaming output
      */
-    async * processStreaming(input: string, context?: any): AsyncGenerator<string> {
-        try {
-            logger.stage('RouterLangGraphAgent', 'Intelligent Routing', `Processing: "${input}"`);
-            logger.section('RouterLangGraphAgent', 'Route Analysis', () => {
-                logger.keyValue('RouterLangGraphAgent', 'Input', input);
-            });
+    public async *processStreaming(input: string) {
+        // 1) Ask the compiled graph to stream events
+        const evStream = await this.workflow.streamEvents(
+            { messages: [new HumanMessage(input)] },
+            { version: "v1" } // important; use the unified event schema
+        );
 
-
-            // for await (const update of this.deepResearchAgent.streamMessage(input, context)) {
-            //     if (update.usedDeepResearch) {
-            //         // Deep Research mode
-            //         if (update.type === 'progress') {
-            //             yield `📋 ${update.content}\n\n`;
-            //         } else if (update.type === 'result') {
-            //             yield update.content;
-            //         }
-            //     } else if (update.usedToolAgent) {
-            //         // Tool Agent mode
-            //         logger.info('RouterLangGraphAgent', 'Using Tool Agent for specialized execution');
-            //         if (update.type === 'progress') {
-            //             yield `🔧 ${update.content}\n\n`;
-            //         } else if (update.type === 'tool_result') {
-            //             yield `⚡ ${update.content}\n\n`;
-            //         } else if (update.type === 'result') {
-            //             yield update.content;
-            //         } else if (update.type === 'side_view') {
-            //             // Handle side view data (will be processed by renderer)
-            //             if (update.data && update.data.type === 'weather') {
-            //                 // Include the actual weather data JSON for the renderer
-            //                 yield `📊 ${JSON.stringify(update.data.data)}\n\n`;
-            //             } else if (update.data && update.data.type === 'map') {
-            //                 // Include the actual map data JSON for the renderer
-            //                 yield `📊 ${JSON.stringify(update.data.data)}\n\n`;
-            //             } else {
-            //                 yield `📊 ${update.content}\n\n`;
-            //             }
-            //         }
-            //     } else {
-            //         // Direct LLM response mode
-            //         yield update.content;
-            //     }
-            // }
-
-        } catch (error) {
-            logger.error('RouterLangGraphAgent', 'Streaming process error', error);
-            yield `\n❌ **Error:** I encountered an issue while processing your request: ${(error as Error).message}`;
+        // 2) Yield updates on node/tool start/end (and optionally LLM token stream)
+        for await (const ev of evStream) {
+            switch (ev.event) {
+                case "on_node_start": {
+                    const node = ev.name ?? ev.data?.name ?? ev.data?.node_name ?? "unknown";
+                    yield `▶️ ${node} started\n`;
+                    break;
+                }
+                case "on_llm_stream": {
+                    const token = ev.data?.chunk?.content ?? ev.data?.chunk?.text;
+                    if (token) yield token;
+                    break;
+                }
+                case "on_node_end": {
+                    const node = ev.name ?? ev.data?.name ?? ev.data?.node_name ?? "unknown";
+                    yield `✅ ${node} finished\n`;
+                    break;
+                }
+                case "on_tool_start": {
+                    const tool = ev.name ?? ev.data?.name ?? "tool";
+                    yield `🛠️ ${tool} running...\n`;
+                    break;
+                }
+                case "on_tool_end": {
+                    const tool = ev.name ?? ev.data?.name ?? "tool";
+                    yield `🛠️ ${tool} done\n`;
+                    break;
+                }
+                // Optional: stream LLM tokens as they arrive
+                case "on_chat_model_stream": {
+                    const token = ev.data?.chunk?.content ?? ev.data?.chunk?.text;
+                    if (token) yield token;
+                    break;
+                }
+                // When the graph ends, you can emit the final message if needed
+                case "on_graph_end": {
+                    const output = ev.data?.output;
+                    const msgs = output?.messages;
+                    const last = Array.isArray(msgs) ? msgs[msgs.length - 1] : null;
+                    if (last?.content) yield `\n${typeof last.content === "string" ? last.content : JSON.stringify(last.content)}\n`;
+                    break;
+                }
+                default:
+                    // ignore other events or log them to learn the exact shapes for your version
+                    break;
+            }
         }
     }
 

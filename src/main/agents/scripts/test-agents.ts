@@ -70,6 +70,7 @@ async function initializeAgent(): Promise<MainAgentExecution> {
             fallbackToOriginal: true
         }
     });
+    await agent.initialize();
     console.log('✅ RouterLangGraphAgent created successfully\n');
 
     // 5. Display agent status
@@ -77,8 +78,6 @@ async function initializeAgent(): Promise<MainAgentExecution> {
     console.log('📊 Agent Status:');
     console.log(`   Provider: ${status.provider}`);
     console.log(`   Available Tools: ${status.availableTools.join(', ')}`);
-    console.log(`   Deep Research: ${status.deepResearchStatus.enabled ? 'Enabled' : 'Disabled'}`);
-    console.log(`   Fallback: ${status.deepResearchStatus.fallbackEnabled ? 'Enabled' : 'Disabled'}\n`);
 
     return agent;
 }
