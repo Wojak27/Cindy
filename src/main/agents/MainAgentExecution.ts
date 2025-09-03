@@ -14,6 +14,7 @@ import { StructuredTool } from '@langchain/core/tools';
 import { Runnable, RunnableConfig } from '@langchain/core/runnables';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { trimThinkTags } from '../utils/strings';
+import toolLoader from './tools/ToolLoader';
 
 
 /**
@@ -47,6 +48,7 @@ export class MainAgentExecution {
         this.llmProvider = options.llmProvider;
         this.memoryService = options.memoryService;
         this.persistState = options.persistState !== false; // Default to enabled
+        toolLoader.loadAllTools(options.config || {});
 
         // Create a minimal settings service for compatibility
         this.settingsService = this.createCompatibilitySettingsService();
@@ -75,12 +77,14 @@ export class MainAgentExecution {
             tools: toolRegistry.getTools(),
             systemMessage:
                 "You should provide accurate data for the answer writer to use.",
+            name: "Researcher",
         });
-        // Chart Generator
+        // CWritter agent and node
         this.writterAgent = await this.createAgent({
             llm: this.llmProvider.getChatModel(),
             tools: [],
             systemMessage: "Any text you write will be shown to the user.",
+            name: "Writer",
         });
         // 1. Create the graph
         const workflow = new StateGraph(this.AgentState)
@@ -104,9 +108,12 @@ export class MainAgentExecution {
             // the tool calling node does not, meaning
             // this edge will route back to the original agent
             // who invoked the tool
-            (x) => x.sender,
+            (x) => {
+                return x.sender;
+            },
             {
                 Researcher: "Researcher",
+                Writter: "Writer",
             },
         );
 
@@ -202,13 +209,15 @@ export class MainAgentExecution {
         llm,
         tools,
         systemMessage,
+        name,
     }: {
         llm: BaseChatModel;
         tools: StructuredTool[];
         systemMessage: string;
+        name?: string;
     }): Promise<Runnable> {
         const toolNames = tools.map((tool) => tool.name).join(", ");
-
+        console.log(`[RouterLangGraphAgent] Creating agent ${name ? name : ""} with tools: ${toolNames}`);
 
         let prompt = ChatPromptTemplate.fromMessages([
             [
@@ -252,14 +261,13 @@ export class MainAgentExecution {
      */
     private initializeState(): void {
         this.AgentState = Annotation.Root({
+
             messages: Annotation<BaseMessage[]>({
                 reducer: (x, y) => x.concat(y),
-                default: () => [],
             }),
-            // The agent node that last performed work
-            next: Annotation<string>({
-                reducer: (x, y) => y ?? x ?? END,
-                default: () => END,
+            sender: Annotation<string>({
+                reducer: (x, y) => y ?? x ?? "user",
+                default: () => "user",
             }),
         });
     }
@@ -294,7 +302,7 @@ export class MainAgentExecution {
         // 2) Yield updates on node/tool start/end (and optionally LLM token stream)
         for await (const ev of evStream) {
             switch (ev.event) {
-                case "on_node_start": {
+                case "on_chain_start": {
                     const node = ev.name ?? ev.data?.name ?? ev.data?.node_name ?? "unknown";
                     yield `▶️ ${node} started\n`;
                     break;
@@ -304,7 +312,7 @@ export class MainAgentExecution {
                     if (token) yield token;
                     break;
                 }
-                case "on_node_end": {
+                case "on_chain_end": {
                     const node = ev.name ?? ev.data?.name ?? ev.data?.node_name ?? "unknown";
                     yield `✅ ${node} finished\n`;
                     break;
