@@ -4,8 +4,6 @@
  */
 
 import { Tool } from '@langchain/core/tools';
-import { ToolCategory } from '../ToolDefinitions';
-import type { ToolSpecification } from '../ToolDefinitions';
 
 /**
  * AccuWeather API Tool
@@ -31,13 +29,13 @@ export class AccuWeatherTool extends Tool {
     async _call(input: string): Promise<string> {
         try {
             console.log(`[AccuWeatherTool] Received input:`, input, typeof input);
-            
+
             // Handle different input formats:
             // 1. String: "Paris"
             // 2. Object: { location: "Paris" } (converted to JSON string by ToolRegistry)
             // 3. JSON string: '{"location": "Paris"}'
             let location: string;
-            
+
             if (typeof input === 'string') {
                 try {
                     // Try to parse as JSON first
@@ -281,12 +279,12 @@ export class AccuWeatherTool extends Tool {
         try {
             const mainWindow = (global as any).mainWindow;
             const conversationId = (global as any).currentConversationId || 'default';
-            
+
             console.log('[AccuWeatherTool] Attempting to send weather widget via IPC');
             console.log('[AccuWeatherTool] Main window available:', !!mainWindow);
             console.log('[AccuWeatherTool] Conversation ID:', conversationId);
             console.log('[AccuWeatherTool] Weather data to send:', JSON.stringify(weatherData, null, 2));
-            
+
             if (mainWindow && weatherData) {
                 const sideViewData = {
                     type: 'weather',
@@ -299,7 +297,7 @@ export class AccuWeatherTool extends Tool {
                     sideViewData,
                     conversationId
                 });
-                
+
                 console.log('[AccuWeatherTool] ✅ Successfully sent weather widget via IPC');
             } else {
                 console.warn('[AccuWeatherTool] ❌ Main window or weather data not available for IPC');
@@ -316,42 +314,4 @@ export class AccuWeatherTool extends Tool {
         console.log(`[AccuWeatherTool] Testing with location: ${location}`);
         return await this._call(location);
     }
-}
-
-/**
- * Create and configure AccuWeather tool specification
- */
-export function createAccuWeatherTool(apiKey?: string): ToolSpecification {
-    const tool = new AccuWeatherTool(apiKey);
-    
-    const specification: ToolSpecification = {
-        name: 'weather',
-        description: tool.description,
-        parameters: {
-            type: 'object',
-            properties: {
-                input: { 
-                    type: 'string', 
-                    description: 'Location for weather information (e.g., "New York, NY" or "Paris, France")' 
-                }
-            },
-            required: ['input']
-        },
-        tool,
-        metadata: {
-            category: ToolCategory.WEATHER,
-            version: '1.0.0',
-            requiresAuth: false, // Works with mock data when no API key
-            tags: ['weather', 'accuweather', 'current-conditions', 'forecast'],
-            rateLimit: {
-                requestsPerMinute: 50, // AccuWeather free tier
-                requestsPerDay: 1000
-            }
-        },
-        config: {
-            apiKey
-        }
-    };
-    
-    return specification;
 }

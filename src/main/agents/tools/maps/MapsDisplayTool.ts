@@ -1,4 +1,3 @@
-import { ToolSpecification, ToolCategory } from '../ToolDefinitions';
 import { DuckDuckGoSearch } from '@langchain/community/tools/duckduckgo_search';
 
 interface MapLocation {
@@ -78,7 +77,7 @@ Input should be a JSON string with the following format:
                 console.log('[MapsDisplayTool] Main window available:', !!mainWindow);
                 console.log('[MapsDisplayTool] Conversation ID:', conversationId);
                 console.log('[MapsDisplayTool] Side view data:', sideViewData);
-                
+
                 if (mainWindow) {
                     mainWindow.webContents.send('side-view-data', {
                         sideViewData,
@@ -94,11 +93,11 @@ Input should be a JSON string with the following format:
 
             // Also include the data in the streaming output for backup
             const streamMarker = `📊 ${JSON.stringify(mapData)}`;
-            
+
             // Generate a descriptive response
             const locationNames = parsedInput.locations.map(loc => loc.name).join(', ');
             let response = `I've displayed ${parsedInput.locations.length} location${parsedInput.locations.length > 1 ? 's' : ''} on the map: ${locationNames}.`;
-            
+
             if (parsedInput.locations.length === 1) {
                 const loc = parsedInput.locations[0];
                 response += ` You can see ${loc.name} at coordinates ${loc.latitude.toFixed(4)}, ${loc.longitude.toFixed(4)}.`;
@@ -120,33 +119,3 @@ Input should be a JSON string with the following format:
 }
 
 export default MapsDisplayTool;
-
-/**
- * Factory function to create a MapsDisplayTool specification
- */
-export function createMapsDisplayTool(): ToolSpecification {
-    const tool = new MapsDisplayTool();
-    
-    return {
-        name: tool.name,
-        description: tool.description,
-        parameters: {
-            type: 'object',
-            properties: {
-                input: {
-                    type: 'string',
-                    description: 'JSON string containing locations array and optional center/zoom parameters'
-                }
-            },
-            required: ['input']
-        },
-        tool,
-        metadata: {
-            category: ToolCategory.MAPS,
-            version: '1.0.0',
-            author: 'Cindy Assistant',
-            requiresAuth: false,
-            tags: ['maps', 'location', 'geography', 'visualization']
-        }
-    };
-}

@@ -2,7 +2,7 @@
  * Unit tests for LangGraphAgent
  */
 
-import { RouterLangGraphAgent, RouterLangGraphAgentOptions } from '../RouterLangGraphAgent';
+import { MainAgentExecution, MainAgentGraphOptions } from '../MainAgentExecution';
 import { LLMProvider } from '../../services/LLMProvider';
 import { LangChainMemoryService } from '../../services/LangChainMemoryService';
 
@@ -58,8 +58,8 @@ jest.mock('../tools/ToolRegistry', () => ({
 jest.mock('../../services/SettingsService');
 
 describe('LangGraphAgent', () => {
-    let agent: RouterLangGraphAgent;
-    let agentOptions: RouterLangGraphAgentOptions;
+    let agent: MainAgentExecution;
+    let agentOptions: MainAgentGraphOptions;
 
     beforeEach(() => {
         jest.clearAllMocks();
@@ -70,7 +70,7 @@ describe('LangGraphAgent', () => {
             config: { enableStreaming: true }
         };
 
-        agent = new RouterLangGraphAgent(agentOptions);
+        agent = new MainAgentExecution(agentOptions);
     });
 
     afterEach(() => {
@@ -79,7 +79,7 @@ describe('LangGraphAgent', () => {
 
     describe('constructor', () => {
         it('should create LangGraphAgent instance', () => {
-            expect(agent).toBeInstanceOf(RouterLangGraphAgent);
+            expect(agent).toBeInstanceOf(MainAgentExecution);
         });
 
         it('should initialize DeepResearchIntegration with correct options', () => {
@@ -101,7 +101,7 @@ describe('LangGraphAgent', () => {
         it('should log initialization details', () => {
             const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
 
-            new RouterLangGraphAgent(agentOptions);
+            new MainAgentExecution(agentOptions);
 
             expect(consoleSpy).toHaveBeenCalledWith(
                 '[RouterLangGraphAgent] Initialized with Deep Research architecture'

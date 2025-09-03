@@ -20,7 +20,7 @@
  */
 
 import { LLMProvider } from "../services/LLMProvider";
-import { RouterLangGraphAgent } from "./RouterLangGraphAgent";
+import { MainAgentExecution } from "./MainAgentExecution";
 import { LangChainMemoryService } from "../services/LangChainMemoryService";
 import { HumanMessage } from '@langchain/core/messages';
 import * as dotenv from 'dotenv';
@@ -131,7 +131,7 @@ interface BenchmarkResults {
 }
 
 class LoCoMoBenchmark {
-    private agent: RouterLangGraphAgent;
+    private agent: MainAgentExecution;
     private llmProvider: LLMProvider;
     private dataset: LoCoMoEntry[];
     private currentConversationContext: {
@@ -143,7 +143,7 @@ class LoCoMoBenchmark {
         sessions: number;
     } | null = null;
 
-    constructor(agent: RouterLangGraphAgent, llmProvider: LLMProvider) {
+    constructor(agent: MainAgentExecution, llmProvider: LLMProvider) {
         this.agent = agent;
         this.llmProvider = llmProvider;
         this.dataset = [];
@@ -207,19 +207,19 @@ class LoCoMoBenchmark {
         if (Array.isArray(jsonData)) {
             totalSamples = jsonData.length;
             logger.info('LoCoMoBenchmark', `Found ${totalSamples} conversation samples`);
-            
+
             jsonData.forEach((sample: any, sampleIndex: number) => {
                 if (this.isValidLoCoMoSample(sample)) {
                     const locomoSample = sample as LoCoMoSample;
-                    
+
                     // Process conversation sessions first
                     const conversationContext = this.parseConversationContext(locomoSample.conversation);
-                    
+
                     // Parse Q&A pairs from this sample
                     if (locomoSample.qa && Array.isArray(locomoSample.qa)) {
                         locomoSample.qa.forEach((qaItem: any, qaIndex: number) => {
                             const entry = this.parseQAEntry(
-                                qaItem, 
+                                qaItem,
                                 `${locomoSample.sample_id}_qa_${qaIndex}`,
                                 conversationContext,
                                 locomoSample.sample_id
@@ -229,8 +229,8 @@ class LoCoMoBenchmark {
                                 totalQaPairs++;
                             }
                         });
-                        
-                        logger.bullet('LoCoMoBenchmark', 
+
+                        logger.bullet('LoCoMoBenchmark',
                             `Sample ${locomoSample.sample_id}: ${locomoSample.qa.length} Q&A pairs`, 1);
                     }
                 } else {
@@ -257,11 +257,11 @@ class LoCoMoBenchmark {
      */
     private isValidLoCoMoSample(sample: any): boolean {
         return sample &&
-               typeof sample === 'object' &&
-               sample.sample_id &&
-               sample.qa &&
-               Array.isArray(sample.qa) &&
-               sample.conversation;
+            typeof sample === 'object' &&
+            sample.sample_id &&
+            sample.qa &&
+            Array.isArray(sample.qa) &&
+            sample.conversation;
     }
 
     /**
@@ -270,21 +270,21 @@ class LoCoMoBenchmark {
     private parseConversationContext(conversationData: ConversationData): ConversationContext {
         const sessions: ProcessedSession[] = [];
         let totalDialogs = 0;
-        
+
         // Extract speaker information
         const speakerA = conversationData.speaker_a;
         const speakerB = conversationData.speaker_b;
-        
+
         // Find all session keys
         const sessionKeys = Object.keys(conversationData)
             .filter(key => key.match(/^session_\d+$/));
-        
+
         sessionKeys.forEach(sessionKey => {
             const sessionNum = sessionKey.replace('session_', '');
             const sessionDialogs = conversationData[sessionKey as keyof ConversationData] as Dialog[];
             const dateTimeKey = `session_${sessionNum}_date_time` as keyof ConversationData;
             const dateTime = conversationData[dateTimeKey] as string;
-            
+
             if (Array.isArray(sessionDialogs)) {
                 sessions.push({
                     sessionId: sessionKey,
@@ -293,11 +293,11 @@ class LoCoMoBenchmark {
                     summary: undefined, // Could be loaded from session_summary if needed
                     observation: undefined // Could be loaded from observation if needed
                 });
-                
+
                 totalDialogs += sessionDialogs.length;
             }
         });
-        
+
         return {
             speakerA,
             speakerB,
@@ -305,13 +305,13 @@ class LoCoMoBenchmark {
             totalDialogs
         };
     }
-    
+
     /**
      * Parse individual Q&A entry with full conversation context
      */
     private parseQAEntry(
-        item: any, 
-        id: string, 
+        item: any,
+        id: string,
         conversationContext: ConversationContext,
         sampleId: string
     ): LoCoMoEntry | null {
@@ -555,14 +555,14 @@ class LoCoMoBenchmark {
             // Load conversation sessions into benchmark context
             const conversationId = `locomo-${entry.sampleId}`;
             await this.loadConversationContext(conversationId, entry.conversationContext);
-            
+
             logger.bullet('LoCoMoBenchmark', `Loaded ${entry.conversationContext.totalDialogs} dialogs from ${entry.conversationContext.sessions.length} sessions`, 1);
-            
+
             // Create a contextualized question with the conversation history
-            const contextualizedQuestion = this.currentConversationContext 
+            const contextualizedQuestion = this.currentConversationContext
                 ? this.currentConversationContext.conversationHistory + entry.question
                 : entry.question;
-            
+
             // Ask the question with conversation context
             const response = await this.agent.process(contextualizedQuestion);
             const answer = trimThinkTags(response) || '';
@@ -573,7 +573,7 @@ class LoCoMoBenchmark {
             return { answer: '' };
         }
     }
-    
+
     /**
      * Load conversation sessions into the agent's memory for Q&A context
      * This is the core requirement from the ACL 2024 LoCoMo paper
@@ -584,10 +584,10 @@ class LoCoMoBenchmark {
     private async loadConversationContext(conversationId: string, context: ConversationContext): Promise<void> {
         try {
             logger.bullet('LoCoMoBenchmark', `Loading conversation context for evaluation`, 1);
-            
+
             // Build conversation history as a single prompt for the agent
             const conversationHistory = this.buildConversationPrompt(context);
-            
+
             // Store the conversation context for use in question answering
             this.currentConversationContext = {
                 conversationId,
@@ -597,33 +597,33 @@ class LoCoMoBenchmark {
                 totalDialogs: context.totalDialogs,
                 sessions: context.sessions.length
             };
-            
+
             logger.success('LoCoMoBenchmark', `Conversation context prepared: ${context.totalDialogs} dialogs across ${context.sessions.length} sessions`);
-            
+
         } catch (error: any) {
             logger.error('LoCoMoBenchmark', `Failed to load conversation context: ${error.message}`);
             throw error;
         }
     }
-    
+
     /**
      * Build a conversation prompt from the context for the agent
      */
     private buildConversationPrompt(context: ConversationContext): string {
         let prompt = `You are being asked questions about conversations between ${context.speakerA} and ${context.speakerB}. Here is the complete conversation history:\n\n`;
-        
+
         for (const session of context.sessions) {
             prompt += `=== ${session.sessionId} (${session.dateTime}) ===\n`;
-            
+
             for (const dialog of session.dialogs) {
                 prompt += `${dialog.speaker}: ${dialog.text}\n`;
             }
-            
+
             prompt += `\n`;
         }
-        
+
         prompt += `\nPlease answer the following question based ONLY on the conversation history above. Do not use external knowledge or make assumptions beyond what is explicitly stated in the conversations.\n\n`;
-        
+
         return prompt;
     }
 
@@ -641,7 +641,7 @@ class LoCoMoBenchmark {
         // Clean text for better metric calculations
         const cleanGenerated = this.cleanText(generated);
         const cleanReference = this.cleanText(reference);
-        
+
         // Handle empty responses
         if (!cleanGenerated || cleanGenerated.trim().length === 0) {
             logger.warn('LoCoMoBenchmark', 'Empty generated response - assigning zero scores');
@@ -945,7 +945,7 @@ Respond with ONLY a single number between 0 and 1 (e.g., 0.8), no explanation ne
 /**
  * Initialize agent for benchmarking
  */
-async function initializeBenchmarkAgent(): Promise<{ agent: RouterLangGraphAgent, llmProvider: LLMProvider }> {
+async function initializeBenchmarkAgent(): Promise<{ agent: MainAgentExecution, llmProvider: LLMProvider }> {
     console.log('\n🚀 Initializing Agent for LoCoMo Conversational Memory Evaluation...\n');
     console.log('⚠️  Note: Agent should be configured to prioritize conversational memory over external search');
     console.log('⚠️  Deep research and tool usage will be penalized with zero scores\n');
@@ -982,7 +982,7 @@ async function initializeBenchmarkAgent(): Promise<{ agent: RouterLangGraphAgent
     );
 
     // 4. Create RouterLangGraphAgent
-    const agent = new RouterLangGraphAgent({
+    const agent = new MainAgentExecution({
         llmProvider,
         memoryService,
         config: {

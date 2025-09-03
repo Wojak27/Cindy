@@ -3,24 +3,21 @@
  */
 
 import { toolRegistry } from './ToolRegistry';
-import type { ToolSpecification } from './ToolDefinitions';
+import { TavilySearch } from "@langchain/tavily";
+import { SerpAPI } from "@langchain/community/tools/serpapi";
+import { BraveSearch } from "@langchain/community/tools/brave_search";
+import { DuckDuckGoSearch } from "@langchain/community/tools/duckduckgo_search";
 
 // Import all tool creators
-import { createDuckDuckGoSearchTool } from './search/DuckDuckGoSearchTool';
-import { createBraveSearchTool } from './search/BraveSearchTool';
-import { createWikipediaSearchTool } from './search/WikipediaSearchTool';
-import { createSerpAPISearchTool } from './search/SerpAPISearchTool';
-import { createTavilySearchTool } from './search/TavilySearchTool';
-import { createVectorSearchTool } from './vector/VectorSearchTool';
-import { createAccuWeatherTool } from './weather/AccuWeatherTool';
 import { getApiKeyService } from '../../services/ApiKeyService';
-import { createMapsDisplayTool } from './maps/MapsDisplayTool';
-import { createEmailSearchTool } from './connectors/EmailSearchTool';
-import { createReferenceSearchTool } from './connectors/ReferenceSearchTool';
 import { GmailConnector } from '../../connectors/GmailConnector';
 import { OutlookConnector } from '../../connectors/OutlookConnector';
 import { ZoteroConnector } from '../../connectors/ZoteroConnector';
+import { WikipediaQueryRun } from "@langchain/community/tools/wikipedia_query_run";
 import { MendeleyConnector } from '../../connectors/MendeleyConnector';
+import VectorSearchTool from './vector/VectorSearchTool';
+import { AccuWeatherTool } from './weather/AccuWeatherTool';
+import MapsDisplayTool from './maps/MapsDisplayTool';
 
 /**
  * Tool configuration interface for initialization
@@ -109,8 +106,6 @@ export class ToolLoader {
         // Load maps tools
         await this.loadMapsTools(config, enabledTools, registeredTools, failedTools);
 
-        // Load connector tools
-        await this.loadConnectorTools(config, enabledTools, registeredTools, failedTools);
 
         // Log results
         console.log(`[ToolLoader] ✅ Successfully registered ${registeredTools.length} tools:`, registeredTools);
@@ -148,7 +143,8 @@ export class ToolLoader {
         // Brave Search (primary - reliable with API key)
         if (enabledTools.brave !== false && apiKeys.braveApiKey) {
             try {
-                const spec = createBraveSearchTool(apiKeys.braveApiKey);
+                process.env.BRAVE_API_KEY = apiKeys.braveApiKey;
+                const spec = new BraveSearch
                 if (spec && !this.loadedTools.has(spec.name)) {
                     toolRegistry.registerTool(spec);
                     this.loadedTools.add(spec.name);
@@ -164,7 +160,9 @@ export class ToolLoader {
         // Wikipedia Search
         if (enabledTools.wikipedia !== false) {
             try {
-                const spec = createWikipediaSearchTool(config.searchSettings);
+                const spec = new WikipediaQueryRun({
+                    topKResults: config.searchSettings?.maxResults || 5,
+                })
                 if (spec && !this.loadedTools.has(spec.name)) {
                     // Don't auto-register since it's already done in the tool file
                     this.loadedTools.add(spec.name);
@@ -179,7 +177,8 @@ export class ToolLoader {
         // SerpAPI Search
         if (enabledTools.serpapi !== false && apiKeys.serpApiKey) {
             try {
-                const spec = createSerpAPISearchTool(apiKeys.serpApiKey);
+                process.env.SERPAPI_API_KEY = apiKeys.serpApiKey;
+                const spec = new SerpAPI();
                 if (spec && !this.loadedTools.has(spec.name)) {
                     toolRegistry.registerTool(spec);
                     this.loadedTools.add(spec.name);
@@ -195,10 +194,11 @@ export class ToolLoader {
         // Tavily Search
         if (enabledTools.tavily !== false && apiKeys.tavilyApiKey) {
             try {
-                const spec = createTavilySearchTool({
-                    apiKey: apiKeys.tavilyApiKey,
-                    maxResults: config.searchSettings?.maxResults
-                });
+                process.env.TAVILY_API_KEY = apiKeys.tavilyApiKey;
+                // Note: TavilySearch constructor handles API key internally
+                const spec = new TavilySearch({
+                    maxResults: config.searchSettings?.maxResults || 5,
+                })
                 if (spec && !this.loadedTools.has(spec.name)) {
                     toolRegistry.registerTool(spec);
                     this.loadedTools.add(spec.name);
@@ -214,10 +214,11 @@ export class ToolLoader {
         // DuckDuckGo Search (fallback - free but unreliable due to VQD issues)
         if (enabledTools.duckduckgo !== false) {
             try {
-                const spec: ToolSpecification | null = createDuckDuckGoSearchTool();
+                const spec = new DuckDuckGoSearch({
+                    maxResults: config.searchSettings?.maxResults || 5,
+                })
                 if (spec && !this.loadedTools.has(spec.name)) {
-                    // Don't auto-register since it's already done in the tool file
-                    // Just track that it's loaded
+                    toolRegistry.registerTool(spec);
                     this.loadedTools.add(spec.name);
                     registeredTools.push(spec.name);
                     console.log('[ToolLoader] ✅ DuckDuckGo Search loaded (fallback search provider)');
@@ -241,7 +242,7 @@ export class ToolLoader {
         // Vector Search Tool
         if (enabledTools.vector !== false && config.vectorStore) {
             try {
-                const spec = createVectorSearchTool(config.vectorStore);
+                const spec = new VectorSearchTool(config.vectorStore);
                 if (spec && !this.loadedTools.has(spec.name)) {
                     toolRegistry.registerTool(spec);
                     this.loadedTools.add(spec.name);
@@ -271,7 +272,7 @@ export class ToolLoader {
 
                 // Use API key from service, fallback to hardcoded for testing
                 const accuWeatherKey = apiKeys.accuWeatherApiKey || "7FW644HhxLVHH7r5bVYchwTPle2jo0sC";
-                const spec = createAccuWeatherTool(accuWeatherKey);
+                const spec = new AccuWeatherTool(accuWeatherKey);
 
                 if (spec && !this.loadedTools.has(spec.name)) {
                     toolRegistry.registerTool(spec);
@@ -298,7 +299,7 @@ export class ToolLoader {
         // Maps Display Tool (always available, no API key required)
         if (enabledTools.maps !== false) {
             try {
-                const spec = createMapsDisplayTool();
+                const spec = new MapsDisplayTool();
                 if (spec && !this.loadedTools.has(spec.name)) {
                     toolRegistry.registerTool(spec);
                     this.loadedTools.add(spec.name);
@@ -308,207 +309,6 @@ export class ToolLoader {
                 console.error('[ToolLoader] Failed to load Maps Display tool:', error.message);
                 failedTools.push('display_map');
             }
-        }
-    }
-
-    /**
-     * Load connector tools
-     */
-    private async loadConnectorTools(
-        config: ToolConfiguration,
-        enabledTools: any,
-        registeredTools: string[],
-        failedTools: string[]
-    ): Promise<void> {
-        const connectors = config.connectors || {};
-
-        // Email Search Tool
-        if (enabledTools.email !== false && (connectors.gmail || connectors.outlook)) {
-            try {
-                const emailConnectors: { gmail?: GmailConnector; outlook?: OutlookConnector } = {};
-
-                if (connectors.gmail && connectors.gmail.isConnected()) {
-                    emailConnectors.gmail = connectors.gmail;
-                }
-                if (connectors.outlook && connectors.outlook.isConnected()) {
-                    emailConnectors.outlook = connectors.outlook;
-                }
-
-                if (Object.keys(emailConnectors).length > 0) {
-                    const spec = createEmailSearchTool(emailConnectors);
-                    if (spec && !this.loadedTools.has(spec.name)) {
-                        toolRegistry.registerTool(spec);
-                        this.loadedTools.add(spec.name);
-                        registeredTools.push(spec.name);
-                        console.log(`[ToolLoader] Email search tool loaded with ${Object.keys(emailConnectors).join(', ')} connector(s)`);
-                    }
-                }
-            } catch (error: any) {
-                console.error('[ToolLoader] Failed to load Email Search tool:', error.message);
-                failedTools.push('email_search');
-            }
-        }
-
-        // Reference Search Tool
-        if (enabledTools.references !== false && (connectors.zotero || connectors.mendeley)) {
-            try {
-                const refConnectors: { zotero?: ZoteroConnector; mendeley?: MendeleyConnector } = {};
-
-                if (connectors.zotero && connectors.zotero.isConnected()) {
-                    refConnectors.zotero = connectors.zotero;
-                }
-                if (connectors.mendeley && connectors.mendeley.isConnected()) {
-                    refConnectors.mendeley = connectors.mendeley;
-                }
-
-                if (Object.keys(refConnectors).length > 0) {
-                    const spec = createReferenceSearchTool(refConnectors);
-                    if (spec && !this.loadedTools.has(spec.name)) {
-                        toolRegistry.registerTool(spec);
-                        this.loadedTools.add(spec.name);
-                        registeredTools.push(spec.name);
-                        console.log(`[ToolLoader] Reference search tool loaded with ${Object.keys(refConnectors).join(', ')} connector(s)`);
-                    }
-                }
-            } catch (error: any) {
-                console.error('[ToolLoader] Failed to load Reference Search tool:', error.message);
-                failedTools.push('reference_search');
-            }
-        }
-    }
-
-    /**
-     * Reload specific tool with new configuration
-     */
-    async reloadTool(toolName: string, config: Partial<ToolConfiguration>): Promise<boolean> {
-        try {
-            // Unregister existing tool if it exists
-            if (toolRegistry.hasTool(toolName)) {
-                toolRegistry.unregisterTool(toolName);
-                this.loadedTools.delete(toolName);
-            }
-
-            // Reload based on tool name
-            switch (toolName) {
-                case 'brave_search':
-                    if (config.braveApiKey) {
-                        const spec = createBraveSearchTool(config.braveApiKey);
-                        if (spec) {
-                            toolRegistry.registerTool(spec);
-                            this.loadedTools.add(spec.name);
-                            return true;
-                        }
-                    }
-                    break;
-
-                case 'serp_search':
-                    if (config.serpApiKey) {
-                        const spec = createSerpAPISearchTool(config.serpApiKey);
-                        if (spec) {
-                            toolRegistry.registerTool(spec);
-                            this.loadedTools.add(spec.name);
-                            return true;
-                        }
-                    }
-                    break;
-
-                case 'tavily_search':
-                    if (config.tavilyApiKey) {
-                        const spec = createTavilySearchTool({
-                            apiKey: config.tavilyApiKey,
-                            maxResults: config.searchSettings?.maxResults
-                        });
-                        if (spec) {
-                            toolRegistry.registerTool(spec);
-                            this.loadedTools.add(spec.name);
-                            return true;
-                        }
-                    }
-                    break;
-
-                case 'search_documents':
-                    if (config.vectorStore) {
-                        const spec = createVectorSearchTool(config.vectorStore);
-                        if (spec) {
-                            toolRegistry.registerTool(spec);
-                            this.loadedTools.add(spec.name);
-                            return true;
-                        }
-                    }
-                    break;
-
-                case 'weather':
-                    const spec = createAccuWeatherTool("7FW644HhxLVHH7r5bVYchwTPle2jo0sC");
-                    // const spec = createAccuWeatherTool(config.accuWeatherApiKey);
-                    if (spec) {
-                        toolRegistry.registerTool(spec);
-                        this.loadedTools.add(spec.name);
-                        return true;
-                    }
-                    break;
-
-                case 'display_map':
-                    const mapSpec = createMapsDisplayTool();
-                    if (mapSpec) {
-                        toolRegistry.registerTool(mapSpec);
-                        this.loadedTools.add(mapSpec.name);
-                        return true;
-                    }
-                    break;
-
-                case 'email_search':
-                    if (config.connectors && (config.connectors.gmail || config.connectors.outlook)) {
-                        const emailConnectors: { gmail?: GmailConnector; outlook?: OutlookConnector } = {};
-
-                        if (config.connectors.gmail && config.connectors.gmail.isConnected()) {
-                            emailConnectors.gmail = config.connectors.gmail;
-                        }
-                        if (config.connectors.outlook && config.connectors.outlook.isConnected()) {
-                            emailConnectors.outlook = config.connectors.outlook;
-                        }
-
-                        if (Object.keys(emailConnectors).length > 0) {
-                            const spec = createEmailSearchTool(emailConnectors);
-                            if (spec) {
-                                toolRegistry.registerTool(spec);
-                                this.loadedTools.add(spec.name);
-                                return true;
-                            }
-                        }
-                    }
-                    break;
-
-                case 'reference_search':
-                    if (config.connectors && (config.connectors.zotero || config.connectors.mendeley)) {
-                        const refConnectors: { zotero?: ZoteroConnector; mendeley?: MendeleyConnector } = {};
-
-                        if (config.connectors.zotero && config.connectors.zotero.isConnected()) {
-                            refConnectors.zotero = config.connectors.zotero;
-                        }
-                        if (config.connectors.mendeley && config.connectors.mendeley.isConnected()) {
-                            refConnectors.mendeley = config.connectors.mendeley;
-                        }
-
-                        if (Object.keys(refConnectors).length > 0) {
-                            const spec = createReferenceSearchTool(refConnectors);
-                            if (spec) {
-                                toolRegistry.registerTool(spec);
-                                this.loadedTools.add(spec.name);
-                                return true;
-                            }
-                        }
-                    }
-                    break;
-
-                default:
-                    console.warn(`[ToolLoader] Unknown tool for reload: ${toolName}`);
-                    return false;
-            }
-
-            return false;
-        } catch (error: any) {
-            console.error(`[ToolLoader] Failed to reload tool ${toolName}:`, error.message);
-            return false;
         }
     }
 
@@ -547,7 +347,7 @@ export class ToolLoader {
         return {
             initialized: this.initialized,
             loadedCount: this.loadedTools.size,
-            registeredCount: toolRegistry.getAllTools().length,
+            registeredCount: toolRegistry.getAllToolNames().length,
             availableTools: this.getLoadedTools()
         };
     }

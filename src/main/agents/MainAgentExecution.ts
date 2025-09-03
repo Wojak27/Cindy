@@ -2,23 +2,23 @@ import { LLMProvider } from '../services/LLMProvider';
 import { LangChainMemoryService } from '../services/LangChainMemoryService';
 import { toolRegistry } from './tools/ToolRegistry';
 import { SettingsService } from '../services/SettingsService';
-import { DeepResearchIntegration } from './research/DeepResearchIntegration';
 import { logger } from '../utils/ColorLogger';
 import * as fs from 'fs';
 import * as path from 'path';
 import { spawn } from 'child_process';
-import {
-    TodoItem,
-    createTodoItem,
-    updateTodoStatus,
-    getTodoStats,
-    ResearchStatus
-} from './research/DeepResearchState';
+import { ToolNode } from "@langchain/langgraph/prebuilt";
+import { END, Annotation, StateGraph, START } from "@langchain/langgraph";
+import { AIMessage, BaseMessage, HumanMessage } from "@langchain/core/messages";
+import { ChatPromptTemplate, MessagesPlaceholder } from '@langchain/core/prompts';
+import { StructuredTool } from '@langchain/core/tools';
+import { Runnable, RunnableConfig } from '@langchain/core/runnables';
+import { BaseChatModel } from '@langchain/core/language_models/chat_models';
+
 
 /**
  * Configuration options for the LangGraphAgent
  */
-export interface RouterLangGraphAgentOptions {
+export interface MainAgentGraphOptions {
     llmProvider: LLMProvider;
     memoryService: LangChainMemoryService;
     config?: any;
@@ -27,64 +27,199 @@ export interface RouterLangGraphAgentOptions {
 }
 
 /**
- * Agent session state interface
- */
-export interface AgentSessionState {
-    sessionId: string;
-    startTime: Date;
-    currentStatus: ResearchStatus;
-    todoList: TodoItem[];
-    // Remove benchmark-specific fields
-    // These were moved to the benchmark file as requested
-    metadata: { [key: string]: any };
-}
-
-/**
  * Deep Research-enhanced LangGraph Agent.
  * Intelligent routing between Deep Research capabilities and standard processing.
  */
-export class RouterLangGraphAgent {
-    private routerAgent: DeepResearchIntegration;
+export class MainAgentExecution {
     private llmProvider: LLMProvider;
     private memoryService: LangChainMemoryService;
     private settingsService: SettingsService | null = null;
+    private researchAgent;
+    private writterAgent;
+    private workflow;
 
     // State management properties
-    private sessionState: AgentSessionState | null = null;
-    private enableStateManagement: boolean;
+    private AgentState;
     private persistState: boolean;
-    private stateUpdateCallbacks: Array<(state: AgentSessionState) => void> = [];
 
-    constructor(options: RouterLangGraphAgentOptions) {
+    constructor(options: MainAgentGraphOptions) {
         this.llmProvider = options.llmProvider;
         this.memoryService = options.memoryService;
-        this.enableStateManagement = options.enableStateManagement !== false; // Default to enabled
         this.persistState = options.persistState !== false; // Default to enabled
 
         // Create a minimal settings service for compatibility
         this.settingsService = this.createCompatibilitySettingsService();
 
-        // Initialize Deep Research integration
-        this.routerAgent = new DeepResearchIntegration({
-            llmProvider: this.llmProvider,
-            settingsService: this.settingsService,
-            enableDeepResearch: true,
-            fallbackToOriginal: true
-        });
 
-        // Initialize state management
-        if (this.enableStateManagement) {
-            this.initializeState();
-        }
 
         logger.success('RouterLangGraphAgent', 'Initialized with Deep Research routing and state management', {
             provider: this.llmProvider.getCurrentProvider(),
             deepResearchEnabled: true,
             fallbackEnabled: true,
-            stateManagementEnabled: this.enableStateManagement,
             persistentState: this.persistState
         });
     }
+
+    public async initialize(): Promise<void> {
+
+        this.initializeState();
+        this.workflow = await this.buildGraph();
+    }
+
+    private async buildGraph(): Promise<Runnable> {
+        const toolNode = new ToolNode<typeof this.AgentState.State>(toolRegistry.getTools());
+        // Research agent and node
+        this.researchAgent = await this.createAgent({
+            llm: this.llmProvider.getChatModel(),
+            tools: toolRegistry.getTools(),
+            systemMessage:
+                "You should provide accurate data for the answer writer to use.",
+        });
+        // Chart Generator
+        this.writterAgent = await this.createAgent({
+            llm: this.llmProvider.getChatModel(),
+            tools: [],
+            systemMessage: "Any text you write will be shown to the user.",
+        });
+        // 1. Create the graph
+        const workflow = new StateGraph(this.AgentState)
+            // 2. Add the nodes; these will do the work
+            .addNode("Researcher", this.researchNode)
+            .addNode("Writer", this.writerNode)
+            .addNode("call_tool", toolNode);
+
+        // 3. Define the edges. We will define both regular and conditional ones
+        // After a worker completes, report to supervisor
+        workflow.addConditionalEdges("Researcher", this.router, {
+            // We will transition to the other agent
+            continue: "Writer",
+            call_tool: "call_tool",
+            end: END,
+        });
+
+        workflow.addConditionalEdges(
+            "call_tool",
+            // Each agent node updates the 'sender' field
+            // the tool calling node does not, meaning
+            // this edge will route back to the original agent
+            // who invoked the tool
+            (x) => x.sender,
+            {
+                Researcher: "Researcher",
+            },
+        );
+
+        workflow.addEdge(START, "Researcher");
+        const graph = workflow.compile();
+        return graph;
+    }
+
+    private async writerNode(state: typeof this.AgentState.State) {
+        return this.runAgentNode({
+            state: state,
+            agent: this.writterAgent,
+            name: "ChartGenerator",
+        });
+    }
+    // Either agent can decide to end
+    private router(state: typeof this.AgentState.State) {
+        const messages = state.messages;
+        const lastMessage = messages[messages.length - 1] as AIMessage;
+        if (lastMessage?.tool_calls && lastMessage.tool_calls.length > 0) {
+            // The previous agent is invoking a tool
+            return "call_tool";
+        }
+        if (
+            typeof lastMessage.content === "string" &&
+            lastMessage.content.includes("FINAL ANSWER")
+        ) {
+            // Any agent decided the work is done
+            return "end";
+        }
+        return "continue";
+    }
+
+
+
+    public updateLLMProvider(llmProvider: LLMProvider) {
+        this.llmProvider = llmProvider;
+        logger.info('RouterLangGraphAgent', 'LLM provider updated', {
+            provider: this.llmProvider.getCurrentProvider(),
+        });
+    }
+
+    private getAgent() {
+        return this.workflow;
+    }
+
+    private async researchNode(
+        state: typeof this.AgentState.State,
+        config?: RunnableConfig,
+    ) {
+        return this.runAgentNode({
+            state: state,
+            agent: this.researchAgent,
+            name: "Researcher",
+            config,
+        });
+    }
+
+    private async runAgentNode(props: {
+        state: typeof this.AgentState.State;
+        agent: Runnable;
+        name: string;
+        config?: RunnableConfig;
+    }) {
+        const { state, agent, name, config } = props;
+        let result = await agent.invoke(state, config);
+        // We convert the agent output into a format that is suitable
+        // to append to the global state
+        if (!result?.tool_calls || result.tool_calls.length === 0) {
+            // If the agent is NOT calling a tool, we want it to
+            // look like a human message.
+            result = new HumanMessage({ ...result, name: name });
+        }
+        return {
+            messages: [result],
+            // Since we have a strict workflow, we can
+            // track the sender so we know who to pass to next.
+            sender: name,
+        };
+    }
+
+    private async createAgent({
+        llm,
+        tools,
+        systemMessage,
+    }: {
+        llm: BaseChatModel;
+        tools: StructuredTool[];
+        systemMessage: string;
+    }): Promise<Runnable> {
+        const toolNames = tools.map((tool) => tool.name).join(", ");
+
+
+        let prompt = ChatPromptTemplate.fromMessages([
+            [
+                "system",
+                "You are a helpful AI assistant, collaborating with other assistants." +
+                " Use the provided tools to progress towards answering the question." +
+                " If you are unable to fully answer, that's OK, another assistant with different tools " +
+                " will help where you left off. Execute what you can to make progress." +
+                " If you or any of the other assistants have the final answer or deliverable," +
+                " prefix your response with FINAL ANSWER so the team knows to stop." +
+                " You have access to the following tools: {tool_names}.\n{system_message}",
+            ],
+            new MessagesPlaceholder("messages"),
+        ]);
+        prompt = await prompt.partial({
+            system_message: systemMessage,
+            tool_names: toolNames,
+        });
+
+        return prompt.pipe(llm.bindTools(tools));
+    }
+
 
     /**
      * Create a compatibility settings service for Deep Research integration
@@ -105,26 +240,19 @@ export class RouterLangGraphAgent {
      * Initialize agent session state
      */
     private initializeState(): void {
-        this.sessionState = {
-            sessionId: `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            startTime: new Date(),
-            currentStatus: ResearchStatus.PLANNING,
-            todoList: [],
-            metadata: {}
-        };
-
-        logger.info('RouterLangGraphAgent', 'Agent state initialized', {
-            sessionId: this.sessionState.sessionId,
-            status: this.sessionState.currentStatus
+        this.AgentState = Annotation.Root({
+            messages: Annotation<BaseMessage[]>({
+                reducer: (x, y) => x.concat(y),
+                default: () => [],
+            }),
+            // The agent node that last performed work
+            next: Annotation<string>({
+                reducer: (x, y) => y ?? x ?? END,
+                default: () => END,
+            }),
         });
     }
 
-    /**
-     * Get current agent state
-     */
-    public getAgentState(): AgentSessionState | null {
-        return this.sessionState;
-    }
 
     /**
      * Get the memory service for external access (used by benchmark)
@@ -134,139 +262,18 @@ export class RouterLangGraphAgent {
     }
 
     /**
-     * Update agent status
-     */
-    public updateStatus(status: ResearchStatus): void {
-        if (this.sessionState) {
-            this.sessionState.currentStatus = status;
-            this.notifyStateUpdate();
-
-            logger.info('RouterLangGraphAgent', `Status updated to ${status}`);
-        }
-    }
-
-    /**
-     * Add todo item to agent state
-     */
-    public addTodo(todo: TodoItem): void {
-        if (this.sessionState) {
-            this.sessionState.todoList.push(todo);
-            this.notifyStateUpdate();
-
-            logger.bullet('RouterLangGraphAgent', `Todo added: ${todo.content}`, 1);
-        }
-    }
-
-    /**
-     * Update todo status
-     */
-    public updateTodoStatus(todoId: string, status: 'pending' | 'in_progress' | 'completed'): void {
-        if (this.sessionState) {
-            this.sessionState.todoList = updateTodoStatus(this.sessionState.todoList, todoId, status);
-            this.notifyStateUpdate();
-
-            logger.bullet('RouterLangGraphAgent', `Todo ${todoId} status: ${status}`, 1);
-        }
-    }
-
-    /**
-     * Add conversation context
-     */
-    // Removed benchmark-specific methods as requested by user
-
-    /**
-     * Get todo statistics
-     */
-    public getTodoStats() {
-        if (!this.sessionState) return null;
-        return getTodoStats(this.sessionState.todoList);
-    }
-
-    // Removed LoCoMo-specific initialization as requested by user
-
-    /**
-     * Register state update callback
-     */
-    public onStateUpdate(callback: (state: AgentSessionState) => void): void {
-        this.stateUpdateCallbacks.push(callback);
-    }
-
-    /**
-     * Notify all registered callbacks of state updates
-     */
-    private notifyStateUpdate(): void {
-        if (this.sessionState && this.stateUpdateCallbacks.length > 0) {
-            this.stateUpdateCallbacks.forEach(callback => {
-                try {
-                    callback(this.sessionState!);
-                } catch (error) {
-                    logger.warn('RouterLangGraphAgent', 'State update callback failed', error);
-                }
-            });
-        }
-    }
-
-    /**
      * Process a message through the Deep Research system (non-streaming)
      */
     async process(input: string, context?: any): Promise<string> {
-        try {
-            // Update state to indicate processing has started
-            if (this.sessionState) {
-                this.updateStatus(ResearchStatus.RESEARCHING);
 
-                // Add processing todo
-                const processingTodo = createTodoItem({
-                    content: `Process query: ${input.slice(0, 50)}${input.length > 50 ? '...' : ''}`,
-                    activeForm: `Processing query: ${input.slice(0, 50)}${input.length > 50 ? '...' : ''}`,
-                    status: 'in_progress',
-                    category: 'processing'
-                });
-                this.addTodo(processingTodo);
-            }
-
-            logger.stage('RouterLangGraphAgent', 'Processing with State Management', input.slice(0, 100));
-
-            // Use Deep Research integration for intelligent processing
-            const result = await this.routerAgent.processMessage(input, context);
-
-            // Update state based on processing result
-            if (this.sessionState) {
-                const processingTodo = this.sessionState.todoList.find(
-                    t => t.category === 'processing' && t.status === 'in_progress'
-                );
-                if (processingTodo) {
-                    this.updateTodoStatus(processingTodo.id!, 'completed');
-                }
-            }
-
-            if (result.usedDeepResearch && result.result !== 'FALLBACK_TO_ORIGINAL') {
-                logger.success('RouterLangGraphAgent', `Deep Research completed in ${result.processingTime}ms`);
-                this.updateStatus(ResearchStatus.SYNTHESIZING);
-                return result.result;
-            } else if (result.usedToolAgent) {
-                logger.success('RouterLangGraphAgent', `Tool Agent completed in ${result.processingTime}ms`);
-                this.updateStatus(ResearchStatus.COMPLETE);
-                return result.result;
-            } else {
-                // For direct response cases
-                logger.success('RouterLangGraphAgent', `Direct response completed in ${result.processingTime}ms`);
-                this.updateStatus(ResearchStatus.COMPLETE);
-                return result.result;
-            }
-
-        } catch (error) {
-            logger.error('RouterLangGraphAgent', 'Processing error', error);
-            this.updateStatus(ResearchStatus.ERROR);
-            return `I encountered an error: ${(error as Error).message}`;
-        }
+        return ``;
     }
 
 
     /**
      * Process a message through Deep Research with streaming output
      */
-    async *processStreaming(input: string, context?: any): AsyncGenerator<string> {
+    async * processStreaming(input: string, context?: any): AsyncGenerator<string> {
         try {
             logger.stage('RouterLangGraphAgent', 'Intelligent Routing', `Processing: "${input}"`);
             logger.section('RouterLangGraphAgent', 'Route Analysis', () => {
@@ -274,40 +281,40 @@ export class RouterLangGraphAgent {
             });
 
 
-            for await (const update of this.routerAgent.streamMessage(input, context)) {
-                if (update.usedDeepResearch) {
-                    // Deep Research mode
-                    if (update.type === 'progress') {
-                        yield `📋 ${update.content}\n\n`;
-                    } else if (update.type === 'result') {
-                        yield update.content;
-                    }
-                } else if (update.usedToolAgent) {
-                    // Tool Agent mode
-                    logger.info('RouterLangGraphAgent', 'Using Tool Agent for specialized execution');
-                    if (update.type === 'progress') {
-                        yield `🔧 ${update.content}\n\n`;
-                    } else if (update.type === 'tool_result') {
-                        yield `⚡ ${update.content}\n\n`;
-                    } else if (update.type === 'result') {
-                        yield update.content;
-                    } else if (update.type === 'side_view') {
-                        // Handle side view data (will be processed by renderer)
-                        if (update.data && update.data.type === 'weather') {
-                            // Include the actual weather data JSON for the renderer
-                            yield `📊 ${JSON.stringify(update.data.data)}\n\n`;
-                        } else if (update.data && update.data.type === 'map') {
-                            // Include the actual map data JSON for the renderer
-                            yield `📊 ${JSON.stringify(update.data.data)}\n\n`;
-                        } else {
-                            yield `📊 ${update.content}\n\n`;
-                        }
-                    }
-                } else {
-                    // Direct LLM response mode
-                    yield update.content;
-                }
-            }
+            // for await (const update of this.deepResearchAgent.streamMessage(input, context)) {
+            //     if (update.usedDeepResearch) {
+            //         // Deep Research mode
+            //         if (update.type === 'progress') {
+            //             yield `📋 ${update.content}\n\n`;
+            //         } else if (update.type === 'result') {
+            //             yield update.content;
+            //         }
+            //     } else if (update.usedToolAgent) {
+            //         // Tool Agent mode
+            //         logger.info('RouterLangGraphAgent', 'Using Tool Agent for specialized execution');
+            //         if (update.type === 'progress') {
+            //             yield `🔧 ${update.content}\n\n`;
+            //         } else if (update.type === 'tool_result') {
+            //             yield `⚡ ${update.content}\n\n`;
+            //         } else if (update.type === 'result') {
+            //             yield update.content;
+            //         } else if (update.type === 'side_view') {
+            //             // Handle side view data (will be processed by renderer)
+            //             if (update.data && update.data.type === 'weather') {
+            //                 // Include the actual weather data JSON for the renderer
+            //                 yield `📊 ${JSON.stringify(update.data.data)}\n\n`;
+            //             } else if (update.data && update.data.type === 'map') {
+            //                 // Include the actual map data JSON for the renderer
+            //                 yield `📊 ${JSON.stringify(update.data.data)}\n\n`;
+            //             } else {
+            //                 yield `📊 ${update.content}\n\n`;
+            //             }
+            //         }
+            //     } else {
+            //         // Direct LLM response mode
+            //         yield update.content;
+            //     }
+            // }
 
         } catch (error) {
             logger.error('RouterLangGraphAgent', 'Streaming process error', error);
@@ -322,62 +329,6 @@ export class RouterLangGraphAgent {
         return this.llmProvider.getCurrentProvider();
     }
 
-    /**
-     * Get available tools
-     */
-    getAvailableTools(): string[] {
-        return toolRegistry.getAvailableTools();
-    }
-
-    /**
-     * Update settings and propagate to Deep Research integration
-     */
-    async updateSettings(): Promise<void> {
-        try {
-            await this.routerAgent.updateSettings();
-            logger.success('RouterLangGraphAgent', 'Settings updated successfully');
-        } catch (error) {
-            logger.error('RouterLangGraphAgent', 'Error updating settings', error);
-        }
-    }
-
-    /**
-     * Get enhanced status information
-     */
-    getStatus(): {
-        provider: string;
-        availableTools: string[];
-        deepResearchStatus: any;
-    } {
-        return {
-            provider: this.getCurrentProvider(),
-            availableTools: this.getAvailableTools(),
-            deepResearchStatus: this.routerAgent.getStatus()
-        };
-    }
-
-    /**
-     * Enable or disable Deep Research capabilities
-     */
-    setDeepResearchEnabled(enabled: boolean): void {
-        this.routerAgent.setEnabled(enabled);
-        console.log(`[RouterLangGraphAgent] Deep Research ${enabled ? 'enabled' : 'disabled'}`);
-    }
-
-    /**
-     * Set fallback behavior for when Deep Research fails
-     */
-    setFallbackEnabled(enabled: boolean): void {
-        this.routerAgent.setFallbackEnabled(enabled);
-        console.log(`[RouterLangGraphAgent] Fallback to standard processing ${enabled ? 'enabled' : 'disabled'}`);
-    }
-
-    /**
-     * Get the Deep Research integration (for advanced configuration)
-     */
-    getDeepResearchIntegration(): DeepResearchIntegration {
-        return this.routerAgent;
-    }
 
     /**
      * Export agent graph visualization as PNG file
@@ -402,10 +353,10 @@ export class RouterLangGraphAgent {
             }
 
             // Get the Deep Research agent
-            const deepResearchAgent = this.routerAgent.getDeepResearchAgent();
+            const agent = this.getAgent();
 
             // Generate and export the graph
-            const finalPath = await this.generateGraphPNG(deepResearchAgent, outputPath);
+            const finalPath = await this.generateGraphPNG(agent, outputPath);
 
             console.log(`✅ [RouterLangGraphAgent] Graph exported to: ${finalPath}`);
             return finalPath;
@@ -761,35 +712,4 @@ Command: npm install -g @mermaid-js/mermaid-cli
         return path.resolve(textPath);
     }
 
-    /**
-     * Get detailed debug info as JSON
-     */
-    getDebugInfo(): any {
-        const status = this.getStatus();
-
-        return {
-            timestamp: new Date().toISOString(),
-            architecture: 'Deep Research Enhanced LangGraph Agent',
-            provider: status.provider,
-            tools: {
-                available: status.availableTools,
-                count: status.availableTools.length
-            },
-            deepResearch: {
-                enabled: status.deepResearchStatus.enabled,
-                fallbackEnabled: status.deepResearchStatus.fallbackEnabled,
-                configuration: status.deepResearchStatus.configuration
-            },
-            graphs: {
-                main: 'ClarificationNode → ResearchProcess → SynthesisNode',
-                supervisor: 'SupervisorNode ↔ DelegateResearch',
-                researcher: 'ResearcherNode (tool execution)'
-            },
-            langsmith: {
-                enabled: !!process.env.LANGCHAIN_TRACING_V2,
-                project: process.env.LANGCHAIN_PROJECT || 'not-set',
-                apiKeyConfigured: !!process.env.LANGCHAIN_API_KEY
-            }
-        };
-    }
 }

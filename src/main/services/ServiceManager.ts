@@ -3,7 +3,7 @@ import { DuckDBSettingsService } from './DuckDBSettingsService';
 import { LLMProvider } from './LLMProvider';
 import { toolRegistry } from '../agents/tools/ToolRegistry';
 import { toolLoader } from '../agents/tools/ToolLoader';
-import { RouterLangGraphAgent } from '../agents/RouterLangGraphAgent';
+import { MainAgentExecution } from '../agents/MainAgentExecution';
 
 /**
  * ServiceManager - Handles dynamic loading of heavy LangChain services
@@ -221,7 +221,7 @@ export class ServiceManager extends EventEmitter {
             const agentConfig = await this.settingsService.get('general') || {};
 
             // Initialize thinking agent with enhanced capabilities
-            this.langChainCindyAgent = new RouterLangGraphAgent({
+            this.langChainCindyAgent = new MainAgentExecution({
                 memoryService: memoryService,
                 config: {
                     enableStreaming: true,

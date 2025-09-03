@@ -1,5 +1,5 @@
 import { LLMProvider } from "../../services/LLMProvider";
-import { RouterLangGraphAgent } from "../RouterLangGraphAgent";
+import { MainAgentExecution } from "../MainAgentExecution";
 import { LangChainMemoryService } from "../../services/LangChainMemoryService";
 import * as dotenv from 'dotenv';
 import path from 'path';
@@ -17,7 +17,7 @@ if (process.env.LANGSMITH_API_KEY) {
     console.log(`📊 Project: ${process.env.LANGCHAIN_PROJECT}`);
 }
 
-async function initializeAgent(): Promise<RouterLangGraphAgent> {
+async function initializeAgent(): Promise<MainAgentExecution> {
     console.log('\n🚀 Initializing RouterLangGraphAgent...\n');
 
     // 1. Create LLM configuration
@@ -61,7 +61,7 @@ async function initializeAgent(): Promise<RouterLangGraphAgent> {
 
     // 4. Create RouterLangGraphAgent
     console.log('🤖 Creating RouterLangGraphAgent...');
-    const agent = new RouterLangGraphAgent({
+    const agent = new MainAgentExecution({
         llmProvider,
         memoryService,
         config: {
@@ -83,7 +83,7 @@ async function initializeAgent(): Promise<RouterLangGraphAgent> {
     return agent;
 }
 
-async function testProcessMethod(agent: RouterLangGraphAgent) {
+async function testProcessMethod(agent: MainAgentExecution) {
     console.log('\n═══════════════════════════════════════════════════════════════');
     console.log('🧪 Testing Non-Streaming Process Method');
     console.log('═══════════════════════════════════════════════════════════════\n');
@@ -112,7 +112,7 @@ async function testProcessMethod(agent: RouterLangGraphAgent) {
     }
 }
 
-async function testStreamingMethod(agent: RouterLangGraphAgent) {
+async function testStreamingMethod(agent: MainAgentExecution) {
     console.log('\n═══════════════════════════════════════════════════════════════');
     console.log('🧪 Testing Streaming Process Method');
     console.log('═══════════════════════════════════════════════════════════════\n');
@@ -141,7 +141,7 @@ async function testStreamingMethod(agent: RouterLangGraphAgent) {
     }
 }
 
-async function testDeepResearchMode(agent: RouterLangGraphAgent) {
+async function testDeepResearchMode(agent: MainAgentExecution) {
     console.log('\n═══════════════════════════════════════════════════════════════');
     console.log('🧪 Testing Deep Research Mode');
     console.log('═══════════════════════════════════════════════════════════════\n');
