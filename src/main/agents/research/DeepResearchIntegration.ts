@@ -8,7 +8,6 @@ import { toolRegistry } from '../tools/ToolRegistry';
 import { toolLoader } from '../tools/ToolLoader';
 import { SettingsService } from '../../services/SettingsService';
 import { DeepResearchAgent } from './DeepResearchAgent'; // LangGraph implementation with enhanced logging
-// import { DeepAgentsResearchAgent as DeepResearchAgent } from './DeepAgentsResearchAgent'; // DeepAgents has initialization issues
 import { DeepResearchConfiguration, DeepResearchConfigManager } from './DeepResearchConfig';
 import { ToolAgent } from '../ToolAgent';
 import { generateStepDescription, extractResearchContext, AGENT_STEP_TEMPLATES } from '../../../shared/AgentFlowStandard';
@@ -505,7 +504,7 @@ export class DeepResearchIntegration {
                         // Check if the result indicates tool failure
                         const result = toolResult.result.toLowerCase();
                         if (result.includes('error') || result.includes('failed') || result.includes('unavailable') || result.includes('don\'t have the right tools')) {
-                            console.warn('[DeepResearchIntegration] Tool execution failed or tools unavailable');
+                            logger.warn('DeepResearchIntegration', 'Tool execution failed or tools unavailable');
                             return {
                                 result: 'I attempted to use my tools to help with your request, but they\'re currently experiencing issues. I can still provide general information and assistance through conversation. Would you like me to try a different approach to help you?',
                                 usedDeepResearch: false,
@@ -523,7 +522,7 @@ export class DeepResearchIntegration {
                         };
 
                     } catch (toolError: any) {
-                        console.error('[DeepResearchIntegration] Tool Agent error:', toolError);
+                        logger.error('DeepResearchIntegration', 'Tool Agent error', toolError);
                         return {
                             result: 'I encountered an issue while trying to use my tools to help with your request. My tool services may be temporarily unavailable. I can still assist you through conversation - would you like to try asking in a different way?',
                             usedDeepResearch: false,
@@ -544,7 +543,7 @@ export class DeepResearchIntegration {
                             processingTime: Date.now() - startTime
                         };
                     } catch (directError: any) {
-                        console.error('[DeepResearchIntegration] Direct response error:', directError);
+                        logger.error('DeepResearchIntegration', 'Direct response error', directError);
                         return {
                             result: routing.response || 'I can help you with that based on my knowledge.',
                             usedDeepResearch: false,
@@ -603,7 +602,7 @@ export class DeepResearchIntegration {
 
             switch (routing.route) {
                 case 'deep_research':
-                    console.log('[DeepResearchIntegration] Streaming Deep Research');
+                    logger.stage('DeepResearchIntegration', 'Streaming Deep Research', 'Starting research stream');
 
                     // Emit flow events for research workflow
                     const emitFlowEvent = (global as any).emitFlowEvent;
@@ -672,14 +671,14 @@ export class DeepResearchIntegration {
                     break;
 
                 case 'tool_agent':
-                    console.log('[DeepResearchIntegration] Streaming Tool Agent');
+                    logger.stage('DeepResearchIntegration', 'Streaming Tool Agent', 'Starting tool agent stream');
 
                     // Check tool availability before streaming
                     const availableTools = this.toolAgent.getAvailableTools();
-                    console.log(`[DeepResearchIntegration] Available tools for streaming: ${availableTools.join(', ')}`);
+                    logger.info('DeepResearchIntegration', `Available tools for streaming: ${availableTools.join(', ')}`);
 
                     if (availableTools.length === 0) {
-                        console.warn('[DeepResearchIntegration] No tools available for streaming');
+                        logger.warn('DeepResearchIntegration', 'No tools available for streaming');
                         yield {
                             type: 'result',
                             content: 'I understand you need help with that request, but my tool services are currently unavailable. I can still provide general information or assistance through conversation. Could you try asking in a different way, or would you like me to help with something else?',
@@ -697,7 +696,7 @@ export class DeepResearchIntegration {
                             if (content.includes('don\'t have the right tools') ||
                                 content.includes('tool execution failed') ||
                                 content.includes('tools are currently unavailable')) {
-                                console.warn('[DeepResearchIntegration] Tool failure detected in streaming');
+                                logger.warn('DeepResearchIntegration', 'Tool failure detected in streaming');
                                 yield {
                                     type: 'result',
                                     content: 'I attempted to use my tools to help with your request, but they\'re currently experiencing issues. I can still provide general information and assistance through conversation. Would you like me to try a different approach to help you?',
@@ -722,7 +721,7 @@ export class DeepResearchIntegration {
 
                         // If no valid result was generated, provide fallback
                         if (!hasValidResult) {
-                            console.warn('[DeepResearchIntegration] No valid result from tool agent streaming');
+                            logger.warn('DeepResearchIntegration', 'No valid result from tool agent streaming');
                             yield {
                                 type: 'result',
                                 content: 'I tried to help with your request using my tools, but didn\'t get a proper response. This might be due to service availability or network issues. Please try again in a moment, or rephrase your request.',
@@ -732,7 +731,7 @@ export class DeepResearchIntegration {
                         }
 
                     } catch (streamError: any) {
-                        console.error('[DeepResearchIntegration] Tool Agent streaming error:', streamError);
+                        logger.error('DeepResearchIntegration', 'Tool Agent streaming error', streamError);
                         yield {
                             type: 'result',
                             content: 'I encountered an issue while trying to use my tools to help with your request. My tool services may be temporarily unavailable. I can still assist you through conversation - would you like to try asking in a different way?',
@@ -744,11 +743,11 @@ export class DeepResearchIntegration {
 
                 case 'direct_response':
                 default:
-                    console.log('[DeepResearchIntegration] Streaming direct response with memory context');
+                    logger.stage('DeepResearchIntegration', 'Streaming Direct Response', 'Using memory-enhanced direct response');
                     try {
                         yield* this.streamDirectResponse(message, context);
                     } catch (directError: any) {
-                        console.error('[DeepResearchIntegration] Direct response streaming error:', directError);
+                        logger.error('DeepResearchIntegration', 'Direct response streaming error', directError);
                         yield {
                             type: 'result',
                             content: routing.response || 'I can help you with that based on my knowledge.',
@@ -759,7 +758,7 @@ export class DeepResearchIntegration {
                     break;
             }
         } catch (error: any) {
-            console.error('[DeepResearchIntegration] Error in streaming:', error);
+            logger.error('DeepResearchIntegration', 'Error in streaming', error);
             yield {
                 type: 'result',
                 content: `Error: ${error.message}`,
@@ -806,7 +805,7 @@ Answer the user's question directly and conversationally based on your knowledge
             const result = await this.llmProvider.invoke(messages);
             return result.content as string;
         } catch (error) {
-            console.error('[DeepResearchIntegration] Error in processDirectResponse:', error);
+            logger.error('DeepResearchIntegration', 'Error in processDirectResponse', error);
             throw error;
         }
     }
@@ -880,7 +879,7 @@ Answer the user's question directly and conversationally based on your knowledge
                 };
             }
         } catch (error) {
-            console.error('[DeepResearchIntegration] Error in streamDirectResponse:', error);
+            logger.error('DeepResearchIntegration', 'Error in streamDirectResponse', error);
             throw error;
         }
     }
@@ -889,7 +888,7 @@ Answer the user's question directly and conversationally based on your knowledge
      * Update settings and reconfigure
      */
     async updateSettings(): Promise<void> {
-        console.log('[DeepResearchIntegration] Updating configuration from settings');
+        logger.info('DeepResearchIntegration', 'Updating configuration from settings');
 
         try {
             // Recreate configuration
@@ -901,10 +900,10 @@ Answer the user's question directly and conversationally based on your knowledge
             // Reinitialize tools
             await this.initializeTools();
 
-            console.log('[DeepResearchIntegration] Settings updated successfully');
+            logger.success('DeepResearchIntegration', 'Settings updated successfully');
 
         } catch (error) {
-            console.error('[DeepResearchIntegration] Error updating settings:', error);
+            logger.error('DeepResearchIntegration', 'Error updating settings', error);
         }
     }
 
@@ -913,7 +912,7 @@ Answer the user's question directly and conversationally based on your knowledge
      */
     setEnabled(enabled: boolean): void {
         this.enabled = enabled;
-        console.log(`[DeepResearchIntegration] Deep Research ${enabled ? 'enabled' : 'disabled'}`);
+        logger.info('DeepResearchIntegration', `Deep Research ${enabled ? 'enabled' : 'disabled'}`);
     }
 
     /**
@@ -921,7 +920,7 @@ Answer the user's question directly and conversationally based on your knowledge
      */
     setFallbackEnabled(enabled: boolean): void {
         this.fallbackToOriginal = enabled;
-        console.log(`[DeepResearchIntegration] Fallback to original ${enabled ? 'enabled' : 'disabled'}`);
+        logger.info('DeepResearchIntegration', `Fallback to original ${enabled ? 'enabled' : 'disabled'}`);
     }
 
     /**

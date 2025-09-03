@@ -10,3 +10,4 @@ dist/
 build/
 # Coverage reports
 coverage/
+datasets/

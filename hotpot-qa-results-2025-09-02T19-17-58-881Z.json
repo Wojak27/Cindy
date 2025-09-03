@@ -1,0 +1,61 @@
+{
+  "timestamp": "2025-09-02T19:17:58.881Z",
+  "config": {
+    "vectorDbPath": "/var/folders/sv/ntsjgt7j24ndrv_vdvf4sjw00000gr/T/hotpot-qa-vector-1756840641455.db",
+    "embeddingProvider": "ollama",
+    "llmProvider": "ollama",
+    "maxHops": 3,
+    "confidenceThreshold": 0.7,
+    "batchSize": 10,
+    "maxExamples": 2,
+    "evaluationSplit": 0.8,
+    "ollamaBaseUrl": "http://127.0.0.1:11434",
+    "verbose": true,
+    "persistResults": false,
+    "keepVectorDb": false,
+    "resultsDbPath": "/var/folders/sv/ntsjgt7j24ndrv_vdvf4sjw00000gr/T/hotpot-qa-results-1756840641455.db",
+    "exportFormat": "json",
+    "officialEval": true
+  },
+  "metrics": {
+    "exact_match": 1,
+    "f1_score": 1,
+    "supporting_fact_precision": 0,
+    "supporting_fact_recall": 0,
+    "supporting_fact_f1": 0,
+    "average_hops": 1,
+    "reasoning_accuracy": 1,
+    "total_examples": 1,
+    "joint_exact_match": 0,
+    "joint_f1": 0.5,
+    "answer_only_correct": 1,
+    "supporting_facts_only_correct": 0,
+    "both_correct": 0
+  },
+  "results": [
+    {
+      "question_id": "sample_2",
+      "question": "What is the capital city of the country where the Eiffel Tower is located?",
+      "expected_answer": "Paris",
+      "predicted_answer": "Paris",
+      "exact_match": true,
+      "f1_score": 1,
+      "confidence_score": 1,
+      "hop_count": 1,
+      "reasoning_steps": [
+        "Question analysis: comparison question requiring 2 hops",
+        "Hop 1: Retrieved 5 documents for query \"Where is the Eiffel Tower located?\"",
+        "Hop 1 reasoning: The Eiffel Tower is explicitly stated to be in Paris, France (Document 2). Paris is confirmed as the capital of France (Document 1). Thus, the answer is directly derived from the retrieved documents without needing additional hops.",
+        "Answer verified with confidence: 1.00"
+      ],
+      "supporting_facts_found": [
+        "The Eiffel Tower is located in Paris, France.",
+        "Paris is the capital and largest city of France.",
+        "France is a country located in Western Europe."
+      ],
+      "retrieval_time_ms": 35433,
+      "reasoning_time_ms": 0,
+      "total_time_ms": 35433
+    }
+  ]
+}

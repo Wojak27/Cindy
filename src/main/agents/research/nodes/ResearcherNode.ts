@@ -10,6 +10,7 @@ import { ResearcherState, ResearcherOutputState } from '../DeepResearchState';
 import { DeepResearchConfiguration } from '../DeepResearchConfig';
 import { logger } from '../../../utils/ColorLogger';
 import { getLangSmithService } from '../../../services/LangSmithService';
+import { trimThinkTags } from '../../../utils/strings';
 
 /**
  * Researcher node that conducts detailed research on specific topics
@@ -38,12 +39,12 @@ export function createResearcherNode(
 
             // Compress and summarize the research findings
             logger.step('ResearcherNode', 'Compressing research findings', 'running');
-            const compressedResearch = await compressResearchFindings(
+            const compressedResearch = trimThinkTags(await compressResearchFindings(
                 researchResults.findings,
                 state.research_topic,
                 llmProvider,
                 config
-            );
+            ));
 
             logger.complete('ResearcherNode', 'Research node completed', compressedResearch.length);
             logger.keyValue('ResearcherNode', 'Compressed research length', `${compressedResearch.length} characters`);
@@ -253,7 +254,7 @@ Return only the search queries, one per line, without numbering or additional te
 
         let response = result.content as string;
         // remove <think> tags if present
-        response = response.replace(/<think>.*?<\/think>/gs, '').trim();
+        response = trimThinkTags(response);
         const queries = response.split('\n')
             .map(line => line.trim())
             .filter(line => line.length > 5 && !line.match(/^\d+\./))
