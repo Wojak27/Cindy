@@ -51,20 +51,25 @@ import {
     Description as DocumentIcon,
     AccountTree as GraphIcon
 } from '@mui/icons-material';
+import { time } from 'console';
 
 const App: React.FC = () => {
+
+    // Redux state and dispatch
     const dispatch = useDispatch();
     const showSettings = useSelector((state: any) => state.ui.showSettings);
     const showDatabase = useSelector((state: any) => state.ui.showDatabase);
     const thinkingBlocks = useSelector((state: any) => state.messages?.thinkingBlocks || []);
     const toolCalls = useSelector((state: any) => state.messages?.toolCalls || []);
     const settings = useSelector((state: any) => state.settings);
+    const messages = useSelector((state: any) => state.messages?.messages || []);
+    const currentConversationId = useSelector((state: any) => state.messages?.currentConversationId || null);
+
+    // Local state
     const [isSpeaking, setIsSpeaking] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
     const isListening = false; // No longer used for real-time transcription, kept for display compatibility
     const [inputValue, setInputValue] = useState('');
-    const messages = useSelector((state: any) => state.messages?.messages || []);
-    const currentConversationId = useSelector((state: any) => state.messages?.currentConversationId || null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [isAppLoading, setIsAppLoading] = useState(true);
     const [isTransitioning, setIsTransitioning] = useState(false);
@@ -580,7 +585,6 @@ const App: React.FC = () => {
             }
         }
     };
-
 
     // Retry a failed message
     const retryMessage = async (messageId: string, userMessage: any) => {

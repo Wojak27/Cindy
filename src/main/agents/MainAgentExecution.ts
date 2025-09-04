@@ -2,10 +2,6 @@ import { LLMProvider } from '../services/LLMProvider';
 import { LangChainMemoryService } from '../services/LangChainMemoryService';
 import { toolRegistry } from './tools/ToolRegistry';
 import { SettingsService } from '../services/SettingsService';
-import { logger } from '../utils/ColorLogger';
-import * as fs from 'fs';
-import * as path from 'path';
-import { spawn } from 'child_process';
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { END, Annotation, StateGraph, START } from "@langchain/langgraph";
 import { AIMessage, BaseMessage, HumanMessage } from "@langchain/core/messages";
@@ -15,6 +11,8 @@ import { Runnable, RunnableConfig } from '@langchain/core/runnables';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { trimThinkTags } from '../utils/strings';
 import toolLoader from './tools/ToolLoader';
+import 'dotenv/config';
+import { logger } from '../utils/ColorLogger';
 
 
 /**
@@ -69,6 +67,21 @@ export class MainAgentExecution {
         this.workflow = await this.buildGraph();
     }
 
+    /**
+     * Initialize agent session state
+     */
+    private initializeState(): void {
+        this.AgentState = Annotation.Root({
+            messages: Annotation<BaseMessage[]>({
+                reducer: (x, y) => x.concat(y),
+            }),
+            sender: Annotation<string>({
+                reducer: (x, y) => y ?? x ?? "user",
+                default: () => "user",
+            }),
+        });
+    }
+
     private async buildGraph(): Promise<Runnable> {
         const toolNode = new ToolNode<typeof this.AgentState.State>(toolRegistry.getTools());
         // Research agent and node
@@ -98,6 +111,13 @@ export class MainAgentExecution {
         workflow.addConditionalEdges("Researcher", this.router.bind(this), {
             // We will transition to the other agent
             continue: "Writer",
+            call_tool: "call_tool",
+            end: END,
+        });
+
+        workflow.addConditionalEdges("Writer", this.router.bind(this), {
+            // We will transition to the other agent
+            continue: "Researcher",
             call_tool: "call_tool",
             end: END,
         });
@@ -159,8 +179,6 @@ export class MainAgentExecution {
     private getAgent() {
         return this.workflow;
     }
-
-
 
     private async runAgentNode(props: {
         state: typeof this.AgentState.State;
@@ -252,42 +270,12 @@ export class MainAgentExecution {
         } as any;
     }
 
-    //##################
-    // State Management Methods
-    //##################
-
-    /**
-     * Initialize agent session state
-     */
-    private initializeState(): void {
-        this.AgentState = Annotation.Root({
-
-            messages: Annotation<BaseMessage[]>({
-                reducer: (x, y) => x.concat(y),
-            }),
-            sender: Annotation<string>({
-                reducer: (x, y) => y ?? x ?? "user",
-                default: () => "user",
-            }),
-        });
-    }
-
-
     /**
      * Get the memory service for external access (used by benchmark)
      */
     public getMemoryService(): LangChainMemoryService {
         return this.memoryService;
     }
-
-    /**
-     * Process a message through the Deep Research system (non-streaming)
-     */
-    async process(input: string, context?: any): Promise<string> {
-
-        return ``;
-    }
-
 
     /**
      * Process a message through Deep Research with streaming output
@@ -303,7 +291,7 @@ export class MainAgentExecution {
         for await (const ev of evStream) {
             switch (ev.event) {
                 case "on_chain_start": {
-                    const node = ev.name ?? ev.data?.name ?? ev.data?.node_name ?? "unknown";
+                    const node = ev.name ?? "unknown";
                     yield `▶️ ${node} started\n`;
                     break;
                 }
@@ -313,17 +301,17 @@ export class MainAgentExecution {
                     break;
                 }
                 case "on_chain_end": {
-                    const node = ev.name ?? ev.data?.name ?? ev.data?.node_name ?? "unknown";
+                    const node = ev.name ?? "unknown";
                     yield `✅ ${node} finished\n`;
                     break;
                 }
                 case "on_tool_start": {
-                    const tool = ev.name ?? ev.data?.name ?? "tool";
+                    const tool = ev.name ?? "tool";
                     yield `🛠️ ${tool} running...\n`;
                     break;
                 }
                 case "on_tool_end": {
-                    const tool = ev.name ?? ev.data?.name ?? "tool";
+                    const tool = ev.name ?? "tool";
                     yield `🛠️ ${tool} done\n`;
                     break;
                 }
@@ -353,389 +341,6 @@ export class MainAgentExecution {
      */
     getCurrentProvider(): string {
         return this.llmProvider.getCurrentProvider();
-    }
-
-
-    /**
-     * Export agent graph visualization as PNG file
-     */
-    async exportGraphAsPNG(options: {
-        outputPath?: string;
-        enableLangSmith?: boolean;
-        projectName?: string;
-    } = {}): Promise<string> {
-        const {
-            outputPath = './agent-graph.png',
-            enableLangSmith = false,
-            projectName = 'deep-research-debug'
-        } = options;
-
-        try {
-            console.log('🎨 [RouterLangGraphAgent] Generating graph visualization...');
-
-            // Setup LangSmith if requested
-            if (enableLangSmith) {
-                this.setupLangSmithTracing(projectName);
-            }
-
-            // Get the Deep Research agent
-            const agent = this.getAgent();
-
-            // Generate and export the graph
-            const finalPath = await this.generateGraphPNG(agent, outputPath);
-
-            console.log(`✅ [RouterLangGraphAgent] Graph exported to: ${finalPath}`);
-            return finalPath;
-
-        } catch (error) {
-            console.error('❌ [RouterLangGraphAgent] Graph export failed:', error);
-            throw error;
-        }
-    }
-
-
-    /**
-     * Setup LangSmith tracing
-     */
-    private setupLangSmithTracing(projectName: string) {
-        console.log('\n🔬 LANGSMITH SETUP');
-        console.log('==================');
-
-        try {
-            // Set environment variables for LangSmith
-            process.env.LANGCHAIN_TRACING_V2 = 'true';
-            process.env.LANGCHAIN_PROJECT = projectName;
-
-            // Check if API key is available
-            if (process.env.LANGCHAIN_API_KEY) {
-                console.log('✅ LangSmith tracing enabled');
-                console.log(`📊 Project: ${projectName}`);
-                console.log('🔗 Traces will be available at: https://smith.langchain.com/');
-                console.log(`   └─ Project: ${projectName}`);
-            } else {
-                console.log('⚠️  LANGCHAIN_API_KEY not found');
-                console.log('💡 To enable LangSmith tracing:');
-                console.log('   1. Get API key from https://smith.langchain.com/');
-                console.log('   2. Set environment variable: export LANGCHAIN_API_KEY=your_key');
-                console.log('   3. Restart the application');
-            }
-
-        } catch (error) {
-            console.error('❌ Error setting up LangSmith:', error);
-        }
-    }
-
-    /**
-     * Generate PNG file from the graph
-     */
-    private async generateGraphPNG(deepResearchAgent: any, outputPath: string): Promise<string> {
-        try {
-            console.log('🔧 [RouterLangGraphAgent] Accessing graph structure...');
-
-            // Get the main graph from the Deep Research agent
-            const mainGraph = deepResearchAgent.getMainGraph();
-
-            if (!mainGraph || !mainGraph.get_graph) {
-                throw new Error('Graph structure not accessible from Deep Research agent');
-            }
-
-            console.log('📊 [RouterLangGraphAgent] Generating mermaid diagram...');
-
-            // Get the graph representation
-            const graph = mainGraph.get_graph();
-
-            // Try to get mermaid representation
-            let mermaidCode: string;
-
-            if (graph.draw_mermaid) {
-                mermaidCode = graph.draw_mermaid();
-            } else {
-                // Fallback: generate our own mermaid representation
-                mermaidCode = this.generateFallbackMermaidCode();
-            }
-
-            console.log('🖼️ [RouterLangGraphAgent] Converting to PNG...');
-
-            // Convert mermaid to PNG using mermaid-cli or puppeteer
-            const finalPath = await this.convertMermaidToPNG(mermaidCode, outputPath);
-
-            return finalPath;
-
-        } catch (error) {
-            console.error('❌ [RouterLangGraphAgent] Error generating PNG:', error);
-
-            // Fallback: create a basic visualization
-            console.log('🔄 [RouterLangGraphAgent] Using fallback visualization...');
-            return await this.createFallbackVisualization(outputPath);
-        }
-    }
-
-    /**
-     * Generate fallback mermaid code when graph introspection fails
-     */
-    private generateFallbackMermaidCode(): string {
-        return `
-graph TD
-    Start([Start]) --> Clarification[ClarificationNode]
-    Clarification --> |Need Clarification| NeedClarification[Ask User]
-    Clarification --> |No Clarification| Research[ResearchProcess]
-    Research --> Supervisor[SupervisorGraph]
-    Supervisor --> ResearchLoop[ResearcherGraph]
-    ResearchLoop --> |Continue| Supervisor
-    Supervisor --> |Complete| Synthesis[SynthesisNode]
-    Synthesis --> End([End])
-    NeedClarification --> End
-    
-    subgraph "Supervisor Graph"
-        SupervisorNode[SupervisorNode]
-        DelegateResearch[DelegateResearch]
-        SupervisorNode --> DelegateResearch
-        DelegateResearch --> SupervisorNode
-    end
-    
-    subgraph "Researcher Graph"
-        ResearcherNode[ResearcherNode]
-        ResearcherNode --> |Tool Execution| ResearcherNode
-    end
-    
-    style Start fill:#e1f5fe
-    style End fill:#f3e5f5
-    style Clarification fill:#fff3e0
-    style Research fill:#e8f5e8
-    style Synthesis fill:#fce4ec
-    style SupervisorNode fill:#fff8e1
-    style ResearcherNode fill:#e0f2f1
-`;
-    }
-
-    /**
-     * Convert mermaid code to PNG using available tools
-     */
-    private async convertMermaidToPNG(mermaidCode: string, outputPath: string): Promise<string> {
-
-        try {
-            // First, save the mermaid code to a temporary file
-            const mermaidPath = outputPath.replace(/\.png$/i, '.mmd');
-            await fs.writeFile(mermaidPath, mermaidCode, 'utf-8');
-            console.log(`📝 [RouterLangGraphAgent] Mermaid code saved to: ${mermaidPath}`);
-
-            // Try to use mermaid-cli if available
-
-            return new Promise((resolve, reject) => {
-                // Try mmdc (mermaid-cli) first
-                const mmdc = spawn('mmdc', ['-i', mermaidPath, '-o', outputPath, '-b', 'white'], {
-                    stdio: 'pipe'
-                });
-
-                mmdc.on('close', async (code: number) => {
-                    if (code === 0) {
-                        console.log('✅ [RouterLangGraphAgent] PNG generated using mermaid-cli');
-                        resolve(path.resolve(outputPath));
-                    } else {
-                        console.log('⚠️ [RouterLangGraphAgent] mermaid-cli not available, using fallback...');
-                        try {
-                            const fallbackPath = await this.createFallbackVisualization(outputPath);
-                            resolve(fallbackPath);
-                        } catch (error) {
-                            reject(error);
-                        }
-                    }
-                });
-
-                mmdc.on('error', async () => {
-                    console.log('⚠️ [RouterLangGraphAgent] mermaid-cli not found, using fallback...');
-                    try {
-                        const fallbackPath = await this.createFallbackVisualization(outputPath);
-                        resolve(fallbackPath);
-                    } catch (error) {
-                        reject(error);
-                    }
-                });
-            });
-
-        } catch (error) {
-            console.warn('⚠️ [RouterLangGraphAgent] Mermaid conversion failed, using fallback');
-            return await this.createFallbackVisualization(outputPath);
-        }
-    }
-
-    /**
-     * Create a fallback visualization using simple text-based approach
-     */
-    private async createFallbackVisualization(outputPath: string): Promise<string> {
-
-        try {
-            // Check if we can use node-canvas for better visualization
-            let createCanvas;
-
-            try {
-                const canvas = require('canvas');
-                createCanvas = canvas.createCanvas;
-            } catch (canvasError) {
-                console.log('⚠️ [RouterLangGraphAgent] node-canvas not available, creating text diagram...');
-                return await this.createTextDiagram(outputPath);
-            }
-
-            // Create canvas
-            const width = 1200;
-            const height = 800;
-            const canvas = createCanvas(width, height);
-            const ctx = canvas.getContext('2d');
-
-            // Set background
-            ctx.fillStyle = 'white';
-            ctx.fillRect(0, 0, width, height);
-
-            // Draw the graph
-            await this.drawGraphOnCanvas(ctx);
-
-            // Save as PNG
-            const buffer = canvas.toBuffer('image/png');
-            await fs.writeFile(outputPath, buffer);
-
-            console.log('✅ [RouterLangGraphAgent] Canvas-based PNG created');
-            return path.resolve(outputPath);
-
-        } catch (error) {
-            console.warn('⚠️ [RouterLangGraphAgent] Canvas fallback failed, creating text diagram');
-            return await this.createTextDiagram(outputPath);
-        }
-    }
-
-    /**
-     * Draw the graph structure on canvas
-     */
-    private async drawGraphOnCanvas(ctx: any): Promise<void> {
-        // Set up drawing styles
-        ctx.strokeStyle = '#333';
-        ctx.fillStyle = '#333';
-        ctx.lineWidth = 2;
-        ctx.font = '14px Arial';
-
-        // Define node positions
-        const nodes = {
-            start: { x: 100, y: 100, label: 'Start' },
-            clarification: { x: 300, y: 100, label: 'Clarification' },
-            research: { x: 500, y: 100, label: 'Research Process' },
-            supervisor: { x: 700, y: 200, label: 'Supervisor' },
-            researcher: { x: 900, y: 300, label: 'Researcher' },
-            synthesis: { x: 700, y: 400, label: 'Synthesis' },
-            end: { x: 500, y: 500, label: 'End' }
-        };
-
-        // Draw nodes
-        Object.values(nodes).forEach(node => {
-            this.drawNode(ctx, node.x, node.y, node.label);
-        });
-
-        // Draw edges
-        this.drawEdge(ctx, nodes.start, nodes.clarification);
-        this.drawEdge(ctx, nodes.clarification, nodes.research);
-        this.drawEdge(ctx, nodes.research, nodes.supervisor);
-        this.drawEdge(ctx, nodes.supervisor, nodes.researcher);
-        this.drawEdge(ctx, nodes.researcher, nodes.supervisor);
-        this.drawEdge(ctx, nodes.supervisor, nodes.synthesis);
-        this.drawEdge(ctx, nodes.synthesis, nodes.end);
-
-        // Add title
-        ctx.font = '24px Arial';
-        ctx.fillStyle = '#000';
-        ctx.fillText('Deep Research Agent Graph', 400, 50);
-    }
-
-    /**
-     * Draw a single node on canvas
-     */
-    private drawNode(ctx: any, x: number, y: number, label: string): void {
-        const width = 120;
-        const height = 60;
-
-        // Draw rounded rectangle
-        ctx.beginPath();
-        ctx.roundRect(x - width / 2, y - height / 2, width, height, 10);
-        ctx.fillStyle = '#e3f2fd';
-        ctx.fill();
-        ctx.strokeStyle = '#1976d2';
-        ctx.stroke();
-
-        // Draw text
-        ctx.fillStyle = '#000';
-        ctx.font = '12px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText(label, x, y + 4);
-    }
-
-    /**
-     * Draw an edge between two nodes
-     */
-    private drawEdge(ctx: any, from: any, to: any): void {
-        ctx.beginPath();
-        ctx.moveTo(from.x, from.y);
-        ctx.lineTo(to.x, to.y);
-        ctx.strokeStyle = '#666';
-        ctx.stroke();
-
-        // Draw arrow head
-        const angle = Math.atan2(to.y - from.y, to.x - from.x);
-        const arrowLength = 10;
-
-        ctx.beginPath();
-        ctx.moveTo(to.x, to.y);
-        ctx.lineTo(
-            to.x - arrowLength * Math.cos(angle - Math.PI / 6),
-            to.y - arrowLength * Math.sin(angle - Math.PI / 6)
-        );
-        ctx.moveTo(to.x, to.y);
-        ctx.lineTo(
-            to.x - arrowLength * Math.cos(angle + Math.PI / 6),
-            to.y - arrowLength * Math.sin(angle + Math.PI / 6)
-        );
-        ctx.stroke();
-    }
-
-    /**
-     * Create a simple text-based diagram as final fallback
-     */
-    private async createTextDiagram(outputPath: string): Promise<string> {
-        const fs = require('fs').promises;
-        const path = require('path');
-
-        const textDiagram = `
-DEEP RESEARCH AGENT GRAPH VISUALIZATION
-======================================
-
-[Start] 
-   ↓
-[ClarificationNode] 
-   ↓ (no clarification needed)
-[ResearchProcess]
-   ↓
-[SupervisorGraph] ←→ [ResearcherGraph]
-   ↓ (research complete)
-[SynthesisNode]
-   ↓
-[End]
-
-SUPERVISOR GRAPH:
-- SupervisorNode ←→ DelegateResearch
-
-RESEARCHER GRAPH:
-- ResearcherNode (with tool execution loop)
-
-Generated: ${new Date().toISOString()}
-Output requested: ${outputPath}
-
-Note: Install 'mermaid-cli' or 'canvas' npm packages for proper PNG generation.
-Command: npm install -g @mermaid-js/mermaid-cli
-        `;
-
-        const textPath = outputPath.replace(/\.png$/i, '.txt');
-        await fs.writeFile(textPath, textDiagram, 'utf8');
-
-        console.log(`📄 [RouterLangGraphAgent] Text diagram created: ${textPath}`);
-        console.log('💡 [RouterLangGraphAgent] Install mermaid-cli for PNG generation: npm install -g @mermaid-js/mermaid-cli');
-
-        return path.resolve(textPath);
     }
 
 }

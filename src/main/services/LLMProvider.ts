@@ -7,10 +7,8 @@ import { ChatCohere } from '@langchain/cohere';
 import { ChatGroq } from '@langchain/groq';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { BaseMessage, HumanMessage, AIMessage, SystemMessage } from '@langchain/core/messages';
-import { wrapSDK } from "langsmith/wrappers";
 import axios from 'axios';
 import { logger } from '../utils/ColorLogger';
-import { getLangSmithService } from './LangSmithService';
 
 interface LLMConfig {
     provider: 'openai' | 'ollama' | 'anthropic' | 'google' | 'cohere' | 'azure' | 'huggingface' | 'openrouter' | 'groq' | 'auto';
@@ -140,32 +138,10 @@ export class LLMProvider extends EventEmitter {
 
             // Create the model based on available providers
             const baseModel = this.createModel();
-            
+
             // Enhanced LangSmith wrapping with proper error handling
-            const langSmithService = getLangSmithService();
-            try {
-                if (langSmithService.isConfigured()) {
-                    // Test connection first
-                    const connectionTest = await langSmithService.testConnection();
-                    if (connectionTest.success) {
-                        this.model = langSmithService.wrapModel(baseModel, {
-                            provider: this.currentProvider,
-                            modelInitialization: true,
-                            timestamp: new Date().toISOString()
-                        });
-                        logger.success('LLMProvider', `Model wrapped with enhanced LangSmith service for ${this.currentProvider}`);
-                    } else {
-                        logger.warn('LLMProvider', 'LangSmith connection test failed, using basic wrapper', connectionTest.error);
-                        this.model = wrapSDK(baseModel);
-                    }
-                } else {
-                    this.model = wrapSDK(baseModel);
-                    logger.info('LLMProvider', 'Using basic LangSmith wrapper (enhanced service not configured)');
-                }
-            } catch (langsmithError) {
-                logger.warn('LLMProvider', 'LangSmith integration failed, using unwrapped model', langsmithError);
-                this.model = baseModel;
-            }
+
+            this.model = baseModel;
 
             if (!this.model) {
                 throw new Error('No LLM providers are available');
@@ -907,7 +883,7 @@ export class LLMProvider extends EventEmitter {
     async invokeStructured<T>(
         messages: ChatMessage[] | BaseMessage[],
         schema: { safeParse: (data: unknown) => { success: boolean; data?: T; error?: any } },
-        options: InvokeOptions & { 
+        options: InvokeOptions & {
             maxRetries?: number;
             retryDelay?: number;
             fallback?: T;
@@ -924,18 +900,18 @@ export class LLMProvider extends EventEmitter {
     }> {
         const { maxRetries = 3, retryDelay = 1000, fallback, ...invokeOptions } = options;
         let lastError = '';
-        
+
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
                 logger.debug('LLMProvider', `Structured output attempt ${attempt}/${maxRetries}`);
-                
+
                 const result = await this.invoke(messages, invokeOptions);
                 const content = result.content as string;
-                
+
                 // Remove <think> tags if present
                 const thinkTagRegex = /<think[^>]*>([\s\S]*?)<\/think>/g;
                 const cleanedContent = content.replace(thinkTagRegex, '').trim();
-                
+
                 // Try to parse as JSON first
                 let parsedData: unknown;
                 try {
@@ -944,10 +920,10 @@ export class LLMProvider extends EventEmitter {
                     // If JSON parsing fails, try the raw content
                     parsedData = cleanedContent;
                 }
-                
+
                 // Validate with schema
                 const validation = schema.safeParse(parsedData);
-                
+
                 if (validation.success) {
                     return {
                         success: true,
@@ -955,27 +931,27 @@ export class LLMProvider extends EventEmitter {
                         attempts: attempt
                     };
                 }
-                
+
                 // Log validation error for retry
                 lastError = `Schema validation failed: ${validation.error ? JSON.stringify(validation.error) : 'Unknown validation error'}`;
                 logger.warn('LLMProvider', `Attempt ${attempt} validation failed: ${lastError}`);
-                
+
                 if (attempt < maxRetries) {
                     logger.info('LLMProvider', `Retrying in ${retryDelay}ms...`);
                     await new Promise(resolve => setTimeout(resolve, retryDelay));
                 }
-                
+
             } catch (error) {
                 lastError = `Invocation failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
                 logger.error('LLMProvider', `Attempt ${attempt} failed: ${lastError}`);
-                
+
                 if (attempt < maxRetries) {
                     logger.info('LLMProvider', `Retrying in ${retryDelay}ms...`);
                     await new Promise(resolve => setTimeout(resolve, retryDelay));
                 }
             }
         }
-        
+
         // All attempts failed
         return {
             success: false,
@@ -994,7 +970,7 @@ export class LLMProvider extends EventEmitter {
     async *streamStructured<T>(
         messages: ChatMessage[] | BaseMessage[],
         schema: { safeParse: (data: unknown) => { success: boolean; data?: T; error?: any } },
-        options: InvokeOptions & { 
+        options: InvokeOptions & {
             validateChunks?: boolean;
             finalValidation?: boolean;
         } = {}
@@ -1008,25 +984,25 @@ export class LLMProvider extends EventEmitter {
         error?: string;
     }> {
         const { validateChunks = false, finalValidation = true, ...streamOptions } = options;
-        
+
         let fullContent = '';
-        
+
         try {
             for await (const chunk of this.stream(messages, streamOptions)) {
                 fullContent += chunk;
-                
+
                 yield {
                     type: 'chunk',
                     content: chunk
                 };
-                
+
                 // Optional: validate each chunk if requested
                 if (validateChunks) {
                     try {
                         const cleanedContent = fullContent.replace(/<think[^>]*>([\s\S]*?)<\/think>/g, '').trim();
                         const parsedData = JSON.parse(cleanedContent);
                         const validation = schema.safeParse(parsedData);
-                        
+
                         if (validation.success) {
                             yield {
                                 type: 'validation',
@@ -1039,15 +1015,15 @@ export class LLMProvider extends EventEmitter {
                     }
                 }
             }
-            
+
             // Final validation
             if (finalValidation) {
                 const cleanedContent = fullContent.replace(/<think[^>]*>([\s\S]*?)<\/think>/g, '').trim();
-                
+
                 try {
                     const parsedData = JSON.parse(cleanedContent);
                     const validation = schema.safeParse(parsedData);
-                    
+
                     yield {
                         type: 'validation',
                         success: validation.success,
@@ -1062,7 +1038,7 @@ export class LLMProvider extends EventEmitter {
                     };
                 }
             }
-            
+
         } catch (error) {
             yield {
                 type: 'validation',

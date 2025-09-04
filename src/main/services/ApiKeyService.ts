@@ -14,22 +14,22 @@ export interface ApiKeyConfig {
     braveApiKey?: string;
     tavilyApiKey?: string;
     serpApiKey?: string;
-    
+
     // Weather APIs
     accuWeatherApiKey?: string;
-    
+
     // LLM Provider APIs
     openaiApiKey?: string;
     anthropicApiKey?: string;
     googleAiApiKey?: string;
     groqApiKey?: string;
-    
+
     // Microsoft Services
     microsoftClientId?: string;
     microsoftClientSecret?: string;
-    
+
     // Development/Debugging
-    langsmithApiKey?: string;
+    langchainApiKey?: string;
 }
 
 export interface ApiKeySource {
@@ -59,28 +59,28 @@ export class ApiKeyService {
      */
     getAllApiKeys(): ApiKeyConfig {
         this.refreshCacheIfNeeded();
-        
+
         return {
             // Search APIs
             braveApiKey: this.getApiKey('BRAVE_API_KEY'),
             tavilyApiKey: this.getApiKey('TAVILY_API_KEY'),
             serpApiKey: this.getApiKey('SERP_API_KEY'),
-            
+
             // Weather APIs
             accuWeatherApiKey: this.getApiKey('ACCUWEATHER_API_KEY'),
-            
+
             // LLM Provider APIs
             openaiApiKey: this.getApiKey('OPENAI_API_KEY'),
             anthropicApiKey: this.getApiKey('ANTHROPIC_API_KEY'),
             googleAiApiKey: this.getApiKey('GOOGLE_AI_API_KEY'),
             groqApiKey: this.getApiKey('GROQ_API_KEY'),
-            
+
             // Microsoft Services
             microsoftClientId: this.getApiKey('MICROSOFT_CLIENT_ID'),
             microsoftClientSecret: this.getApiKey('MICROSOFT_CLIENT_SECRET'),
-            
+
             // Development/Debugging
-            langsmithApiKey: this.getApiKey('LANGSMITH_API_KEY')
+            langchainApiKey: this.getApiKey('LANGCHAIN_API_KEY')
         };
     }
 
@@ -89,7 +89,7 @@ export class ApiKeyService {
      */
     getApiKeyWithSource(keyName: string): ApiKeySource {
         this.refreshCacheIfNeeded();
-        
+
         if (this.cache.has(keyName)) {
             return this.cache.get(keyName)!;
         }
@@ -118,14 +118,14 @@ export class ApiKeyService {
     /**
      * Get diagnostic information about all API keys
      */
-    getDiagnostics(): { 
-        totalKeys: number; 
-        availableKeys: string[]; 
+    getDiagnostics(): {
+        totalKeys: number;
+        availableKeys: string[];
         missingKeys: string[];
         sourceBreakdown: Record<string, number>;
     } {
         const allKeys = [
-            'BRAVE_API_KEY', 'TAVILY_API_KEY', 'SERP_API_KEY', 
+            'BRAVE_API_KEY', 'TAVILY_API_KEY', 'SERP_API_KEY',
             'ACCUWEATHER_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY',
             'GOOGLE_AI_API_KEY', 'GROQ_API_KEY', 'MICROSOFT_CLIENT_ID',
             'MICROSOFT_CLIENT_SECRET', 'LANGSMITH_API_KEY'
@@ -206,7 +206,7 @@ export class ApiKeyService {
     private keyNameToSettingsKey(keyName: string): string {
         const keyMap: Record<string, string> = {
             'BRAVE_API_KEY': 'braveApiKey',
-            'TAVILY_API_KEY': 'tavilyApiKey', 
+            'TAVILY_API_KEY': 'tavilyApiKey',
             'SERP_API_KEY': 'serpApiKey',
             'ACCUWEATHER_API_KEY': 'accuWeatherApiKey',
             'OPENAI_API_KEY': 'openaiApiKey',
@@ -215,9 +215,9 @@ export class ApiKeyService {
             'GROQ_API_KEY': 'groqApiKey',
             'MICROSOFT_CLIENT_ID': 'microsoftClientId',
             'MICROSOFT_CLIENT_SECRET': 'microsoftClientSecret',
-            'LANGSMITH_API_KEY': 'langsmithApiKey'
+            'LANGCHAIN_API_KEY': 'langchainApiKey'
         };
-        
+
         return keyMap[keyName] || keyName.toLowerCase().replace(/_/g, '');
     }
 
@@ -225,12 +225,12 @@ export class ApiKeyService {
      * Validate if an API key value is usable
      */
     private isValidApiKey(value: string | undefined): boolean {
-        return value !== undefined && 
-               value !== null && 
-               typeof value === 'string' && 
-               value.trim().length > 0 &&
-               !value.includes('your_') && // Exclude placeholder values
-               !value.includes('_here');
+        return value !== undefined &&
+            value !== null &&
+            typeof value === 'string' &&
+            value.trim().length > 0 &&
+            !value.includes('your_') && // Exclude placeholder values
+            !value.includes('_here');
     }
 
     /**
@@ -259,16 +259,16 @@ export class ApiKeyService {
      */
     logDiagnostics(): void {
         const diagnostics = this.getDiagnostics();
-        
+
         console.log('[ApiKeyService] API Key Diagnostics:');
         console.log(`  Total keys checked: ${diagnostics.totalKeys}`);
         console.log(`  Available keys: ${diagnostics.availableKeys.length}`);
         console.log(`  Missing keys: ${diagnostics.missingKeys.length}`);
-        
+
         if (diagnostics.availableKeys.length > 0) {
             console.log(`  Available: ${diagnostics.availableKeys.join(', ')}`);
         }
-        
+
         console.log('  Source breakdown:');
         Object.entries(diagnostics.sourceBreakdown).forEach(([source, count]) => {
             if (count > 0) {
