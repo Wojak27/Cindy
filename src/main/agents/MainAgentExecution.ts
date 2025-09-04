@@ -13,6 +13,11 @@ import { trimThinkTags } from '../utils/strings';
 import toolLoader from './tools/ToolLoader';
 import 'dotenv/config';
 import { logger } from '../utils/ColorLogger';
+import { writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { execa } from "execa";
 
 
 /**
@@ -26,6 +31,13 @@ export interface MainAgentGraphOptions {
     persistState?: boolean;
 }
 
+async function renderLocallyWithMermaidCLI(mermaid: string, outPath: string) {
+    const tmpMmd = join(tmpdir(), `${randomUUID()}.mmd`);
+    writeFileSync(tmpMmd, mermaid, "utf8");
+    // mmdc uses Puppeteer under the hood
+    await execa("npx", ["-y", "@mermaid-js/mermaid-cli", "-i", tmpMmd, "-o", outPath, "--backgroundColor", "white"]);
+}
+
 /**
  * Deep Research-enhanced LangGraph Agent.
  * Intelligent routing between Deep Research capabilities and standard processing.
@@ -36,7 +48,7 @@ export class MainAgentExecution {
     private settingsService: SettingsService | null = null;
     private researchAgent;
     private writterAgent;
-    private workflow: Runnable;
+    private agent: Runnable;
 
     // State management properties
     private AgentState;
@@ -64,7 +76,10 @@ export class MainAgentExecution {
     public async initialize(): Promise<void> {
 
         this.initializeState();
-        this.workflow = await this.buildGraph();
+        this.agent = await this.buildGraph();
+        if (true) {
+            await this.saveAgentGraphToFile();
+        }
     }
 
     /**
@@ -177,8 +192,9 @@ export class MainAgentExecution {
     }
 
     private getAgent() {
-        return this.workflow;
+        return this.agent;
     }
+
 
     private async runAgentNode(props: {
         state: typeof this.AgentState.State;
@@ -282,7 +298,7 @@ export class MainAgentExecution {
      */
     public async *processStreaming(input: string) {
         // 1) Ask the compiled graph to stream events
-        const evStream = await this.workflow.streamEvents(
+        const evStream = await this.agent.streamEvents(
             { messages: [new HumanMessage(input)] },
             { version: "v1" } // important; use the unified event schema
         );
@@ -334,6 +350,26 @@ export class MainAgentExecution {
                     break;
             }
         }
+    }
+
+    async saveAgentGraphToFile(filePath: string = "./graphState.png") {
+        const graph = this.getAgent().getGraph();
+
+        // 1) Try remote once or twice (nice when it works)
+        try {
+            const blob = await graph.drawMermaidPng({ backgroundColor: "white" }); // hits mermaid.ink
+            const buf = Buffer.from(await blob.arrayBuffer());
+            writeFileSync(filePath, buf);
+            console.log(`Graph state saved to ${filePath}`);
+            return;
+        } catch (e) {
+            console.warn("Mermaid.INK failed, falling back to local renderer:", (e as Error)?.message ?? e);
+        }
+
+        // 2) Reliable local fallback (no network)
+        const mermaid = graph.drawMermaid({ withStyles: true });
+        await renderLocallyWithMermaidCLI(mermaid, filePath);
+        console.log(`Graph state saved to ${filePath} (local render)`);
     }
 
     /**
