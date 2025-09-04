@@ -14,7 +14,11 @@ export interface ApiKeyConfig {
     braveApiKey?: string;
     tavilyApiKey?: string;
     serpApiKey?: string;
-
+    gmailApiKey?: {
+        cliendEmail: string;
+        privateKey: string;
+        redirectUri?: string;
+    }
     // Weather APIs
     accuWeatherApiKey?: string;
 

@@ -18,6 +18,14 @@ import { MendeleyConnector } from '../../connectors/MendeleyConnector';
 import VectorSearchTool from './vector/VectorSearchTool';
 import { AccuWeatherTool } from './weather/AccuWeatherTool';
 import MapsDisplayTool from './maps/MapsDisplayTool';
+import { StructuredTool } from '@langchain/core/tools';
+import {
+    GmailCreateDraft,
+    GmailGetMessage,
+    GmailGetThread,
+    GmailSearch,
+    GmailSendMessage,
+} from "@langchain/community/tools/gmail";
 
 /**
  * Tool configuration interface for initialization
@@ -27,6 +35,11 @@ export interface ToolConfiguration {
     braveApiKey?: string;
     serpApiKey?: string;
     tavilyApiKey?: string;
+    gmailApiKey?: {
+        cliendEmail: string;
+        privateKey: string;
+        redirectUri?: string;
+    }
 
     // Weather API keys
     accuWeatherApiKey?: string;
@@ -100,6 +113,8 @@ export class ToolLoader {
         // Load vector tools
         await this.loadVectorTools(config, enabledTools, registeredTools, failedTools);
 
+        await this.loadEmailAndReferenceTools(config, enabledTools, registeredTools, failedTools);
+
         // Load weather tools
         await this.loadWeatherTools(config, enabledTools, registeredTools, failedTools);
 
@@ -125,14 +140,53 @@ export class ToolLoader {
     }
 
     /**
-     * Load search tools
+     * Load email and reference management tools
      */
-    private async loadSearchTools(
+
+    private async loadEmailAndReferenceTools(
         config: ToolConfiguration,
         enabledTools: any,
         registeredTools: string[],
         failedTools: string[]
     ): Promise<void> {
+        // Email Tools (Gmail, Outlook)
+        const apiKeyService = getApiKeyService();
+        const apiKeys = apiKeyService.getAllApiKeys();
+        if (enabledTools.email !== false) {
+            // Gmail Tool
+            process.env.GOOGLE_CLIENT_EMAIL = apiKeys.gmailApiKey?.cliendEmail || "";
+            process.env.GOOGLE_PRIVATE_KEY = apiKeys.gmailApiKey?.privateKey ? apiKeys.gmailApiKey.privateKey.replace(/\\n/g, '\n') : "";
+            const tools: StructuredTool[] = [
+                new GmailCreateDraft(),
+                new GmailGetMessage(),
+                new GmailGetThread(),
+                new GmailSearch(),
+                new GmailSendMessage(),
+            ];
+            // Register the tools separately to handle multiple tools
+            for (const tool of tools) {
+                try {
+                    if (tool && !this.loadedTools.has(tool.name)) {
+                        toolRegistry.registerTool(tool);
+                        this.loadedTools.add(tool.name);
+                        registeredTools.push(tool.name);
+                    }
+                } catch (error: any) {
+                    console.error(`[ToolLoader] Failed to load Gmail tool ${tool.name}:`, error.message);
+                    failedTools.push(`gmail_${tool.name}`);
+                }
+            }
+        }
+
+    /**
+     * Load search tools
+     */
+    private async loadSearchTools(
+            config: ToolConfiguration,
+            enabledTools: any,
+            registeredTools: string[],
+            failedTools: string[]
+        ): Promise<void> {
         // Load search providers in priority order (most reliable first, DuckDuckGo as fallback)
         // Use centralized API key service for consistent key loading
         const apiKeyService = getApiKeyService();
@@ -144,7 +198,7 @@ export class ToolLoader {
         if (enabledTools.brave !== false && apiKeys.braveApiKey) {
             try {
                 process.env.BRAVE_API_KEY = apiKeys.braveApiKey;
-                const spec = new BraveSearch
+                const spec = new BraveSearch();
                 if (spec && !this.loadedTools.has(spec.name)) {
                     toolRegistry.registerTool(spec);
                     this.loadedTools.add(spec.name);
