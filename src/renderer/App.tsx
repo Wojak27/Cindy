@@ -21,6 +21,7 @@ import ToolSelector from './components/ToolSelector';
 import MemorySavedNotification from './components/MemorySavedNotification';
 import { agentFlowTracker } from './services/AgentFlowTracker';
 import { generateStepDescription } from '../shared/AgentFlowStandard';
+import RealTimeSpeechRecognition from './services/RealTimeSpeechRecognition';
 import { getSettings, setCurrentConversationId } from '../store/actions';
 import { toggleSettings } from '../store/actions';
 import { hideDocument } from '../store/actions';
@@ -70,6 +71,7 @@ const App: React.FC = () => {
     const [isRecording, setIsRecording] = useState(false);
     const isListening = false; // No longer used for real-time transcription, kept for display compatibility
     const [inputValue, setInputValue] = useState('');
+    const [realtimeTranscript, setRealtimeTranscript] = useState('');
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [isAppLoading, setIsAppLoading] = useState(true);
     const [isTransitioning, setIsTransitioning] = useState(false);
@@ -82,6 +84,7 @@ const App: React.FC = () => {
     const [conversationWidgets, setConversationWidgets] = useState<Array<{ type: WidgetType; data: any; timestamp: number }>>([]);
     const [widgetsByConversation, setWidgetsByConversation] = useState<Record<string, Array<{ type: WidgetType; data: any; timestamp: number }>>>({});
     const [selectedTool, setSelectedTool] = useState<string | null>(null);
+    const [workspacePanelWidth, setWorkspacePanelWidth] = useState(350); // Default width in pixels
 
     // Memory notifications state
     const [memoryNotifications, setMemoryNotifications] = useState<Array<{
@@ -158,6 +161,25 @@ const App: React.FC = () => {
                 setShowDebugGraph(false);
             }, 3000); // 3 second delay to allow LLM provider to initialize
         }
+    }, []);
+
+    // Initialize real-time speech recognition
+    useEffect(() => {
+        console.log('🔧 DEBUG: Initializing RealTimeSpeechRecognition...');
+        console.log('🔧 DEBUG: Browser SpeechRecognition support:', {
+            'window.SpeechRecognition': typeof (window as any).SpeechRecognition,
+            'window.webkitSpeechRecognition': typeof (window as any).webkitSpeechRecognition,
+            'navigator.mediaDevices': typeof navigator.mediaDevices,
+            'navigator.mediaDevices.getUserMedia': typeof navigator?.mediaDevices?.getUserMedia
+        });
+
+
+
+        // console.log('🔧 DEBUG: RealTimeSpeechRecognition created, isSupported:', realTimeSpeech.current.isWebSpeechSupported());
+
+        return () => {
+
+        };
     }, []);
 
     // Load conversation history when conversation changes
@@ -439,18 +461,18 @@ const App: React.FC = () => {
     }, []);
 
     // Play sound effect
-    const playSound = (soundName: string) => {
-        if (!audioContext.current || !sounds.current[soundName]) return;
+    // const playSound = (soundName: string) => {
+    //     if (!audioContext.current || !sounds.current[soundName]) return;
 
-        try {
-            const source = audioContext.current.createBufferSource();
-            source.buffer = sounds.current[soundName];
-            source.connect(audioContext.current.destination);
-            source.start();
-        } catch (error) {
-            console.warn(`Failed to play sound: ${soundName}`, error);
-        }
-    };
+    //     try {
+    //         const source = audioContext.current.createBufferSource();
+    //         source.buffer = sounds.current[soundName];
+    //         source.connect(audioContext.current.destination);
+    //         source.start();
+    //     } catch (error) {
+    //         console.warn(`Failed to play sound: ${soundName}`, error);
+    //     }
+    // };
 
     useEffect(() => {
         // Detect when Cindy is speaking (no sound effects except for recording)
@@ -466,124 +488,14 @@ const App: React.FC = () => {
 
     // Handle microphone button click for recording
     const handleMicClick = async () => {
+        navigator.mediaDevices.getDisplayMedia({
+            audio: true,
+            video: {
 
-        // Only play activation sound for recording (as requested)
-        if (!isRecording) {
-            playSound('activation');
-        }
-
-        if (isRecording) {
-            // Stop recording
-            try {
-                // Stop recording - this will trigger audio data to be sent
-                const audioData = await ipcRenderer.invoke(IPC_CHANNELS.STOP_RECORDING);
-
-                if (audioData && audioData.length > 0) {
-                    // Send Int16Array[] directly to main process for proper WAV conversion
-                    const transcript = await ipcRenderer.invoke(IPC_CHANNELS.TRANSCRIBE_AUDIO, audioData);
-                    if (transcript) {
-                        // Set the transcribed text in the input field
-                        setInputValue(transcript);
-                        const chatID = currentConversationId || getNewConversationId();
-                        // Handle the transcribed text by sending it as a message
-                        if (transcript.trim()) {
-                            let messageContent = transcript;
-
-                            // Add tool instruction if a tool is selected
-                            if (selectedTool) {
-                                const toolInstructions: Record<string, string> = {
-                                    'search': 'Use web search to answer this query:',
-                                    'weather': 'Get weather information for:',
-                                    'maps': 'Show location and map information for:',
-                                    'email': 'Search emails for:',
-                                    'research': 'Use deep research mode for:',
-                                    'vector': 'Search indexed documents for:'
-                                };
-
-                                const instruction = toolInstructions[selectedTool] || 'Use specific tools to answer:';
-                                messageContent = `${instruction} ${transcript}`;
-                            }
-
-                            // User message will be saved by backend during processing
-                            // Don't add to frontend store here to prevent duplicates
-
-                            // Create assistant message placeholder for streaming
-                            const assistantMessageId = `assistant-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-                            const assistantMessage = {
-                                id: assistantMessageId,
-                                role: 'assistant',
-                                content: '',
-                                timestamp: Date.now(),
-                                isStreaming: true,
-                                conversationId: chatID
-                            };
-                            // When creating the placeholder (in handleSendClick and mic path)
-                            dispatch({ type: 'ADD_MESSAGE', payload: { id: assistantMessageId, role: 'assistant', content: '', isStreaming: true, timestamp: Date.now() + 1, conversationId: chatID } });
-                            dispatch({ type: 'SET_CURRENT_ASSISTANT_ID', payload: { conversationId: chatID, messageId: assistantMessageId } });
-                            setInputValue('');
-                            setSelectedTool(null); // Clear tool selection after sending // Clear input field after sending
-
-                            try {
-                                // Process message through agent with conversation ID
-                                await ipcRenderer.invoke(IPC_CHANNELS.PROCESS_MESSAGE, transcript, chatID);
-                            } catch (error) {
-                                console.error('Error processing message:', error);
-                                // Mark the assistant message as failed
-                                dispatch({
-                                    type: 'MARK_MESSAGE_FAILED',
-                                    payload: {
-                                        messageId: assistantMessage.id,
-                                        error: error instanceof Error ? error.message : 'Unknown error occurred'
-                                    }
-                                });
-                                dispatch({ type: 'STOP_THINKING' });
-                            }
-                        }
-                        if (chatID !== currentConversationId) {
-                            dispatch(setCurrentConversationId(chatID));
-                        }
-                    }
-                } else {
-                    console.log('No audio data received or audio data is empty');
-                }
-            } catch (error) {
-                console.error('Error during recording/transcription:', error);
-                // Removed error sound effect
-            } finally {
-                setIsRecording(false);
             }
-        } else {
-            // Show visual feedback that recording is starting
-            setIsRecording(true);
+        }).then(stream => {
 
-            // Test microphone permissions first
-            try {
-                const permissionStatus = await navigator.permissions.query({ name: 'microphone' as PermissionName });
-
-                if (permissionStatus.state === 'denied') {
-                    console.error('DEBUG: App.tsx: Microphone permission denied');
-                    setIsRecording(false);
-                    playSound('error');
-                    return;
-                }
-            } catch (permError) {
-                console.warn('DEBUG: App.tsx: Could not check microphone permissions:', permError);
-            }
-
-            // Send start-recording IPC to renderer service
-            try {
-                const result = await ipcRenderer.invoke(IPC_CHANNELS.START_RECORDING);
-                if (!result?.success) {
-                    console.error('DEBUG: App.tsx: start-recording failed:', result?.error);
-                    setIsRecording(false);
-                    playSound('error');
-                }
-            } catch (error) {
-                console.error('DEBUG: App.tsx: Error sending start-recording IPC to renderer:', error);
-                setIsRecording(false);
-                playSound('error');
-            }
-        }
+        }).catch(e => console.log(e))
     };
 
     // Retry a failed message
@@ -744,6 +656,39 @@ const App: React.FC = () => {
     useEffect(() => {
         loadAvailableDocuments();
     }, [settings?.database?.path]);
+
+    // DevTools keyboard shortcuts
+    useEffect(() => {
+        const handleGlobalKeyDown = (event: KeyboardEvent) => {
+            // F12 or Ctrl+Shift+I (Cmd+Option+I on Mac) to toggle DevTools
+            if (event.key === 'F12' ||
+                (event.ctrlKey && event.shiftKey && event.key === 'I') ||
+                (event.metaKey && event.altKey && event.key === 'i')) {
+                event.preventDefault();
+
+                // Toggle DevTools via IPC
+                ipcRenderer.invoke(IPC_CHANNELS.TOGGLE_DEV_TOOLS)
+                    .then((result) => {
+                        if (result.success) {
+                            console.log('DevTools toggled:', result.isOpen ? 'opened' : 'closed');
+                        } else {
+                            console.error('Failed to toggle DevTools:', result.error);
+                        }
+                    })
+                    .catch((error) => {
+                        console.error('DevTools toggle error:', error);
+                    });
+            }
+        };
+
+        // Add global keyboard listener
+        document.addEventListener('keydown', handleGlobalKeyDown);
+
+        // Cleanup listener
+        return () => {
+            document.removeEventListener('keydown', handleGlobalKeyDown);
+        };
+    }, []);
 
     // Cleanup function
     useEffect(() => {
@@ -1351,7 +1296,7 @@ const App: React.FC = () => {
 
                         <IconButton
                             className={`document-button ${showSidePanel ? 'active' : ''}`}
-                            disabled={!showSidePanel && conversationWidgets.length === 0 && availableDocuments.length === 0}
+                            disabled={false}
                             onClick={() => {
                                 if (showSidePanel) {
                                     setShowSidePanel(false);
@@ -1367,19 +1312,18 @@ const App: React.FC = () => {
                                     // Fallback to showing a document widget if no conversation widgets exist
                                     handleShowDocument(availableDocuments[0]);
                                 } else {
-                                    // If no widgets or documents, show message to user
-                                    console.log('No widgets or documents available. Use AI to generate weather/maps or index documents from the database panel.');
+                                    // Always show workspace even when empty
+                                    setSidePanelWidgetType(null);
+                                    setSidePanelData(null);
+                                    setShowSidePanel(true);
                                 }
                             }}
                             aria-label={
-                                showSidePanel ? "Hide side panel" :
-                                    conversationWidgets.length > 0 ? `Show ${conversationWidgets.length} widget${conversationWidgets.length > 1 ? 's' : ''}` :
-                                        availableDocuments.length > 0 ? "Show retrieved files" :
-                                            "No data available - use AI to generate weather/maps or index documents"
+                                showSidePanel ? "Hide workspace" : "Show workspace"
                             }
                             size="small"
                             sx={{
-                                opacity: (!showSidePanel && conversationWidgets.length === 0 && availableDocuments.length === 0) ? 0.3 : 1
+                                opacity: 1
                             }}
                         >
                             <DocumentIcon fontSize="small" />
@@ -1476,11 +1420,11 @@ const App: React.FC = () => {
                                                         disabled={isRecording}
                                                     />
                                                     <textarea
-                                                        value={inputValue}
+                                                        value={inputValue + (realtimeTranscript ? (inputValue ? ' ' : '') + realtimeTranscript : '')}
                                                         onChange={handleInputChange}
                                                         onKeyDown={handleKeyPress}
                                                         onBlur={handleInputBlur}
-                                                        placeholder="Type your message "
+                                                        placeholder={isRecording ? "Listening... Speak now" : "Type your message"}
                                                         disabled={isRecording}
                                                         className={`message-input ${inputValue.length > 0 ? 'has-content' : ''}`}
                                                         style={{
@@ -1775,9 +1719,9 @@ const App: React.FC = () => {
                                         disabled={isRecording}
                                     />
                                     <textarea
-                                        placeholder="Type your message... Press Shift+Enter for new line"
+                                        placeholder={isRecording ? "Listening... Speak now" : "Type your message... Press Shift+Enter for new line"}
                                         className="message-input"
-                                        value={inputValue}
+                                        value={inputValue + (realtimeTranscript ? (inputValue ? ' ' : '') + realtimeTranscript : '')}
                                         onChange={handleInputChange}
                                         onKeyDown={handleKeyPress}
                                         onBlur={handleInputBlur}
@@ -1838,15 +1782,56 @@ const App: React.FC = () => {
                             )}
                         </div>
 
-                        {/* Side panel - shows when widget data is available */}
+                        {/* Workspace panel - resizable with handle */}
                         {showSidePanel && (
                             <div style={{
-                                flex: '1 1 40%',
+                                width: `${workspacePanelWidth}px`,
                                 minWidth: '300px',
-                                maxWidth: '500px',
+                                // maxWidth: '500px',
                                 height: '100%',
                                 overflow: 'hidden',
+                                position: 'relative',
+                                borderLeft: '6px solid rgb(226 225 225)'
                             }}>
+                                {/* Resize handle */}
+                                <div
+                                    style={{
+                                        position: 'absolute',
+                                        left: -2,
+                                        top: 0,
+                                        bottom: 0,
+                                        width: 4,
+                                        cursor: 'col-resize',
+                                        backgroundColor: 'transparent',
+                                        zIndex: 10,
+                                        transition: 'background-color 0.2s'
+                                    }}
+                                    onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        const startX = e.clientX;
+                                        const startWidth = workspacePanelWidth;
+
+                                        const handleMouseMove = (e: MouseEvent) => {
+                                            const deltaX = startX - e.clientX; // Subtract because we're resizing from right to left
+                                            const newWidth = Math.max(300, Math.min(1000, startWidth + deltaX));
+                                            setWorkspacePanelWidth(newWidth);
+                                        };
+
+                                        const handleMouseUp = () => {
+                                            document.removeEventListener('mousemove', handleMouseMove);
+                                            document.removeEventListener('mouseup', handleMouseUp);
+                                        };
+
+                                        document.addEventListener('mousemove', handleMouseMove);
+                                        document.addEventListener('mouseup', handleMouseUp);
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        (e.target as HTMLElement).style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        (e.target as HTMLElement).style.backgroundColor = 'transparent';
+                                    }}
+                                />
                                 <ChatSidePanel
                                     widgetType={sidePanelWidgetType}
                                     data={sidePanelData}

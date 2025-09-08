@@ -120,6 +120,12 @@ export const SETTINGS_SET_OAUTH_CREDENTIALS = 'settings-set-oauth-credentials';
 export const SETTINGS_DELETE_OAUTH_CREDENTIALS = 'settings-delete-oauth-credentials';
 
 // ============================================================================
+// DEVELOPER TOOLS
+// ============================================================================
+export const TOGGLE_DEV_TOOLS = 'toggle-dev-tools';
+export const DEV_TOOLS_IS_OPEN = 'dev-tools-is-open';
+
+// ============================================================================
 // UTILITIES
 // ============================================================================
 export const GET_LINK_PREVIEW = 'get-link-preview';
@@ -230,6 +236,11 @@ export const CONNECTOR_CHANNELS = {
   SETTINGS_DELETE_OAUTH_CREDENTIALS,
 } as const;
 
+export const DEV_TOOLS_CHANNELS = {
+  TOGGLE_DEV_TOOLS,
+  DEV_TOOLS_IS_OPEN,
+} as const;
+
 export const UTILITY_CHANNELS = {
   GET_LINK_PREVIEW,
   SHELL_OPEN_EXTERNAL,
@@ -277,6 +288,9 @@ export const IPC_CHANNELS = {
   
   // Connector Integrations
   ...CONNECTOR_CHANNELS,
+  
+  // Developer Tools
+  ...DEV_TOOLS_CHANNELS,
   
   // Utilities
   ...UTILITY_CHANNELS,

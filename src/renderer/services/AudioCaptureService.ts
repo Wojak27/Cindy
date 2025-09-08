@@ -276,6 +276,17 @@ class AudioCaptureService {
     isCurrentlyCapturing(): boolean {
         return this.isCapturing;
     }
+
+    getDebugState() {
+        return {
+            isCapturing: this.isCapturing,
+            isStopping: this.isStopping,
+            mediaStreamActive: this.mediaStream?.active,
+            mediaRecorderState: this.mediaRecorder?.state,
+            recordedChunksCount: this.recordedChunks.length,
+            currentAudioBufferLength: this.currentAudioBuffer.length
+        };
+    }
 }
 
 // Create and export a singleton instance
@@ -283,26 +294,56 @@ export const audioCaptureService = new AudioCaptureService();
 
 // Set up IPC handlers for main process communication
 ipcRenderer.on('start-recording', async () => {
-    console.log('DEBUG: AudioCaptureService: Received start-recording event');
+    console.log('🔧 DEBUG: AudioCaptureService: Received start-recording event');
+    console.log('🔧 DEBUG: AudioCaptureService: Current state:', audioCaptureService.getDebugState());
+    
     try {
+        console.log('🔧 DEBUG: AudioCaptureService: About to call startCapture()...');
         await audioCaptureService.startCapture();
-        console.log('DEBUG: AudioCaptureService: Clean capture started, isCapturing:', audioCaptureService.isCurrentlyCapturing());
+        console.log('🔧 DEBUG: AudioCaptureService: startCapture() completed successfully');
+        console.log('🔧 DEBUG: AudioCaptureService: Post-start state:', audioCaptureService.getDebugState());
     } catch (error) {
-        console.error('DEBUG: AudioCaptureService: Error starting recording:', error);
+        console.error('🔧 DEBUG: AudioCaptureService: Error starting recording:', error);
+        console.error('🔧 DEBUG: AudioCaptureService: Error details:', {
+            name: error.name,
+            message: error.message,
+            stack: error.stack
+        });
     }
 });
 
 ipcRenderer.on('get-audio-data', async () => {
-    console.log('DEBUG: AudioCaptureService: Received get-audio-data event');
+    console.log('🔧 DEBUG: AudioCaptureService: Received get-audio-data event');
+    console.log('🔧 DEBUG: AudioCaptureService: Pre-stop state:', audioCaptureService.getDebugState());
+    
     try {
+        console.log('🔧 DEBUG: AudioCaptureService: About to call stopCapture()...');
         const audioData = await audioCaptureService.stopCapture();
-        console.log('DEBUG: AudioCaptureService: Clean audio captured, sending SINGLE CHUNK to main process:', audioData?.length || 0);
+        console.log('🔧 DEBUG: AudioCaptureService: stopCapture() completed, audioData length:', audioData?.length || 0);
+        
+        if (audioData && audioData.length > 0) {
+            console.log('🔧 DEBUG: AudioCaptureService: Audio data details:', {
+                chunksCount: audioData.length,
+                firstChunkLength: audioData[0]?.length || 0,
+                totalSamples: audioData.reduce((sum, chunk) => sum + chunk.length, 0)
+            });
+        } else {
+            console.warn('🔧 DEBUG: AudioCaptureService: No audio data captured!');
+        }
 
         // Send to main process
+        console.log('🔧 DEBUG: AudioCaptureService: Sending audio data to main process...');
         ipcRenderer.send('audio-data', audioData);
-        console.log('DEBUG: AudioCaptureService: CLEAN audio data sent successfully');
+        console.log('🔧 DEBUG: AudioCaptureService: Audio data sent successfully');
 
     } catch (error) {
-        console.error('DEBUG: AudioCaptureService: Error getting audio data:', error);
+        console.error('🔧 DEBUG: AudioCaptureService: Error getting audio data:', error);
+        console.error('🔧 DEBUG: AudioCaptureService: Error details:', {
+            name: error.name,
+            message: error.message,
+            stack: error.stack
+        });
+        // Send empty data to prevent hanging
+        ipcRenderer.send('audio-data', []);
     }
 });

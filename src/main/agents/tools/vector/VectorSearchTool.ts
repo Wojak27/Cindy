@@ -9,7 +9,7 @@ import { Tool } from '@langchain/core/tools';
  */
 export class VectorSearchTool extends Tool {
     name = 'search_documents';
-    description = 'Search through indexed documents and notes using semantic similarity. Use this when users ask about stored documents, notes, or need to find specific information from their knowledge base. Triggered by #search or #find hashtags.';
+    description = 'Search through users personal, indexed documents and notes using semantic similarity. Use this when users ask about stored documents, notes, or need to find specific information from their knowledge base. Triggered by #search or #find hashtags.';
 
     constructor(private vectorStore: any) {
         super();
@@ -30,12 +30,12 @@ export class VectorSearchTool extends Tool {
             const query = typeof input === 'string' ? input : (input?.query || input);
             const limit = typeof input === 'object' && input.limit ? input.limit : 5;
 
-            if (!query || query.trim().length === 0) {
+            if (!query || query.args.input.trim().length === 0) {
                 return 'Please provide a search query to find relevant documents.';
             }
 
             // Validate query length
-            const sanitizedQuery = query.trim();
+            const sanitizedQuery = query.args.input.trim();
             if (sanitizedQuery.length > 1000) {
                 return 'Search query is too long. Please use a shorter search term (maximum 1000 characters).';
             }

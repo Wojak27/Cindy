@@ -12,6 +12,7 @@ import { PDFLoader } from '@langchain/community/document_loaders/fs/pdf';
 import { TextLoader } from 'langchain/document_loaders/fs/text';
 import { JSONLoader } from 'langchain/document_loaders/fs/json';
 import { DocxLoader } from '@langchain/community/document_loaders/fs/docx';
+import { th } from 'zod/v4/locales';
 
 interface DuckDBVectorStoreConfig {
     databasePath: string;
@@ -164,8 +165,8 @@ export class DuckDBVectorStore extends EventEmitter {
             try {
                 await this.db.all(`LOAD vss;`);
                 console.log('[DuckDBVectorStore] Verified VSS extension loaded on attached DB');
-                const extList = await this.db.all(`SELECT * FROM duckdb_extensions();`);
-                console.log('[DuckDBVectorStore] Active extensions:', extList);
+                // const extList = await this.db.all(`SELECT * FROM duckdb_extensions();`);
+                // console.log('[DuckDBVectorStore] Active extensions:', extList);
             } catch (extErr) {
                 console.error('[DuckDBVectorStore] Failed to load VSS on attached DB:', extErr);
             }
@@ -213,19 +214,19 @@ export class DuckDBVectorStore extends EventEmitter {
 
         // Smart table initialization - preserve existing documents when possible
         console.log(`[DuckDBVectorStore] 🔍 Checking if documents table exists...`);
-        
+
         let needsRecreation = false;
         try {
             // Check if table exists and get its schema
             const tableInfo = await this.db.all(`DESCRIBE documents`);
             console.log(`[DuckDBVectorStore] 📋 Existing documents table schema:`, tableInfo);
-            
+
             // Find the embedding column and check its dimension
             const embeddingColumn = tableInfo.find((col: any) => col.column_name === 'embedding');
             if (embeddingColumn) {
                 const existingDimMatch = embeddingColumn.column_type.match(/FLOAT\[(\d+)\]/);
                 const existingDim = existingDimMatch ? parseInt(existingDimMatch[1]) : null;
-                
+
                 if (existingDim !== embedDim) {
                     console.log(`[DuckDBVectorStore] ⚠️ Dimension mismatch: existing=${existingDim}, required=${embedDim}. Table recreation needed.`);
                     needsRecreation = true;
@@ -245,7 +246,7 @@ export class DuckDBVectorStore extends EventEmitter {
         if (needsRecreation) {
             console.log(`[DuckDBVectorStore] 🔄 Recreating documents table with ${embedDim} dimensions...`);
             await this.db.all(`DROP TABLE IF EXISTS documents;`);
-            
+
             const createTableSQL = `
                 CREATE TABLE documents (
                     id VARCHAR PRIMARY KEY,
@@ -258,7 +259,7 @@ export class DuckDBVectorStore extends EventEmitter {
             console.log(`[DuckDBVectorStore] 🔍 Create table SQL:`, createTableSQL);
             await this.db.all(createTableSQL);
         }
-        
+
         // Verify table was created
         const tableInfo = await this.db.all(`DESCRIBE documents`);
         console.log(`[DuckDBVectorStore] 🔍 Documents table schema:`, tableInfo);
@@ -293,7 +294,7 @@ export class DuckDBVectorStore extends EventEmitter {
 
     async addDocuments(documents: Document[]): Promise<void> {
         if (!this.db) throw new Error('Database not initialized');
-        
+
         let stmt: any = null;
         try {
             console.log('[DuckDBVectorStore] Embedding documents using provider:', this.config.embeddingProvider);
@@ -355,11 +356,11 @@ export class DuckDBVectorStore extends EventEmitter {
                     const embeddingArrayString = `[${Array.from(embeddingArray).join(',')}]`;
 
                     console.log(`[DuckDBVectorStore] 🔍 Inserting document ${id}: content=${safeContent.length} chars, embedding=${embeddingPlain.length} dims`);
-                    
+
                     // Use positional parameters correctly
                     await stmt.run(id, safeContent, safeMetadataStr, embeddingArrayString);
                     successCount++;
-                    
+
                     // Verify this specific insertion worked
                     if (i === 0) { // Only log for first document to avoid spam
                         const justInserted = await this.db.all('SELECT COUNT(*) as count FROM documents WHERE id = ?', [id]);
@@ -389,12 +390,12 @@ export class DuckDBVectorStore extends EventEmitter {
             }
 
             console.log(`[DuckDBVectorStore] Added ${successCount} of ${documents.length} documents successfully`);
-            
+
             // Verify documents were actually inserted
             try {
                 const verifyCount = await this.db.all('SELECT COUNT(*) as count FROM documents');
                 console.log(`[DuckDBVectorStore] 🔍 Verification: documents table now has ${verifyCount[0]?.count || 0} total rows`);
-                
+
                 if (verifyCount[0]?.count > 0) {
                     const sampleDoc = await this.db.all('SELECT LEFT(content, 100) as preview FROM documents LIMIT 1');
                     console.log(`[DuckDBVectorStore] 🔍 Sample document content: "${sampleDoc[0]?.preview}..."`);
@@ -432,7 +433,7 @@ export class DuckDBVectorStore extends EventEmitter {
         console.log(`[DuckDBVectorStore] 🔍 Creating embedding for query: "${query}"`);
         console.log(`[DuckDBVectorStore] 🔍 Embedding provider: ${this.config.embeddingProvider}`);
         console.log(`[DuckDBVectorStore] 🔍 Embedding model: ${this.config.embeddingModel}`);
-        
+
         let queryEmbedding;
         try {
             queryEmbedding = await this.embeddings.embedQuery(query);
@@ -444,7 +445,7 @@ export class DuckDBVectorStore extends EventEmitter {
             console.error(`[DuckDBVectorStore] ❌ Failed to create query embedding:`, embeddingError);
             throw embeddingError;
         }
-        
+
         const queryDimension = queryEmbedding.length;
 
         // Check what vector functions are available
@@ -517,19 +518,19 @@ export class DuckDBVectorStore extends EventEmitter {
             try {
                 console.log(`[DuckDBVectorStore] 🔍 Trying similarity search method: ${method.name}`);
                 console.log(`[DuckDBVectorStore] 🔍 Query: ${method.query.replace(/\[[\d\.,\-\s]+\]/g, '[EMBEDDING_VECTOR]')}`);
-                
+
                 const results = await this.db.all(method.query);
 
                 console.log(`[DuckDBVectorStore] ✅ ${method.name} executed successfully!`);
                 console.log(`[DuckDBVectorStore] 📊 Raw results count: ${results.length}`);
-                
+
                 if (results.length > 0) {
                     console.log(`[DuckDBVectorStore] 📋 Sample result:`, {
                         contentPreview: results[0].content?.substring(0, 100) + '...',
                         distance: results[0].distance,
                         metadata: JSON.parse(results[0].metadata || '{}')
                     });
-                    
+
                     return results.map(row => new Document({
                         pageContent: row.content,
                         metadata: JSON.parse(row.metadata)
@@ -549,7 +550,7 @@ export class DuckDBVectorStore extends EventEmitter {
         try {
             const searchPattern = `%${query.toLowerCase()}%`;
             console.log('[DuckDBVectorStore] 🔍 Fallback search pattern:', searchPattern, 'limit:', k);
-            
+
             // Use direct string interpolation for text search as well
             const textSearchQuery = `
                 SELECT content, metadata
@@ -558,12 +559,12 @@ export class DuckDBVectorStore extends EventEmitter {
                 ORDER BY LENGTH(content) ASC
                 LIMIT ${k}
             `;
-            
+
             console.log('[DuckDBVectorStore] 🔍 Text search query:', textSearchQuery.replace(/\n\s+/g, ' '));
             const results = await this.db.all(textSearchQuery);
 
             console.log(`[DuckDBVectorStore] 📊 Text search found ${results.length} results`);
-            
+
             if (results.length > 0) {
                 console.log(`[DuckDBVectorStore] 📋 Text search sample result:`, {
                     contentPreview: results[0].content?.substring(0, 100) + '...',
@@ -571,7 +572,7 @@ export class DuckDBVectorStore extends EventEmitter {
                 });
             } else {
                 console.log(`[DuckDBVectorStore] ⚠️ Text search also returned 0 results`);
-                
+
                 // Final diagnostic: check if there's ANY content in the database
                 const anyContent = await this.db.all('SELECT content FROM documents LIMIT 1');
                 if (anyContent.length > 0) {
@@ -580,7 +581,7 @@ export class DuckDBVectorStore extends EventEmitter {
                     console.log(`[DuckDBVectorStore] ❌ Database documents table is completely empty!`);
                 }
             }
-            
+
             return results.map(row => new Document({
                 pageContent: row.content,
                 metadata: JSON.parse(row.metadata)
@@ -710,10 +711,10 @@ export class DuckDBVectorStore extends EventEmitter {
                 (file_path, file_name, file_size, modified_time, chunk_count)
                 VALUES (?, ?, ?, ?, ?)
             `);
-            
+
             await stmt.run(fileInfo.path, fileInfo.name, fileInfo.size, fileInfo.mtime, fileInfo.chunks);
             await stmt.finalize();
-            
+
             console.log(`[DuckDBVectorStore] Saved indexed file info for ${fileInfo.name}`);
         } catch (error) {
             console.error('[DuckDBVectorStore] Error saving indexed file info:', error);
@@ -850,7 +851,7 @@ export class DuckDBVectorStore extends EventEmitter {
 
         // Get current files in directory
         const currentFiles = this.getAllFiles(folderPath);
-        
+
         // Get indexed files from database
         const indexedFiles = await this.getIndexedFiles();
         const indexedFilePaths = new Set(indexedFiles.map(f => f.path));
@@ -941,4 +942,52 @@ export class DuckDBVectorStore extends EventEmitter {
             }
         };
     }
+}
+
+export async function createDuckDBVectorStore(databasePath: string, llmConfig: { embeddingProvider: string, embeddingModel: string, apiKey?: string }, appDataPath: string): Promise<DuckDBVectorStore> {
+    // Validate path first
+    if (!databasePath) {
+        throw new Error('No path provided');
+    }
+
+    // Validate path manually (inline validation)
+
+    if (!fs.existsSync(databasePath)) {
+        throw new Error('Path does not exist');
+    }
+    const stat = fs.statSync(databasePath);
+    if (!stat.isDirectory()) {
+        throw new Error('Path is not a directory');
+    }
+    fs.accessSync(databasePath, fs.constants.W_OK);
+
+
+    const vectorDbDir = path.join(appDataPath, 'vector-stores');
+
+    // Create vector store directory if it doesn't exist
+    if (!fs.existsSync(vectorDbDir)) {
+        fs.mkdirSync(vectorDbDir, { recursive: true });
+    }
+
+    // Use a hash of the source path to create unique database names
+    const crypto = require('crypto');
+    const sourcePathHash = crypto.createHash('md5').update(databasePath).digest('hex').substring(0, 8);
+    const dbName = `vector-store-${sourcePathHash}.db`;
+
+    let vectorStoreConfig: any = {
+        databasePath: path.join(vectorDbDir, dbName),
+        chunkSize: 1000,
+        chunkOverlap: 200
+    };
+    vectorStoreConfig = { ...vectorStoreConfig, ...llmConfig };
+    if (llmConfig.apiKey) {
+        vectorStoreConfig.apiKey = llmConfig.apiKey;
+    }
+
+    console.log('[IPC] Vector database will be stored at:', vectorStoreConfig.databasePath);
+    console.log('[IPC] Indexing content from:', databasePath);
+
+
+    const vectorStore = new DuckDBVectorStore(vectorStoreConfig);
+    return vectorStore
 }

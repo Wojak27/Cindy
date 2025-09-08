@@ -72,9 +72,9 @@ class TrayService {
     }
 
     updateTrayIcon(connected: boolean): void {
-        const iconPath = connected
-            ? path.join(__dirname, '../../../src/renderer/assets/icons/tray-icon-connected.png')
-            : path.join(__dirname, '../../../src/renderer/assets/icons/tray-icon-disconnected.png');
+        // Use Cindy tray icon - always use the same icon regardless of connection state
+        // The connection state can be indicated through tooltip or context menu instead
+        const iconPath = path.join(__dirname, '../../../assets/icons/cindy-tray-16.png');
 
         // Create image with proper template settings for macOS
         const image = nativeImage.createFromPath(iconPath);

@@ -464,11 +464,85 @@ const ModernSettingsPanel: React.FC = () => {
     const testProviderConnection = async (providerId: string) => {
         setTestingProvider(providerId);
         try {
-            // Test connection logic would go here
-            // For now, simulate the test
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            setConnectionStatus(prev => ({ ...prev, [providerId]: true }));
+            const config = providerConfigs[providerId];
+
+            // For providers that require API keys, check if key exists
+            if (llmProviders.find(p => p.id === providerId)?.requiresApiKey) {
+                if (!config?.apiKey || config.apiKey.trim() === '') {
+                    setConnectionStatus(prev => ({ ...prev, [providerId]: false }));
+                    return;
+                }
+            }
+
+            // For Ollama, test the base URL connectivity
+            if (providerId === 'ollama') {
+                try {
+                    const baseUrl = config?.baseUrl || 'http://127.0.0.1:11434';
+                    const response = await fetch(`${baseUrl}/api/tags`, {
+                        method: 'GET',
+                        headers: { 'Content-Type': 'application/json' },
+                        signal: AbortSignal.timeout(5000)
+                    });
+                    
+                    if (response.ok) {
+                        setConnectionStatus(prev => ({ ...prev, [providerId]: true }));
+                    } else {
+                        setConnectionStatus(prev => ({ ...prev, [providerId]: false }));
+                    }
+                } catch (fetchError) {
+                    console.log('Ollama connection test failed:', fetchError);
+                    setConnectionStatus(prev => ({ ...prev, [providerId]: false }));
+                }
+                return;
+            }
+
+            // For other providers, try to use the IPC channel if it exists
+            try {
+                // This would be the ideal implementation but the channel might not exist yet
+                // const result = await ipcRenderer.invoke(IPC_CHANNELS.LLM_TEST_CONNECTION, testConfig);
+                // setConnectionStatus(prev => ({ ...prev, [providerId]: result.success }));
+                
+                // For now, just check if required fields are present
+                let isValid = true;
+                
+                switch (providerId) {
+                    case 'openai':
+                        isValid = !!config?.apiKey && !!config?.model;
+                        break;
+                    case 'anthropic':
+                        isValid = !!config?.apiKey && !!config?.model;
+                        break;
+                    case 'openrouter':
+                        isValid = !!config?.apiKey && !!config?.model;
+                        break;
+                    case 'groq':
+                        isValid = !!config?.apiKey && !!config?.model;
+                        break;
+                    case 'google':
+                        isValid = !!config?.apiKey && !!config?.model;
+                        break;
+                    case 'cohere':
+                        isValid = !!config?.apiKey && !!config?.model;
+                        break;
+                    case 'azure':
+                        isValid = !!config?.apiKey && !!config?.instanceName && !!config?.deploymentName;
+                        break;
+                    case 'huggingface':
+                        isValid = !!config?.apiKey && !!config?.model;
+                        break;
+                    default:
+                        isValid = false;
+                }
+                
+                setConnectionStatus(prev => ({ ...prev, [providerId]: isValid }));
+            } catch (ipcError) {
+                console.log('IPC test connection failed, falling back to basic validation:', ipcError);
+                // Fallback to basic field validation
+                const hasRequiredFields = config?.apiKey || providerId === 'ollama';
+                setConnectionStatus(prev => ({ ...prev, [providerId]: hasRequiredFields }));
+            }
         } catch (error) {
+            console.error('Connection test error:', error);
             setConnectionStatus(prev => ({ ...prev, [providerId]: false }));
         } finally {
             setTestingProvider(null);

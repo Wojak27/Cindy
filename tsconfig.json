@@ -2,27 +2,15 @@
     "compilerOptions": {
         "target": "ES2021",
         "module": "commonjs",
+        "moduleResolution": "node",
         "lib": [
             "ES2021",
             "DOM"
         ],
-        "declaration": false,
-        "declarationMap": false,
         "jsx": "react-jsx",
-        "strict": false,
-        "pretty": false,
-        "outDir": "dist",
-        "sourceMap": true,
-        "inlineSources": true,
+        "strict": true, // optional but recommended
+        "noEmit": true, // editor only – no build output
         "baseUrl": "./src",
-        "noUnusedLocals": true,
-        "noUnusedParameters": false,
-        "noImplicitReturns": true,
-        "noFallthroughCasesInSwitch": true,
-        "moduleResolution": "node",
-        "esModuleInterop": true,
-        "forceConsistentCasingInFileNames": true,
-        "resolveJsonModule": true,
         "paths": {
             "@main/*": [
                 "main/*"
@@ -33,13 +21,39 @@
             "@shared/*": [
                 "shared/*"
             ]
-        }
+        },
+        "noUnusedLocals": true,
+        "noUnusedParameters": false,
+        "noImplicitReturns": true,
+        "noFallthroughCasesInSwitch": true,
+        "esModuleInterop": true,
+        "forceConsistentCasingInFileNames": true,
+        "resolveJsonModule": true,
+        "skipLibCheck": true, // <<< major perf boost
+        "types": [
+            "node"
+        ] // add "electron" here if you use it
     },
     "include": [
-        "src/**/*"
+        "src/main/**/*",
+        "src/renderer/**/*",
+        "src/shared/**/*"
     ],
     "exclude": [
         "node_modules",
-        "release"
+        "dist",
+        "build",
+        "release",
+        ".next",
+        ".turbo",
+        ".cache",
+        "coverage",
+        "out",
+        "**/__tests__/**",
+        "**/*.spec.ts",
+        "**/*.spec.tsx",
+        "**/*.gen.ts",
+        "**/*.gen.tsx",
+        "**/__generated__/**"
     ]
 }

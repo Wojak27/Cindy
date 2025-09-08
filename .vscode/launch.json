@@ -88,6 +88,38 @@
             }
         },
         {
+            "name": "Debug VectorSearch Agent test",
+            "type": "node",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "runtimeExecutable": "/Users/karwo09/.nvm/versions/node/v20.19.2/bin/node",
+            "program": "${workspaceFolder}/src/main/agents/scripts/test-rag.ts",
+            "args": [
+                "vectordb"
+            ],
+            "console": "integratedTerminal",
+            "sourceMaps": true,
+            "smartStep": true,
+            "resolveSourceMapLocations": [
+                "${workspaceFolder}/**",
+                "!**/node_modules/**"
+            ],
+            "outputCapture": "std",
+            "env": {
+                "NODE_ENV": "development",
+                "NODE_OPTIONS": "--max-old-space-size=8192 --require ts-node/register/transpile-only",
+                "TS_NODE_COMPILER_OPTIONS": "{\"sourceMap\":true,\"inlineSources\":true}",
+                "LANGSMITH_API_KEY": "${env:LANGSMITH_API_KEY}",
+                "LANGSMITH_ENDPOINT": "${env:LANGSMITH_ENDPOINT}",
+                "OPENAI_API_KEY": "${env:OPENAI_API_KEY}"
+            },
+            "autoAttachChildProcesses": true,
+            "skipFiles": [
+                "<node_internals>/**",
+                "node_modules/**"
+            ]
+        },
+        {
             "name": "Debug RouterLangGraphAgent Test",
             "type": "node",
             "request": "launch",

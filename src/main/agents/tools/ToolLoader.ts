@@ -113,7 +113,7 @@ export class ToolLoader {
         // Load vector tools
         await this.loadVectorTools(config, enabledTools, registeredTools, failedTools);
 
-        await this.loadEmailAndReferenceTools(config, enabledTools, registeredTools, failedTools);
+        // await this.loadEmailAndReferenceTools(config, enabledTools, registeredTools, failedTools);
 
         // Load weather tools
         await this.loadWeatherTools(config, enabledTools, registeredTools, failedTools);
@@ -177,16 +177,17 @@ export class ToolLoader {
                 }
             }
         }
+    }
 
     /**
      * Load search tools
      */
     private async loadSearchTools(
-            config: ToolConfiguration,
-            enabledTools: any,
-            registeredTools: string[],
-            failedTools: string[]
-        ): Promise<void> {
+        config: ToolConfiguration,
+        enabledTools: any,
+        registeredTools: string[],
+        failedTools: string[]
+    ): Promise<void> {
         // Load search providers in priority order (most reliable first, DuckDuckGo as fallback)
         // Use centralized API key service for consistent key loading
         const apiKeyService = getApiKeyService();
@@ -313,7 +314,7 @@ export class ToolLoader {
      * Load weather tools
      */
     private async loadWeatherTools(
-        config: ToolConfiguration,
+        _config: ToolConfiguration,
         enabledTools: any,
         registeredTools: string[],
         failedTools: string[]
@@ -345,7 +346,7 @@ export class ToolLoader {
      * Load maps tools
      */
     private async loadMapsTools(
-        config: ToolConfiguration,
+        _config: ToolConfiguration,
         enabledTools: any,
         registeredTools: string[],
         failedTools: string[]

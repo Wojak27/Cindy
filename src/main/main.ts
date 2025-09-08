@@ -1,8 +1,7 @@
 import 'dotenv/config'; // same as: import { config } from 'dotenv'; config();
-import { app, BrowserWindow, Menu, nativeImage, NativeImage, ipcMain, desktopCapturer, shell } from 'electron';
+import { app, BrowserWindow, Menu, nativeImage, NativeImage, ipcMain, desktopCapturer, shell, session } from 'electron';
 import * as path from 'path';
 import * as os from 'os';
-import { CindyMenu } from './menu';
 import { DuckDBSettingsService, Settings } from './services/DuckDBSettingsService';
 import { TrayService } from './services/TrayService';
 import axios from 'axios';
@@ -10,7 +9,7 @@ import { ChatStorageService } from './services/ChatStorageService';
 // Re-enable core LLM functionality
 import { LLMProvider } from './services/LLMProvider';
 
-import { DuckDBVectorStore } from './services/DuckDBVectorStore';
+import { createDuckDBVectorStore, DuckDBVectorStore } from './services/DuckDBVectorStore';
 import { ServiceManager } from './services/ServiceManager';
 import { SpeechToTextService } from './services/SpeechToTextService';
 import RealTimeTranscriptionService from './services/RealTimeTranscriptionService';
@@ -24,6 +23,9 @@ import installExtension, {
     REDUX_DEVTOOLS,
     REACT_DEVELOPER_TOOLS
 } from 'electron-devtools-installer';
+
+// Set the application name to ensure it shows as "Cindy" instead of "Electron"
+app.setName('Cindy');
 
 // Utility function to get MIME type from file extension
 const getMimeType = (filePath: string): string => {
@@ -438,55 +440,17 @@ const setupDatabaseIPC = () => {
     ipcMain.handle(IPC_CHANNELS.CREATE_VECTOR_STORE, async (event, options) => {
         console.log('[IPC] Creating vector store with options:', options);
         try {
-            // Validate path first
-            if (!options.databasePath) {
-                return { success: false, message: 'Database path is required' };
-            }
-
-            // Validate path manually (inline validation)
-            try {
-                if (!fs.existsSync(options.databasePath)) {
-                    return { success: false, message: 'Path does not exist' };
-                }
-                const stat = fs.statSync(options.databasePath);
-                if (!stat.isDirectory()) {
-                    return { success: false, message: 'Path must be a directory' };
-                }
-                fs.accessSync(options.databasePath, fs.constants.W_OK);
-            } catch (error) {
-                return { success: false, message: 'Error accessing path or directory not writable' };
-            }
 
             // Create and initialize DuckDB vector store
             // Detect embedding provider based on current LLM provider
             const generalSettings = (await settingsService?.get('general') || {}) as any;
             const llmProvider = generalSettings.llmProvider || 'auto';
-
             console.log('[IPC] DEBUG: Detected LLM provider:', llmProvider);
             console.log('[IPC] DEBUG: General settings:', generalSettings);
-
             // Store database in app data directory, not in the folder being indexed
             const appDataPath = app.getPath('userData');
-            const vectorDbDir = path.join(appDataPath, 'vector-stores');
 
-            // Create vector store directory if it doesn't exist
-            if (!fs.existsSync(vectorDbDir)) {
-                fs.mkdirSync(vectorDbDir, { recursive: true });
-            }
-
-            // Use a hash of the source path to create unique database names
-            const crypto = require('crypto');
-            const sourcePathHash = crypto.createHash('md5').update(options.databasePath).digest('hex').substring(0, 8);
-            const dbName = `vector-store-${sourcePathHash}.db`;
-
-            let vectorStoreConfig: any = {
-                databasePath: path.join(vectorDbDir, dbName),
-                chunkSize: 1000,
-                chunkOverlap: 200
-            };
-
-            console.log('[IPC] Vector database will be stored at:', vectorStoreConfig.databasePath);
-            console.log('[IPC] Indexing content from:', options.databasePath);
+            let vectorStoreConfig: { embeddingProvider: string, embeddingModel: string, apiKey?: string };
 
             // Choose embedding provider based on LLM provider
             // Use Ollama embeddings if LLM provider is 'ollama'
@@ -511,13 +475,12 @@ const setupDatabaseIPC = () => {
                     };
                 } else {
                     vectorStoreConfig.embeddingProvider = 'openai';
-                    vectorStoreConfig.openaiApiKey = apiKey;
+                    vectorStoreConfig.apiKey = apiKey;
                     vectorStoreConfig.embeddingModel = 'text-embedding-ada-002'; // Use Ada model as requested
                     console.log('[IPC] Using OpenAI embeddings with Ada model');
                 }
             }
-
-            const vectorStore = new DuckDBVectorStore(vectorStoreConfig);
+            const vectorStore = await createDuckDBVectorStore(options.databasePath, llmProvider, appDataPath);
 
             // Assign to global variable so IPC handlers can access it
             duckDBVectorStore = vectorStore;
@@ -1370,6 +1333,36 @@ const setupConnectorIPC = () => {
         }
     });
 
+    // Developer Tools control
+    ipcMain.handle(IPC_CHANNELS.TOGGLE_DEV_TOOLS, async (event) => {
+        try {
+            if (mainWindow && mainWindow.webContents) {
+                if (mainWindow.webContents.isDevToolsOpened()) {
+                    mainWindow.webContents.closeDevTools();
+                } else {
+                    mainWindow.webContents.openDevTools({ mode: 'detach' });
+                }
+                return { success: true, isOpen: mainWindow.webContents.isDevToolsOpened() };
+            }
+            return { success: false, error: 'Main window not available' };
+        } catch (error: any) {
+            console.error('[IPC] Error toggling DevTools:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle(IPC_CHANNELS.DEV_TOOLS_IS_OPEN, async (event) => {
+        try {
+            if (mainWindow && mainWindow.webContents) {
+                return { success: true, isOpen: mainWindow.webContents.isDevToolsOpened() };
+            }
+            return { success: false, error: 'Main window not available' };
+        } catch (error: any) {
+            console.error('[IPC] Error checking DevTools status:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
     // Open external URL in default browser
     ipcMain.handle(IPC_CHANNELS.SHELL_OPEN_EXTERNAL, async (event, url: string) => {
         try {
@@ -1445,6 +1438,34 @@ const createWindow = async (): Promise<void> => {
         }
 
         console.log('🔧 DEBUG: About to create BrowserWindow...');
+
+        // Helper function to find app icon with fallback path resolution
+        const findAppIconPath = (): string => {
+            const fs = require('fs');
+            const iconName = 'cindy-icon-v1.png';
+
+            // Try different possible locations for the Cindy app icon
+            const possiblePaths = [
+                path.join(process.cwd(), 'assets/icons/', iconName),                    // Source directory
+                path.join(__dirname, '../assets/icons/', iconName),                    // Relative to compiled main
+                path.join(__dirname, '../../assets/icons/', iconName),                 // From dist directory
+                path.join(process.cwd(), 'src/renderer/assets/icons/', iconName),      // Alternative source location
+                path.join(__dirname, '../renderer/assets/icons/', iconName),           // Alternative compiled location
+            ];
+
+            for (const iconPath of possiblePaths) {
+                if (fs.existsSync(iconPath)) {
+                    console.log('🎨 Found Cindy app icon at:', iconPath);
+                    return iconPath;
+                }
+            }
+
+            console.warn('⚠️ Cindy app icon not found, using default');
+            return ''; // Will use default Electron icon
+        };
+
+        const appIconPath = findAppIconPath();
+
         // Create the simplest possible browser window with forced visibility
         mainWindow = new BrowserWindow({
             width: 1000,
@@ -1454,6 +1475,7 @@ const createWindow = async (): Promise<void> => {
             show: false, // Start hidden, show after loading
             alwaysOnTop: false,  // Allow normal window behavior
             titleBarStyle: 'hidden', // Hide the title bar
+            icon: appIconPath || undefined, // Use Cindy icon if found
             webPreferences: {
                 nodeIntegration: true,
                 contextIsolation: false,
@@ -1476,6 +1498,12 @@ const createWindow = async (): Promise<void> => {
             mainWindow?.show();
             mainWindow?.focus();
             console.log('🔧 DEBUG: Window shown and focused');
+
+            // Auto-open DevTools in development mode
+            if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
+                console.log('🔧 DEBUG: Opening DevTools automatically in development mode');
+                mainWindow?.webContents.openDevTools({ mode: 'detach' });
+            }
         });
 
         // Load content
@@ -1551,7 +1579,8 @@ const createTray = async (): Promise<void> => {
         }
 
         if (process.platform === 'darwin') {
-            const iconPath = findIconPath('tray-icon.png');
+            // Use Cindy tray icons instead of generic tray-icon.png
+            const iconPath = path.join(process.cwd(), 'assets/icons/cindy-tray-16.png');
 
             try {
                 const icon = nativeImage.createFromPath(iconPath);
@@ -1561,7 +1590,7 @@ const createTray = async (): Promise<void> => {
                 const { width, height } = icon.getSize();
                 if (width < 16 || height < 16) {
                     console.warn(`Icon too small (${width}x${height}), using fallback`);
-                    const fallbackPath = findIconPath('tray-icon-connected.png');
+                    const fallbackPath = path.join(process.cwd(), 'assets/icons/cindy-tray-32.png');
                     const fallbackIcon = nativeImage.createFromPath(fallbackPath).resize({ width: 16, height: 16 });
                     fallbackIcon.setTemplateImage(true);
                     return fallbackIcon;
@@ -1571,14 +1600,14 @@ const createTray = async (): Promise<void> => {
                 return resizedIcon;
             } catch (error) {
                 console.error('Tray icon error:', error);
-                const fallbackPath = findIconPath('tray-icon-connected.png');
+                const fallbackPath = path.join(process.cwd(), 'assets/icons/cindy-tray-32.png');
                 const smallIcon = nativeImage.createFromPath(fallbackPath).resize({ width: 16, height: 16 });
                 smallIcon.setTemplateImage(true);
                 return smallIcon;
             }
         } else {
             // Linux and other platforms
-            return findIconPath('tray-icon.png');
+            return path.join(process.cwd(), 'assets/icons/cindy-tray-32.png');
         }
     };
 
@@ -1674,26 +1703,6 @@ app.on('ready', async () => {
         }
     }
 
-    // Initialize AgenticMemoryService (A-Mem)
-    if (!agenticMemoryService && llmProvider) {
-        try {
-            console.log('🔧 DEBUG: Initializing AgenticMemoryService (A-Mem)...');
-            const { AgenticMemoryService } = await import('./services/AgenticMemoryService');
-            agenticMemoryService = new AgenticMemoryService({
-                llmProvider: llmProvider
-            });
-            await agenticMemoryService.initialize();
-            console.log('✅ DEBUG: AgenticMemoryService initialized successfully');
-
-            // Set up periodic forgetting curve application
-            setInterval(() => {
-                agenticMemoryService?.applyForgettingCurve();
-            }, 24 * 60 * 60 * 1000); // Once per day
-        } catch (error) {
-            console.error('🚨 DEBUG: Failed to initialize AgenticMemoryService:', error);
-            // Continue without A-Mem for now
-        }
-    }
 
     // Initialize SpeechToTextService for audio transcription
     if (!speechToTextService) {
@@ -3405,6 +3414,17 @@ graph TD
         }
     });
 
+    session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+        desktopCapturer.getSources({ types: [''] }).then((sources) => {
+            // Grant access to the first screen found.
+            callback({ audio: 'loopback' })
+        })
+        // If true, use the system picker if available.
+        // Note: this is currently experimental. If the system picker
+        // is available, it will be used and the media request handler
+        // will not be invoked.
+    })
+
     // IPC handler for getting conversation health
     ipcMain.handle(IPC_CHANNELS.GET_CONVERSATION_HEALTH, async (_, conversationId: string) => {
         console.log('Main process - get-conversation-health IPC called for:', conversationId);
@@ -3515,35 +3535,9 @@ graph TD
         }
     }
 
-    // Set application menu
-    const menu = CindyMenu.createMenu({
-        showSettings: () => {
-            if (mainWindow) {
-                mainWindow.show();
-                mainWindow.webContents.send('open-settings');
-            } else {
-                createWindow().then(() => {
-                    mainWindow?.webContents.send('open-settings');
-                });
-            }
-        },
-        showAbout: () => {
-            if (mainWindow) {
-                mainWindow.show();
-                mainWindow.webContents.send('open-about');
-            } else {
-                createWindow().then(() => {
-                    mainWindow?.webContents.send('open-about');
-                });
-            }
-        },
-        quit: () => {
-            (app as any).quitting = true;
-            app.quit();
-        }
-    });
+    // Remove application menu for clean interface (per user preference)
+    Menu.setApplicationMenu(null);
 
-    Menu.setApplicationMenu(menu);
 
     // Initialize LLM services AFTER window is created and shown (non-blocking)
     setTimeout(async () => {

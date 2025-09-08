@@ -3,6 +3,7 @@ import { MainAgentExecution } from "../MainAgentExecution";
 import { LangChainMemoryService } from "../../services/LangChainMemoryService";
 import * as dotenv from 'dotenv';
 import path from 'path';
+import { createDuckDBVectorStore } from "../../services/DuckDBVectorStore";
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '../../../.env') });
@@ -20,6 +21,8 @@ if (process.env.LANGSMITH_API_KEY) {
 async function initializeAgent(): Promise<MainAgentExecution> {
     console.log('\n🚀 Initializing RouterLangGraphAgent...\n');
 
+    const ollamaBaseUrl = 'http://127.0.0.1:11435'
+    // const ollamaBaseUrl = 'http://127.0.0.1:11434'
     // 1. Create LLM configuration
     const llmConfig = {
         provider: 'ollama' as const,  // Change to 'ollama' if using local models
@@ -31,8 +34,8 @@ async function initializeAgent(): Promise<MainAgentExecution> {
         },
         ollama: {
             // model: 'gemma3:1b',  // or any local model you have
-            model: 'qwen3:1.7b',  // or any local model you have
-            baseUrl: 'http://127.0.0.1:11434',
+            model: 'qwen3:4b',  // or any local model you have
+            baseUrl: ollamaBaseUrl,
             temperature: 0.7
         },
         streaming: true,
@@ -52,7 +55,7 @@ async function initializeAgent(): Promise<MainAgentExecution> {
     const memoryService = new LangChainMemoryService(
         {},  // Empty store for testing
         null,  // vectorStore (optional)
-        llmProvider.getChatModel()  // LLM model for summarization
+        llmProvider.getChatModel()!  // LLM model for summarization
     );
 
     // Skip initialization to avoid Electron dependency
@@ -61,12 +64,23 @@ async function initializeAgent(): Promise<MainAgentExecution> {
 
     // 4. Create RouterLangGraphAgent
     console.log('🤖 Creating RouterLangGraphAgent...');
+    const llmOptions = {
+        embeddingProvider: "ollama" as const,
+        embeddingModel: "granite-embedding:278m",
+        ollamaBaseUrl: ollamaBaseUrl,
+    }
+    const databasePath = "/Users/karwo09/code/voice-assistant/data/test-vectorstore"
+    const vectorStore = await createDuckDBVectorStore(databasePath, llmOptions, "/Users/karwo09/code/voice-assistant/data/appDataPathTest"); // Create a mock or in-memory vector store for testing
+    await vectorStore.initialize(); // Ensure it's initialized
+    const result = await vectorStore.indexFolder(databasePath);
+    console.log(`Indexed ${result.success} documents from ${databasePath}`);
     const agent = new MainAgentExecution({
         llmProvider,
         memoryService,
         config: {
             enableStreaming: true,
             enableDeepResearch: true,
+            vectorStore,
             fallbackToOriginal: true
         }
     });
@@ -111,121 +125,15 @@ async function testVectorSearchMethod(agent: MainAgentExecution) {
     }
 }
 
-async function testProcessMethod(agent: MainAgentExecution) {
-    console.log('\n═══════════════════════════════════════════════════════════════');
-    console.log('🧪 Testing Non-Streaming Process Method');
-    console.log('═══════════════════════════════════════════════════════════════\n');
 
-    const testQueries = [
-        "What's the weather like in San Francisco?",
-        "Explain quantum computing in simple terms",
-        "Research the latest developments in AI"
-    ];
-
-    for (const query of testQueries) {
-        console.log(`\n📝 Query: "${query}"`);
-        console.log('─'.repeat(60));
-
-        try {
-            const startTime = Date.now();
-            const response = await agent.process(query);
-            const elapsedTime = Date.now() - startTime;
-
-            console.log(`\n💬 Response (${elapsedTime}ms):`);
-            console.log(response);
-            console.log('\n' + '─'.repeat(60));
-        } catch (error) {
-            console.error('❌ Error:', error);
-        }
-    }
-}
-
-async function testStreamingMethod(agent: MainAgentExecution) {
-    console.log('\n═══════════════════════════════════════════════════════════════');
-    console.log('🧪 Testing Streaming Process Method');
-    console.log('═══════════════════════════════════════════════════════════════\n');
-
-    const testQuery = "Tell me about the history of artificial intelligence";
-
-    console.log(`📝 Query: "${testQuery}"`);
-    console.log('─'.repeat(60));
-    console.log('\n💬 Streaming Response:\n');
-
-    try {
-        let fullResponse = '';
-        const startTime = Date.now();
-
-        for await (const chunk of agent.processStreaming(testQuery)) {
-            process.stdout.write(chunk);
-            fullResponse += chunk;
-        }
-
-        const elapsedTime = Date.now() - startTime;
-        console.log(`\n\n✅ Streaming completed in ${elapsedTime}ms`);
-        console.log(`📊 Total response length: ${fullResponse.length} characters`);
-        console.log('─'.repeat(60));
-    } catch (error) {
-        console.error('\n❌ Streaming error:', error);
-    }
-}
-
-async function testDeepResearchMode(agent: MainAgentExecution) {
-    console.log('\n═══════════════════════════════════════════════════════════════');
-    console.log('🧪 Testing Deep Research Mode');
-    console.log('═══════════════════════════════════════════════════════════════\n');
-
-    const researchQuery = "Research the web and write a research article about early humans in Africa. Target the period of 1.5 million years ago to 200,000 years ago. This question does not require any clarification.";
-
-    console.log(`📝 Research Query: "${researchQuery}"`);
-    console.log('─'.repeat(60));
-    console.log('\n🔬 Initiating Deep Research...\n');
-
-    try {
-        let fullResponse = '';
-        const startTime = Date.now();
-
-        for await (const update of agent.processStreaming(researchQuery)) {
-            process.stdout.write(update);
-            fullResponse += update;
-        }
-
-        const elapsedTime = Date.now() - startTime;
-        console.log(`\n\n✅ Research completed in ${elapsedTime}ms`);
-        console.log(`📊 Total response length: ${fullResponse.length} characters`);
-        console.log('─'.repeat(60));
-    } catch (error) {
-        console.error('\n❌ Research error:', error);
-    }
-}
 
 async function testAgent() {
     try {
         // Initialize the agent
         const agent = await initializeAgent();
 
-        // Run tests based on command line arguments
-        const testMode = process.argv[2] || 'all';
 
-        switch (testMode) {
-            case 'process':
-                await testProcessMethod(agent);
-                break;
-            case 'vectordb':
-                await testVectorSearchMethod(agent);
-                break;
-            case 'stream':
-                await testStreamingMethod(agent);
-                break;
-            case 'research':
-                await testDeepResearchMode(agent);
-                break;
-            case 'all':
-            default:
-                await testProcessMethod(agent);
-                await testStreamingMethod(agent);
-                await testDeepResearchMode(agent);
-                break;
-        }
+        await testVectorSearchMethod(agent);
 
         console.log('\n\n✅ All tests completed successfully!');
 

@@ -11,3 +11,6 @@ build/
 # Coverage reports
 coverage/
 datasets/
+release/
+sherpa-onnx/
+data/

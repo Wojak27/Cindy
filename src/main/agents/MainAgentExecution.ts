@@ -17,7 +17,7 @@ import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { execa } from "execa";
+// execa will be dynamically imported where needed (ESM module)
 
 
 /**
@@ -35,6 +35,8 @@ async function renderLocallyWithMermaidCLI(mermaid: string, outPath: string) {
     const tmpMmd = join(tmpdir(), `${randomUUID()}.mmd`);
     writeFileSync(tmpMmd, mermaid, "utf8");
     // mmdc uses Puppeteer under the hood
+    // Dynamic import for ESM-only execa module
+    const { execa } = await import("execa");
     await execa("npx", ["-y", "@mermaid-js/mermaid-cli", "-i", tmpMmd, "-o", outPath, "--backgroundColor", "white"]);
 }
 
@@ -46,8 +48,8 @@ export class MainAgentExecution {
     private llmProvider: LLMProvider;
     private memoryService: LangChainMemoryService;
     private settingsService: SettingsService | null = null;
-    private researchAgent;
-    private writterAgent;
+    private researchAgent: any;
+    private writterAgent: any;
     private agent: Runnable;
 
     // State management properties
@@ -62,6 +64,7 @@ export class MainAgentExecution {
 
         // Create a minimal settings service for compatibility
         this.settingsService = this.createCompatibilitySettingsService();
+        this.initialize()
 
 
 
@@ -202,6 +205,7 @@ export class MainAgentExecution {
         name: string;
         config?: RunnableConfig;
     }) {
+        logger.info('RouterLangGraphAgent', `Running agent node: ${props.name}, recent message: "${trimThinkTags(props.state.messages.slice(-1)[0]?.content ?? "")}"`);
         const { state, agent, name, config } = props;
         let result = await agent.invoke(state, config);
         // We convert the agent output into a format that is suitable
@@ -211,7 +215,6 @@ export class MainAgentExecution {
             // look like a human message.
             result = new HumanMessage({ ...result, name: name });
         }
-        result.content = trimThinkTags(result.content as string);
         return {
             messages: [result],
             // Since we have a strict workflow, we can
@@ -291,6 +294,15 @@ export class MainAgentExecution {
      */
     public getMemoryService(): LangChainMemoryService {
         return this.memoryService;
+    }
+
+    public async process(input: string): Promise<string> {
+        const output = await this.agent.invoke(
+            { messages: [new HumanMessage(input)] },
+        );
+        const msgs = output?.messages;
+        const last = Array.isArray(msgs) ? msgs[msgs.length - 1] : null;
+        return last?.content ? (typeof last.content === "string" ? last.content : JSON.stringify(last.content)) : "No response";
     }
 
     /**

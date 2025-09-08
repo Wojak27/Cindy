@@ -169,7 +169,46 @@ const ChatSidePanel: React.FC<ChatSidePanelProps> = ({ widgetType, data, convers
     };
 
     if (widgets.length === 0) {
-        return null;
+        return (
+            <Card sx={{
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                backgroundColor: alpha(theme.palette.background.paper, 0.95),
+                backdropFilter: 'blur(10px)',
+                position: 'relative',
+            }}>
+                <CardContent sx={{ pb: 0 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                        <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                            Workspace
+                        </Typography>
+                        <IconButton onClick={onClose} size="small">
+                            <CloseIcon />
+                        </IconButton>
+                    </Box>
+                </CardContent>
+                
+                <Box sx={{ 
+                    flex: 1, 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    p: 3
+                }}>
+                    <Typography 
+                        variant="body2" 
+                        sx={{ 
+                            color: theme.palette.text.secondary,
+                            textAlign: 'center',
+                            fontStyle: 'italic'
+                        }}
+                    >
+                        Nothing in the workspace
+                    </Typography>
+                </Box>
+            </Card>
+        );
     }
 
     return (
@@ -185,7 +224,7 @@ const ChatSidePanel: React.FC<ChatSidePanelProps> = ({ widgetType, data, convers
             <CardContent sx={{ pb: 0 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                     <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                        Info Panel
+                        Workspace
                     </Typography>
                     <IconButton onClick={onClose} size="small">
                         <CloseIcon />

@@ -18,6 +18,11 @@ module.exports = [
       fullySpecified: false,
     },
   },
+  // Handle native node modules
+  {
+    test: /\.node$/,
+    loader: 'node-loader',
+  },
   // Handle PDF.js worker files
   {
     test: /pdf\.worker\.(min\.)?js$/,

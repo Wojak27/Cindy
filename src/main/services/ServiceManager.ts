@@ -99,7 +99,6 @@ export class ServiceManager extends EventEmitter {
             await toolLoader.loadAllTools(toolConfig);
 
             console.log('[ServiceManager] Tools initialized successfully via ToolLoader');
-            console.log('[ServiceManager] Available tools:', toolRegistry.getToolNames());
 
             this.toolsInitialized = true;
             this.emit('toolsInitialized');
@@ -126,7 +125,7 @@ export class ServiceManager extends EventEmitter {
     async getToolsForAgent(duckdbVectorStore?: any, connectorInstances?: any): Promise<any[]> {
         await this.initializeTools(duckdbVectorStore, connectorInstances);
         // Return the actual tool instances for LangChain binding
-        return toolRegistry.getAllTools().map(spec => spec.tool);
+        return toolRegistry.getTools();
     }
 
     /**
