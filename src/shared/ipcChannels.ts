@@ -247,6 +247,8 @@ export const UTILITY_CHANNELS = {
   GET_ASSET_PATH,
 } as const;
 
+export const TEST_SIDE_VIEW = 'test-side-view';
+
 // ============================================================================
 // ALL CHANNELS EXPORT
 // ============================================================================
@@ -258,40 +260,41 @@ export const UTILITY_CHANNELS = {
 export const IPC_CHANNELS = {
   // Settings & Configuration
   ...SETTINGS_CHANNELS,
-  
+  TEST_SIDE_VIEW,
+
   // Wake Word Detection
   ...WAKE_WORD_CHANNELS,
-  
+
   // LLM & Model Management
   ...LLM_CHANNELS,
-  
+
   // Vector Store Operations
   ...VECTOR_STORE_CHANNELS,
-  
+
   // File System & Dialogs
   ...FILE_SYSTEM_CHANNELS,
-  
+
   // Document Processing
   ...DOCUMENT_CHANNELS,
-  
+
   // Text-to-Speech
   ...TTS_CHANNELS,
-  
+
   // Audio & Speech-to-Text
   ...AUDIO_CHANNELS,
-  
+
   // Conversations & Messages
   ...CONVERSATION_CHANNELS,
-  
+
   // Memory & Agent Operations
   ...MEMORY_AGENT_CHANNELS,
-  
+
   // Connector Integrations
   ...CONNECTOR_CHANNELS,
-  
+
   // Developer Tools
   ...DEV_TOOLS_CHANNELS,
-  
+
   // Utilities
   ...UTILITY_CHANNELS,
 } as const;

@@ -2,6 +2,7 @@
  * Vector search tool implementation for document similarity search
  */
 
+import { CallbackManagerForToolRun } from '@langchain/core/callbacks/manager';
 import { Tool } from '@langchain/core/tools';
 
 /**
@@ -15,13 +16,7 @@ export class VectorSearchTool extends Tool {
         super();
     }
 
-    async invoke(input: any): Promise<string> {
-        console.log('[VectorSearchTool] invoke called with:', input);
-        console.log('[VectorSearchTool] input type:', typeof input);
-        return this._call(input);
-    }
-
-    async _call(input: any): Promise<string> {
+    async _call(input: any, _runManager?: CallbackManagerForToolRun): Promise<any> {
         try {
             console.log('[VectorSearchTool] _call method called with:', input);
             console.log('[VectorSearchTool] input type in _call:', typeof input);
@@ -30,12 +25,12 @@ export class VectorSearchTool extends Tool {
             const query = typeof input === 'string' ? input : (input?.query || input);
             const limit = typeof input === 'object' && input.limit ? input.limit : 5;
 
-            if (!query || query.args.input.trim().length === 0) {
+            if (!query || query.trim().length === 0) {
                 return 'Please provide a search query to find relevant documents.';
             }
 
             // Validate query length
-            const sanitizedQuery = query.args.input.trim();
+            const sanitizedQuery = query.trim();
             if (sanitizedQuery.length > 1000) {
                 return 'Search query is too long. Please use a shorter search term (maximum 1000 characters).';
             }
@@ -114,37 +109,6 @@ Based on the above retrieved documents, please provide a detailed answer to your
      */
     isReady(): boolean {
         return !!(this.vectorStore && this.vectorStore.isInitialized);
-    }
-
-    /**
-     * Get vector store statistics
-     */
-    async getStats(): Promise<{
-        documentsCount: number;
-        isInitialized: boolean;
-        lastIndexed?: Date;
-    }> {
-        if (!this.vectorStore) {
-            return {
-                documentsCount: 0,
-                isInitialized: false
-            };
-        }
-
-        try {
-            const stats = {
-                documentsCount: await this.vectorStore.getDocumentCount?.() || 0,
-                isInitialized: this.vectorStore.isInitialized || false,
-                lastIndexed: this.vectorStore.lastIndexed || undefined
-            };
-            return stats;
-        } catch (error) {
-            console.error('[VectorSearchTool] Error getting stats:', error);
-            return {
-                documentsCount: 0,
-                isInitialized: false
-            };
-        }
     }
 }
 

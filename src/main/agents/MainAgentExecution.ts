@@ -104,7 +104,7 @@ export class MainAgentExecution {
         const toolNode = new ToolNode<typeof this.AgentState.State>(toolRegistry.getTools());
         // Research agent and node
         this.researchAgent = await this.createAgent({
-            llm: this.llmProvider.getChatModel(),
+            llm: this.llmProvider.getChatModel()!,
             tools: toolRegistry.getTools(),
             systemMessage:
                 "You should provide accurate data for the answer writer to use.",
@@ -112,7 +112,7 @@ export class MainAgentExecution {
         });
         // CWritter agent and node
         this.writterAgent = await this.createAgent({
-            llm: this.llmProvider.getChatModel(),
+            llm: this.llmProvider.getChatModel()!,
             tools: [],
             systemMessage: "Any text you write will be shown to the user.",
             name: "Writer",
@@ -180,7 +180,7 @@ export class MainAgentExecution {
     }
     public getStatus(): { provider: string, availableTools: string[] } {
         return {
-            provider: this.llmProvider.getCurrentProvider(),
+            provider: this.llmProvider.getCurrentProvider()!,
             availableTools: toolRegistry.getAllToolNames()
         };
     }
@@ -312,7 +312,7 @@ export class MainAgentExecution {
         // 1) Ask the compiled graph to stream events
         const evStream = await this.agent.streamEvents(
             { messages: [new HumanMessage(input)] },
-            { version: "v1" } // important; use the unified event schema
+            { version: "v2" } // important; use the unified event schema
         );
 
         // 2) Yield updates on node/tool start/end (and optionally LLM token stream)

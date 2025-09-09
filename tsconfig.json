@@ -10,16 +10,16 @@
         "jsx": "react-jsx",
         "strict": true, // optional but recommended
         "noEmit": true, // editor only – no build output
-        "baseUrl": "./src",
+        "baseUrl": ".",
         "paths": {
             "@main/*": [
-                "main/*"
+                "src/main/*"
             ],
             "@renderer/*": [
-                "renderer/*"
+                "src/renderer/*"
             ],
             "@shared/*": [
-                "shared/*"
+                "src/shared/*"
             ]
         },
         "noUnusedLocals": true,
@@ -44,6 +44,7 @@
         "dist",
         "build",
         "release",
+        "sherpa-onnx",
         ".next",
         ".turbo",
         ".cache",

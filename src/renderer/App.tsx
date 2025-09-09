@@ -21,7 +21,6 @@ import ToolSelector from './components/ToolSelector';
 import MemorySavedNotification from './components/MemorySavedNotification';
 import { agentFlowTracker } from './services/AgentFlowTracker';
 import { generateStepDescription } from '../shared/AgentFlowStandard';
-import RealTimeSpeechRecognition from './services/RealTimeSpeechRecognition';
 import { getSettings, setCurrentConversationId } from '../store/actions';
 import { toggleSettings } from '../store/actions';
 import { hideDocument } from '../store/actions';
@@ -50,9 +49,9 @@ import {
     Stop as StopIcon,
     ContentCopy as CopyIcon,
     Description as DocumentIcon,
-    AccountTree as GraphIcon
+    AccountTree as GraphIcon,
+    Science as TestIcon
 } from '@mui/icons-material';
-import { time } from 'console';
 
 const App: React.FC = () => {
 
@@ -497,6 +496,16 @@ const App: React.FC = () => {
 
         }).catch(e => console.log(e))
     };
+
+    const handleTestSidePanelClick = async () => {
+        handleShowDocument({
+            name: 'Test Document.pdf',
+            size: 123456,
+            path: '/path/to/Test Document.pdf',
+            mtime: Date.now(),
+            chunks: 10,
+        })
+    }
 
     // Retry a failed message
     const retryMessage = async (messageId: string, userMessage: any) => {
@@ -1460,6 +1469,25 @@ const App: React.FC = () => {
                                                         >
                                                             <MicIcon fontSize="large" />
                                                         </IconButton>
+
+                                                        <IconButton
+                                                            className="mic-button"
+                                                            onClick={handleTestSidePanelClick}
+                                                            aria-label={isRecording ? "Stop recording" : "Start recording"}
+                                                            size="large"
+                                                            sx={{
+                                                                width: '48px',
+                                                                height: '48px',
+                                                                backgroundColor: "red",
+                                                                color: 'white',
+                                                                '&:hover': {
+                                                                    backgroundColor: '#218838'
+                                                                }
+                                                            }}
+                                                        >
+                                                            <TestIcon fontSize="large" />
+                                                        </IconButton>
+
                                                     </div>
                                                     <IconButton
                                                         className="send-button"
