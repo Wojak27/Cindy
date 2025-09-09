@@ -40,31 +40,31 @@ class EnhancedAgentTester {
     async initialize(): Promise<void> {
         console.log('🚀 Initializing Enhanced Decision Agent Test Environment');
         console.log('═'.repeat(70));
-        
+
         console.log(`📊 Configuration:`);
         console.log(`   LLM Provider: ${this.config.llmProvider}`);
         console.log(`   Embedding Provider: ${this.config.embeddingProvider}`);
         console.log(`   Vector DB Path: ${this.config.vectorDbPath}`);
         console.log(`   Verbose Mode: ${this.config.verbose}`);
-        
+
         // Initialize LLM Provider
         await this.initializeLLMProvider();
-        
+
         // Initialize Vector Store
         await this.initializeVectorStore();
-        
+
         // Load sample data into vector store
         await this.loadSampleData();
-        
+
         // Initialize Enhanced Agent
         await this.initializeAgent();
-        
+
         console.log('✅ Test environment initialized successfully');
     }
 
     private async initializeLLMProvider(): Promise<void> {
         console.log('\n🧠 Initializing LLM Provider...');
-        
+
         const llmConfig = {
             provider: this.config.llmProvider!,
             streaming: false,
@@ -77,7 +77,7 @@ class EnhancedAgentTester {
                 }
             } : {
                 ollama: {
-                    baseUrl: 'http://127.0.0.1:11434',
+                    baseUrl: 'http://127.0.0.1:11435',
                     model: 'qwen3:1.7b',
                     temperature: 0.1
                 }
@@ -91,7 +91,7 @@ class EnhancedAgentTester {
 
     private async initializeVectorStore(): Promise<void> {
         console.log('\n📚 Initializing Vector Store...');
-        
+
         const vectorConfig = {
             databasePath: this.config.vectorDbPath!,
             embeddingProvider: this.config.embeddingProvider!,
@@ -109,9 +109,9 @@ class EnhancedAgentTester {
 
     private async loadSampleData(): Promise<void> {
         if (!this.vectorStore) return;
-        
+
         console.log('\n🗃️ Loading sample knowledge base...');
-        
+
         const sampleDocuments = [
             {
                 content: "Apple Inc. is an American multinational technology company headquartered in Cupertino, California. Apple was founded by Steve Jobs, Steve Wozniak, and Ronald Wayne in April 1976 to develop and sell Wozniak's Apple I personal computer.",
@@ -142,13 +142,13 @@ class EnhancedAgentTester {
         for (const doc of sampleDocuments) {
             await this.vectorStore.addDocuments([{ pageContent: doc.content, metadata: doc.metadata }]);
         }
-        
+
         console.log(`✅ Loaded ${sampleDocuments.length} sample documents into knowledge base`);
     }
 
     private async initializeAgent(): Promise<void> {
         console.log('\n🤖 Initializing Enhanced Decision Agent...');
-        
+
         this.agent = new EnhancedDecisionAgent({
             llmProvider: this.llmProvider!,
             vectorStore: this.vectorStore,
@@ -157,7 +157,7 @@ class EnhancedAgentTester {
             confidenceThreshold: 0.75,
             verbose: this.config.verbose
         });
-        
+
         await this.agent.initialize();
         console.log('✅ Enhanced Decision Agent initialized');
     }
@@ -196,18 +196,18 @@ class EnhancedAgentTester {
 
         for (let i = 0; i < testQuestions.length; i++) {
             const test = testQuestions[i];
-            
+
             console.log(`\n${'─'.repeat(50)}`);
             console.log(`🔬 Test ${i + 1}/${testQuestions.length}: ${test.testFocus}`);
             console.log(`${'─'.repeat(50)}`);
             console.log(`❓ Question: ${test.question}`);
             console.log(`🎯 Expected Behavior: ${test.expectedBehavior}`);
-            
+
             try {
                 const startTime = Date.now();
                 const result = await this.agent.processQuestion(test.question);
                 const endTime = Date.now();
-                
+
                 console.log(`\n📊 Test Results:`);
                 console.log(`   ⏱️  Processing Time: ${endTime - startTime}ms`);
                 console.log(`   🎯 Final Confidence: ${(result.confidence_level * 100).toFixed(1)}%`);
@@ -216,27 +216,27 @@ class EnhancedAgentTester {
                 console.log(`   🛠️  Tools Used: ${result.tools_used?.length || 0}`);
                 console.log(`   🧠 Decisions Made: ${result.decision_history?.length || 0}`);
                 console.log(`   📚 Facts Learned: ${result.learned_facts?.length || 0}`);
-                
+
                 console.log(`\n💭 Agent State Summary:`);
                 const stateSummary = this.agent.getAgentStateSummary(result);
                 Object.entries(stateSummary).forEach(([key, value]) => {
                     console.log(`   ${key}: ${value}`);
                 });
-                
+
                 console.log(`\n🤔 Decision History:`);
                 result.decision_history?.forEach((decision, idx) => {
                     console.log(`   ${idx + 1}. ${decision.decision_type} (confidence: ${decision.confidence}) - ${decision.reasoning.substring(0, 80)}...`);
                 });
-                
+
                 console.log(`\n📝 Final Answer:`);
                 console.log(`   ${result.answer}`);
-                
+
                 if (result.error) {
                     console.log(`\n❌ Error: ${result.error}`);
                 }
-                
+
                 console.log(`\n✅ Test ${i + 1} completed successfully`);
-                
+
             } catch (error) {
                 console.log(`\n❌ Test ${i + 1} failed: ${error}`);
                 console.error(error);
@@ -250,11 +250,11 @@ class EnhancedAgentTester {
 
     async cleanup(): Promise<void> {
         console.log('\n🧹 Cleaning up test environment...');
-        
+
         if (this.vectorStore) {
             await this.vectorStore.close();
         }
-        
+
         console.log('✅ Cleanup completed');
     }
 }

@@ -17,6 +17,7 @@ import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { AccuWeatherTool } from './tools/weather/AccuWeatherTool';
 // execa will be dynamically imported where needed (ESM module)
 
 
@@ -354,7 +355,26 @@ export class MainAgentExecution {
                     const output = ev.data?.output;
                     const msgs = output?.messages;
                     const last = Array.isArray(msgs) ? msgs[msgs.length - 1] : null;
-                    if (last?.content) yield `\n${typeof last.content === "string" ? last.content : JSON.stringify(last.content)}\n`;
+                    if (last?.content) {
+                        const content = typeof last.content === "string" ? last.content : JSON.stringify(last.content);
+                        yield `\n${content}\n`;
+
+                        // Check for weather-related keywords in input or output
+                        const isWeatherQuery = /weather|temperature|forecast|rain|snow|sunny|cloudy/i.test(input) ||
+                            /weather|temperature|forecast|rain|snow|sunny|cloudy/i.test(content);
+
+                        if (isWeatherQuery) {
+                            try {
+                                // Use a default location or extract from input (simple heuristic)
+                                const location = "Stockholm"; // TODO: Extract from input or use user's location
+                                const weatherTool = new AccuWeatherTool();
+                                const weatherData = await weatherTool._call(location);
+                                yield `side-panel-weather ${weatherData}\n`;
+                            } catch (error) {
+                                console.error("[MainAgentExecution] Failed to fetch weather data:", error);
+                            }
+                        }
+                    }
                     break;
                 }
                 default:

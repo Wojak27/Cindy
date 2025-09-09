@@ -22,7 +22,7 @@ async function initializeAgent(): Promise<MainAgentExecution> {
     console.log('\n🚀 Initializing RouterLangGraphAgent...\n');
 
     const ollamaBaseUrl = 'http://127.0.0.1:11435'
-    // const ollamaBaseUrl = 'http://127.0.0.1:11434'
+    // const ollamaBaseUrl = 'http://127.0.0.1:11435'
     // 1. Create LLM configuration
     const llmConfig = {
         provider: 'ollama' as const,  // Change to 'ollama' if using local models

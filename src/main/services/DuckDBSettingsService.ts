@@ -351,10 +351,10 @@ export class DuckDBSettingsService extends EventEmitter {
             const flattenedData = this.flattenObject(sectionData, section as string);
 
             for (const [key, value] of Object.entries(flattenedData)) {
-                const dataType = Array.isArray(value) ? 'array' : 
-                                typeof value === 'object' && value !== null ? 'object' :
-                                typeof value;
-                
+                const dataType = Array.isArray(value) ? 'array' :
+                    typeof value === 'object' && value !== null ? 'object' :
+                        typeof value;
+
                 await this.db.run(
                     `INSERT OR REPLACE INTO settings (key, section, value, data_type) 
                      VALUES (?, ?, ?, ?)`,
@@ -480,11 +480,11 @@ export class DuckDBSettingsService extends EventEmitter {
         try {
             const clientId = await keytar.getPassword(this.SERVICE_NAME, `${provider}_client_id`);
             const clientSecret = await keytar.getPassword(this.SERVICE_NAME, `${provider}_client_secret`);
-            
+
             if (clientId && clientSecret) {
                 return { clientId, clientSecret };
             }
-            
+
             // Fallback to settings
             const connectorSettings = await this.get('connectors');
             const oauthSettings = connectorSettings?.oauth?.[provider];
@@ -500,7 +500,7 @@ export class DuckDBSettingsService extends EventEmitter {
             // Store securely in keychain
             await keytar.setPassword(this.SERVICE_NAME, `${provider}_client_id`, clientId);
             await keytar.setPassword(this.SERVICE_NAME, `${provider}_client_secret`, clientSecret);
-            
+
             // Update settings with placeholder to indicate credentials exist
             const connectorSettings = await this.get('connectors');
             const updatedSettings = {
@@ -513,7 +513,7 @@ export class DuckDBSettingsService extends EventEmitter {
                     }
                 }
             };
-            
+
             await this.set('connectors', updatedSettings);
             console.log(`[DuckDBSettingsService] Stored ${provider} OAuth credentials securely`);
         } catch (error) {
@@ -527,7 +527,7 @@ export class DuckDBSettingsService extends EventEmitter {
             // Remove from keychain
             await keytar.deletePassword(this.SERVICE_NAME, `${provider}_client_id`);
             await keytar.deletePassword(this.SERVICE_NAME, `${provider}_client_secret`);
-            
+
             // Update settings to remove placeholder
             const connectorSettings = await this.get('connectors');
             const updatedSettings = {
@@ -537,7 +537,7 @@ export class DuckDBSettingsService extends EventEmitter {
                     [provider]: undefined
                 }
             };
-            
+
             await this.set('connectors', updatedSettings);
             console.log(`[DuckDBSettingsService] Deleted ${provider} OAuth credentials`);
         } catch (error) {
@@ -586,7 +586,7 @@ export class DuckDBSettingsService extends EventEmitter {
                 },
                 ollama: {
                     model: 'qwen3:1.7b',
-                    baseUrl: 'http://127.0.0.1:11434',
+                    baseUrl: 'http://127.0.0.1:11435',
                     temperature: 0.7
                 },
                 anthropic: {
@@ -702,11 +702,11 @@ export class DuckDBSettingsService extends EventEmitter {
     async migrateFromJSON(jsonFilePath?: string): Promise<boolean> {
         const fs = await import('fs').then(m => m.promises);
         const path = await import('path');
-        
+
         try {
             // Determine JSON file path
             const settingsPath = jsonFilePath || path.join(app.getPath('userData'), 'cindy-settings.json');
-            
+
             // Check if JSON file exists
             try {
                 await fs.access(settingsPath);
@@ -718,7 +718,7 @@ export class DuckDBSettingsService extends EventEmitter {
             // Read and parse JSON settings
             const jsonData = await fs.readFile(settingsPath, 'utf-8');
             const jsonSettings: Partial<Settings> = JSON.parse(jsonData);
-            
+
             console.log('[DuckDBSettingsService] Found existing JSON settings, starting migration');
 
             // Merge JSON settings with defaults
@@ -773,7 +773,7 @@ export class DuckDBSettingsService extends EventEmitter {
 
             console.log('[DuckDBSettingsService] Migration from JSON completed successfully');
             this.emit('migrationCompleted', { from: 'json', backup: backupPath });
-            
+
             return true;
         } catch (error) {
             console.error('[DuckDBSettingsService] Failed to migrate from JSON:', error);
@@ -790,7 +790,7 @@ export class DuckDBSettingsService extends EventEmitter {
         try {
             const fs = await import('fs').then(m => m.promises);
             const path = await import('path');
-            
+
             // Check if database has any settings
             const rows = await this.db.all('SELECT COUNT(*) as count FROM settings');
             const hasDbSettings = rows[0]?.count > 0;

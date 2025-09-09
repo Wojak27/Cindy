@@ -112,7 +112,7 @@ export const persistenceMiddleware = () => (next: any) => async (action: any) =>
                     provider: 'ollama',
                     ollama: {
                         model: 'qwen3:1.7b',
-                        baseUrl: 'http://127.0.0.1:11434',
+                        baseUrl: 'http://127.0.0.1:11435',
                         temperature: 0.7
                     },
                     openai: {
@@ -357,7 +357,7 @@ const getDefaultSettings = () => ({
         provider: 'ollama',
         ollama: {
             model: 'qwen3:1.7b',
-            baseUrl: 'http://127.0.0.1:11434',
+            baseUrl: 'http://127.0.0.1:11435',
             temperature: 0.7
         },
         openai: {
@@ -466,7 +466,7 @@ export const loadInitialSettings = async () => {
                 provider: settings.llm?.provider || 'ollama',
                 ollama: {
                     model: settings.llm?.ollama?.model || 'qwen3:1.7b',
-                    baseUrl: settings.llm?.ollama?.baseUrl || 'http://127.0.0.1:11434',
+                    baseUrl: settings.llm?.ollama?.baseUrl || 'http://127.0.0.1:11435',
                     temperature: settings.llm?.ollama?.temperature || 0.7
                 },
                 openai: {

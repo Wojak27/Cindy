@@ -961,7 +961,7 @@ async function initializeBenchmarkAgent(): Promise<{ agent: MainAgentExecution, 
         },
         ollama: {
             model: 'qwen3:1.7b',  // Use a fast, lightweight model for benchmarking
-            baseUrl: 'http://127.0.0.1:11434',
+            baseUrl: 'http://127.0.0.1:11435',
             temperature: 0.1
         },
         streaming: false, // Disable streaming for consistent measurement

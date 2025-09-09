@@ -78,7 +78,7 @@ const ModernDatabasePanel: React.FC = () => {
     // Database Settings State
     const [databasePath, setDatabasePath] = useState(settings?.database?.path || '');
     const [notesPath, setNotesPath] = useState(settings?.database?.notesPath || '');
-    const [embeddingModel, setEmbeddingModel] = useState(settings?.database?.embeddingModel || 'qwen3:1.7b');
+    const [embeddingModel, setEmbeddingModel] = useState(settings?.database?.embeddingModel || '"granite-embedding:278m"');
     const [chunkSize, setChunkSize] = useState(settings?.database?.chunkSize || 1000);
     const [chunkOverlap, setChunkOverlap] = useState(settings?.database?.chunkOverlap || 200);
     const [autoIndex, setAutoIndex] = useState(settings?.database?.autoIndex || true);
@@ -515,8 +515,8 @@ const ModernDatabasePanel: React.FC = () => {
                                                 setHasUnsavedChanges(true);
                                             }}
                                         >
-                                            <MenuItem value="dengcao/Qwen3-Embedding-0.6B:Q8_0">Qwen 3 0.6B</MenuItem>
-                                            <MenuItem value="llama3:1.7b">Qwen 3 1.7b</MenuItem>
+                                            <MenuItem value="granite-embedding:278m">Granite Embedding 278m</MenuItem>
+                                            <MenuItem value="granite-embedding:278m">Embedding Gemma</MenuItem>
                                         </Select>
                                     </FormControl>
 

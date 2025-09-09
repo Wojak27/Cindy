@@ -14,7 +14,7 @@ const getDefaultState = () => ({
             provider: 'ollama',
             ollama: {
                 model: 'qwen3:4b',
-                baseUrl: 'http://127.0.0.1:11434',
+                baseUrl: 'http://127.0.0.1:11435',
                 temperature: 0.7
             },
             openai: {

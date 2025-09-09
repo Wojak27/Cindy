@@ -87,11 +87,11 @@ export class DuckDBVectorStore extends EventEmitter {
             case 'ollama':
             default:
                 return {
-                    embeddingModel: 'dengcao/Qwen3-Embedding-0.6B:Q8_0', // Smallest Qwen model for efficiency
+                    embeddingModel: 'granite-embedding:278m', // Smallest Qwen model for efficiency
                     chunkSize: 1000,
                     chunkOverlap: 200,
                     vectorDimension: 1024, // Qwen3-Embedding-0.6B outputs 1024 dimensions
-                    ollamaBaseUrl: 'http://localhost:11434'
+                    ollamaBaseUrl: 'http://localhost:11435'
                 };
         }
     }

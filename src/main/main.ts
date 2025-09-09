@@ -318,7 +318,7 @@ const setupSettingsIPC = () => {
 
                 case 'ollama':
                     try {
-                        const baseUrl = config?.baseUrl || 'http://127.0.0.1:11434';
+                        const baseUrl = config?.baseUrl || 'http://127.0.0.1:11435';
                         const response = await axios.get(`${baseUrl}/api/tags`, { timeout: 5000 });
                         models = response.data.models.map((model: any) => model.name).sort();
                     } catch (error) {
@@ -456,7 +456,7 @@ const setupDatabaseIPC = () => {
             // Use Ollama embeddings if LLM provider is 'ollama'
             if (llmProvider === 'ollama') {
                 vectorStoreConfig.embeddingProvider = 'ollama';
-                vectorStoreConfig.embeddingModel = 'dengcao/Qwen3-Embedding-0.6B:Q8_0'; // Smallest Qwen model
+                vectorStoreConfig.embeddingModel = 'granite-embedding:278m'; // Smallest Qwen model
                 console.log('[IPC] Using Ollama embeddings with smallest Qwen model (0.5b)');
             } else {
                 // For 'openai' and 'auto' providers, try to use OpenAI embeddings
@@ -467,7 +467,7 @@ const setupDatabaseIPC = () => {
                     // If no API key and auto mode, fallback to Ollama
                     console.log('[IPC] No OpenAI API key found in auto mode, falling back to Ollama embeddings with smallest Qwen model');
                     vectorStoreConfig.embeddingProvider = 'ollama';
-                    vectorStoreConfig.embeddingModel = 'dengcao/Qwen3-Embedding-0.6B:Q8_0'; // Smallest Qwen model
+                    vectorStoreConfig.embeddingModel = 'granite-embedding:278m'; // Smallest Qwen model
                 } else if (!apiKey) {
                     return {
                         success: false,
@@ -1909,8 +1909,8 @@ app.on('ready', async () => {
 
                 if (provider === 'ollama') {
                     vectorStoreConfig.embeddingProvider = 'ollama';
-                    vectorStoreConfig.embeddingModel = 'dengcao/Qwen3-Embedding-0.6B:Q8_0'; // Smallest Qwen model
-                    vectorStoreConfig.ollamaBaseUrl = 'http://localhost:11434';
+                    vectorStoreConfig.embeddingModel = 'granite-embedding:278m'; // Smallest Qwen model
+                    vectorStoreConfig.ollamaBaseUrl = 'http://localhost:11435';
                     console.log('[IPC] Using Ollama embeddings with smallest Qwen model (0.5b)');
                 } else if (provider === 'openai') {
                     const openaiApiKey = await settingsService?.getApiKey();
@@ -1922,15 +1922,15 @@ app.on('ready', async () => {
                     } else {
                         // Fall back to Ollama if no OpenAI key
                         vectorStoreConfig.embeddingProvider = 'ollama';
-                        vectorStoreConfig.embeddingModel = 'dengcao/Qwen3-Embedding-0.6B:Q8_0';
-                        vectorStoreConfig.ollamaBaseUrl = 'http://localhost:11434';
+                        vectorStoreConfig.embeddingModel = 'granite-embedding:278m';
+                        vectorStoreConfig.ollamaBaseUrl = 'http://localhost:11435';
                         console.log('[IPC] No OpenAI API key, falling back to Ollama with smallest Qwen model');
                     }
                 } else {
                     // Default to Ollama with smallest Qwen model
                     vectorStoreConfig.embeddingProvider = 'ollama';
-                    vectorStoreConfig.embeddingModel = 'dengcao/Qwen3-Embedding-0.6B:Q8_0';
-                    vectorStoreConfig.ollamaBaseUrl = 'http://localhost:11434';
+                    vectorStoreConfig.embeddingModel = 'granite-embedding:278m';
+                    vectorStoreConfig.ollamaBaseUrl = 'http://localhost:11435';
                     console.log('[IPC] Using default Ollama embeddings with smallest Qwen model');
                 }
 
@@ -2228,7 +2228,7 @@ app.on('ready', async () => {
                 } : undefined,
                 ollama: settings.ollama || {
                     model: 'llama3:8b',
-                    baseUrl: 'http://127.0.0.1:11434',
+                    baseUrl: 'http://127.0.0.1:11435',
                     temperature: 0.7
                 },
                 anthropic: (settings as any).anthropic,
@@ -2279,8 +2279,8 @@ app.on('ready', async () => {
 
                     if (provider === 'ollama') {
                         vectorStoreConfig.embeddingProvider = 'ollama';
-                        vectorStoreConfig.embeddingModel = 'dengcao/Qwen3-Embedding-0.6B:Q8_0';
-                        vectorStoreConfig.ollamaBaseUrl = 'http://localhost:11434';
+                        vectorStoreConfig.embeddingModel = 'granite-embedding:278m';
+                        vectorStoreConfig.ollamaBaseUrl = 'http://localhost:11435';
                         console.log('[DEBUG] Using Ollama embeddings for tool registration');
                     } else if (provider === 'openai') {
                         const openaiApiKey = await settingsService?.getApiKey();
@@ -2292,15 +2292,15 @@ app.on('ready', async () => {
                         } else {
                             // Fall back to Ollama if no OpenAI key
                             vectorStoreConfig.embeddingProvider = 'ollama';
-                            vectorStoreConfig.embeddingModel = 'dengcao/Qwen3-Embedding-0.6B:Q8_0';
-                            vectorStoreConfig.ollamaBaseUrl = 'http://localhost:11434';
+                            vectorStoreConfig.embeddingModel = 'granite-embedding:278m';
+                            vectorStoreConfig.ollamaBaseUrl = 'http://localhost:11435';
                             console.log('[DEBUG] No OpenAI API key, using Ollama for tool registration');
                         }
                     } else {
                         // Default to Ollama
                         vectorStoreConfig.embeddingProvider = 'ollama';
-                        vectorStoreConfig.embeddingModel = 'dengcao/Qwen3-Embedding-0.6B:Q8_0';
-                        vectorStoreConfig.ollamaBaseUrl = 'http://localhost:11434';
+                        vectorStoreConfig.embeddingModel = 'granite-embedding:278m';
+                        vectorStoreConfig.ollamaBaseUrl = 'http://localhost:11435';
                         console.log('[DEBUG] Using default Ollama embeddings for tool registration');
                     }
 
@@ -2556,7 +2556,7 @@ app.on('ready', async () => {
                                     } : undefined,
                                     ollama: currentSettings.ollama || {
                                         model: 'llama3:8b',
-                                        baseUrl: 'http://127.0.0.1:11434',
+                                        baseUrl: 'http://127.0.0.1:11435',
                                         temperature: 0.7
                                     },
                                     anthropic: (currentSettings as any).anthropic,
@@ -2668,7 +2668,7 @@ app.on('ready', async () => {
                                 } : undefined,
                                 ollama: llmSettings?.ollama || {
                                     model: 'llama3:8b',
-                                    baseUrl: 'http://127.0.0.1:11434',
+                                    baseUrl: 'http://127.0.0.1:11435',
                                     temperature: 0.7
                                 },
                                 anthropic: (llmSettings as any)?.anthropic,
@@ -3589,7 +3589,7 @@ graph TD
                             } : undefined,
                             ollama: settings.ollama || {
                                 model: 'llama3:8b',
-                                baseUrl: 'http://127.0.0.1:11434',
+                                baseUrl: 'http://127.0.0.1:11435',
                                 temperature: 0.7
                             },
                             anthropic: (settings as any).anthropic,

@@ -400,7 +400,7 @@ const LLMProviderCard: React.FC<LLMProviderCardProps> = ({
                         <TextField
                             fullWidth
                             label="Base URL"
-                            value={config?.baseUrl || 'http://127.0.0.1:11434'}
+                            value={config?.baseUrl || 'http://127.0.0.1:11435'}
                             onChange={(e) => updateConfig('baseUrl', e.target.value)}
                             sx={{ mb: 2 }}
                         />

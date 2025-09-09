@@ -32,7 +32,7 @@ async function initializeAgent(): Promise<MainAgentExecution> {
         ollama: {
             // model: 'gemma3:1b',  // or any local model you have
             model: 'qwen3:1.7b',  // or any local model you have
-            baseUrl: 'http://127.0.0.1:11434',
+            baseUrl: 'http://127.0.0.1:11435',
             temperature: 0.7
         },
         streaming: true,

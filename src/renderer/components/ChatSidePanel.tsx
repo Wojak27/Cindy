@@ -15,10 +15,11 @@ import {
     InsertDriveFile as FileIcon,
     WbSunny as WeatherIcon,
     Map as MapIcon,
+    Info as InfoIcon,
 } from '@mui/icons-material';
 import WeatherWidget from './WeatherWidget';
 import MapsWidget from './MapsWidget';
-import DocumentWidget from './DocumentWidget';
+import DocumentHandler from './DocumentHandler';
 
 // Widget types
 export type WidgetType = 'document' | 'weather' | 'map';
@@ -162,7 +163,30 @@ const ChatSidePanel: React.FC<ChatSidePanelProps> = ({ widgetType, data, convers
             case 'map':
                 return <MapsWidget mapData={widget.data as MapData} />;
             case 'document':
-                return <DocumentWidget document={widget.data as IndexedFile} />;
+                const file = widget.data as IndexedFile;
+                return (
+                    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                        <Box sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            borderBottom: `1px solid ${theme.palette.divider}`,
+                            p: 1
+                        }}>
+                            <Typography variant="subtitle1" fontWeight={600}>
+                                {file.name}
+                            </Typography>
+                            <IconButton size="small" onClick={() => alert(
+                                `Path: ${file.path}\nSize: ${file.size}\nModified: ${file.mtime}\nChunks: ${file.chunks}`
+                            )}>
+                                <InfoIcon fontSize="small" />
+                            </IconButton>
+                        </Box>
+                        <Box sx={{ flex: 1, overflow: 'auto' }}>
+                            <DocumentHandler filePath={file.path} fileName={file.name} />
+                        </Box>
+                    </Box>
+                );
             default:
                 return <Typography>Unknown widget type</Typography>;
         }
@@ -188,17 +212,17 @@ const ChatSidePanel: React.FC<ChatSidePanelProps> = ({ widgetType, data, convers
                         </IconButton>
                     </Box>
                 </CardContent>
-                
-                <Box sx={{ 
-                    flex: 1, 
-                    display: 'flex', 
-                    alignItems: 'center', 
+
+                <Box sx={{
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
                     justifyContent: 'center',
                     p: 3
                 }}>
-                    <Typography 
-                        variant="body2" 
-                        sx={{ 
+                    <Typography
+                        variant="body2"
+                        sx={{
                             color: theme.palette.text.secondary,
                             textAlign: 'center',
                             fontStyle: 'italic'

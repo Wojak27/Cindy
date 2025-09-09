@@ -498,13 +498,120 @@ const App: React.FC = () => {
     };
 
     const handleTestSidePanelClick = async () => {
-        handleShowDocument({
-            name: 'Test Document.pdf',
-            size: 123456,
-            path: '/path/to/Test Document.pdf',
-            mtime: Date.now(),
-            chunks: 10,
-        })
+        // Cycle through widget types for testing
+        const widgetTypes: WidgetType[] = ['document', 'weather', 'map'];
+        const currentTypeIndex = widgetTypes.indexOf('document'); // Default to weather if none selected
+        const nextTypeIndex = (currentTypeIndex) % widgetTypes.length;
+        const type = widgetTypes[nextTypeIndex];
+
+        console.log('🧪 [Test] Testing side panel with type:', type);
+
+        if (type === 'document') {
+            handleShowDocument({
+                name: 'Test Document.md',
+                size: 123456,
+                path: '/Users/karwo09/code/voice-assistant/data/test-vectorstore/friend.md',
+                mtime: Date.now(),
+                chunks: 10,
+            });
+        } else if (type === 'weather') {
+            // Test weather data
+            const weatherData: WeatherData = {
+                location: 'Stockholm, Sweden',
+                temperature: {
+                    celsius: 22,
+                    fahrenheit: 72,
+                    unit_metric: '°C',
+                    unit_imperial: '°F'
+                },
+                condition: 'Partly Cloudy',
+                humidity: '65%',
+                wind: {
+                    speed_metric: 12,
+                    speed_imperial: 7.5,
+                    direction: 'SW'
+                },
+                pressure: {
+                    metric: 1013,
+                    imperial: 30.01
+                },
+                visibility: {
+                    metric: 10,
+                    imperial: 6.2
+                },
+                uv_index: 5,
+                is_day: true,
+                observation_time: new Date().toISOString(),
+                source: 'Test Data'
+            };
+
+            const newWidget = {
+                type: 'weather' as WidgetType,
+                data: weatherData,
+                timestamp: Date.now()
+            };
+
+            // Add to conversation widgets history
+            const existsInCurrent = conversationWidgets.some(w =>
+                w.type === 'weather' &&
+                (w.data as WeatherData).location === weatherData.location
+            );
+            if (!existsInCurrent) {
+                addWidgetToConversation(newWidget);
+            }
+
+            setSidePanelWidgetType('weather');
+            setSidePanelData(weatherData);
+            setShowSidePanel(true);
+        } else if (type === 'map') {
+            // Test map data
+            const mapData: MapData = {
+                locations: [
+                    {
+                        name: 'Stockholm',
+                        latitude: 59.3293,
+                        longitude: 18.0686,
+                        description: 'Capital of Sweden'
+                    },
+                    {
+                        name: 'Gothenburg',
+                        latitude: 57.7089,
+                        longitude: 11.9746,
+                        description: 'Second largest city in Sweden'
+                    },
+                    {
+                        name: 'Malmö',
+                        latitude: 55.6049,
+                        longitude: 13.0038,
+                        description: 'Southernmost city in Sweden'
+                    }
+                ],
+                center: {
+                    latitude: 59.3293,
+                    longitude: 18.0686
+                },
+                zoom: 6
+            };
+
+            const newWidget = {
+                type: 'map' as WidgetType,
+                data: mapData,
+                timestamp: Date.now()
+            };
+
+            // Add to conversation widgets history
+            const existsInCurrent = conversationWidgets.some(w =>
+                w.type === 'map' &&
+                JSON.stringify(w.data) === JSON.stringify(mapData)
+            );
+            if (!existsInCurrent) {
+                addWidgetToConversation(newWidget);
+            }
+
+            setSidePanelWidgetType('map');
+            setSidePanelData(mapData);
+            setShowSidePanel(true);
+        }
     }
 
     // Retry a failed message
@@ -813,10 +920,10 @@ const App: React.FC = () => {
                 }
 
                 // Check for side view data (weather/map) in streaming updates
-                if (data.chunk.includes('📊 ')) {
+                if (data.chunk.includes('side-panel-weather')) {
 
                     // Try to extract JSON from the side view marker  
-                    const jsonMatch = data.chunk.match(/📊 (.+)/);
+                    const jsonMatch = data.chunk.match(/side-panel-weather (.+)/);
                     if (jsonMatch) {
                         const sideViewContent = jsonMatch[1].trim();
 

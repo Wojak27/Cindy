@@ -49,10 +49,10 @@ describe('LLMProvider', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
-        
+
         // Reset environment variables
         delete process.env.OPENAI_API_KEY;
-        
+
         baseConfig = {
             provider: 'openai',
             openai: {
@@ -83,7 +83,7 @@ describe('LLMProvider', () => {
                 provider: 'ollama',
                 ollama: {
                     model: 'llama2',
-                    baseUrl: 'http://localhost:11434',
+                    baseUrl: 'http://localhost:11435',
                     temperature: 0.7
                 },
                 streaming: true,
@@ -92,8 +92,8 @@ describe('LLMProvider', () => {
 
             const normalizedProvider = new LLMProvider(configWithLocalhost);
             const config = normalizedProvider.getConfig();
-            
-            expect(config.ollama?.baseUrl).toBe('http://127.0.0.1:11434');
+
+            expect(config.ollama?.baseUrl).toBe('http://127.0.0.1:11435');
         });
     });
 
@@ -116,7 +116,7 @@ describe('LLMProvider', () => {
         it('should not initialize twice', async () => {
             await provider.initialize();
             const firstModel = provider.getChatModel();
-            
+
             await provider.initialize(); // Second call
             const secondModel = provider.getChatModel();
 
@@ -149,7 +149,7 @@ describe('LLMProvider', () => {
     describe('testConnections', () => {
         it('should detect OpenAI API key', async () => {
             await provider.initialize();
-            
+
             const status = provider.getConnectionStatus();
             expect(status.openai).toBe(true);
         });
@@ -164,7 +164,7 @@ describe('LLMProvider', () => {
                 provider: 'ollama',
                 ollama: {
                     model: 'llama2',
-                    baseUrl: 'http://127.0.0.1:11434',
+                    baseUrl: 'http://127.0.0.1:11435',
                     temperature: 0.7
                 },
                 streaming: true,
@@ -173,9 +173,9 @@ describe('LLMProvider', () => {
 
             await ollamaProvider.initialize();
             const status = ollamaProvider.getConnectionStatus();
-            
+
             expect(mockedAxios.get).toHaveBeenCalledWith(
-                'http://127.0.0.1:11434/api/tags',
+                'http://127.0.0.1:11435/api/tags',
                 expect.objectContaining({
                     timeout: 2000,
                     validateStatus: expect.any(Function)
@@ -191,7 +191,7 @@ describe('LLMProvider', () => {
                 provider: 'ollama',
                 ollama: {
                     model: 'llama2',
-                    baseUrl: 'http://127.0.0.1:11434',
+                    baseUrl: 'http://127.0.0.1:11435',
                     temperature: 0.7
                 },
                 streaming: true,
@@ -200,7 +200,7 @@ describe('LLMProvider', () => {
 
             await ollamaProvider.initialize();
             const status = ollamaProvider.getConnectionStatus();
-            
+
             expect(status.ollama).toBe(false);
         });
     });
@@ -224,7 +224,7 @@ describe('LLMProvider', () => {
         it('should create model without temperature for specific models', async () => {
             const nanoConfig = { ...baseConfig };
             nanoConfig.openai!.model = 'gpt-5-nano';
-            
+
             const nanoProvider = new LLMProvider(nanoConfig);
             await nanoProvider.initialize();
 
@@ -267,7 +267,7 @@ describe('LLMProvider', () => {
                 provider: 'ollama',
                 ollama: {
                     model: 'llama2',
-                    baseUrl: 'http://127.0.0.1:11434',
+                    baseUrl: 'http://127.0.0.1:11435',
                     temperature: 0.7
                 },
                 streaming: true,
@@ -279,7 +279,7 @@ describe('LLMProvider', () => {
 
             const { ChatOllama } = require('@langchain/ollama');
             expect(ChatOllama).toHaveBeenCalledWith({
-                baseUrl: 'http://127.0.0.1:11434',
+                baseUrl: 'http://127.0.0.1:11435',
                 model: 'llama2',
                 temperature: 0.7,
                 numPredict: -1,
@@ -312,7 +312,7 @@ describe('LLMProvider', () => {
 
             const autoProvider = new LLMProvider(autoConfig);
             await autoProvider.initialize();
-            
+
             expect(autoProvider.getCurrentProvider()).toBe('openai');
         });
 
@@ -387,7 +387,7 @@ describe('LLMProvider', () => {
         it('should emit invoke events', async () => {
             const startSpy = jest.fn();
             const completeSpy = jest.fn();
-            
+
             provider.on('invokeStart', startSpy);
             provider.on('invokeComplete', completeSpy);
 
@@ -469,19 +469,19 @@ describe('LLMProvider', () => {
     describe('stream', () => {
         beforeEach(async () => {
             await provider.initialize();
-            
+
             // Mock async iterator
             const mockChunks = [
                 { content: 'Hello ' },
                 { content: 'world!' }
             ];
-            
+
             async function* mockStreamGenerator() {
                 for (const chunk of mockChunks) {
                     yield chunk;
                 }
             }
-            
+
             mockChatModel.stream.mockResolvedValue(mockStreamGenerator());
         });
 
@@ -506,7 +506,7 @@ describe('LLMProvider', () => {
             const startSpy = jest.fn();
             const chunkSpy = jest.fn();
             const completeSpy = jest.fn();
-            
+
             provider.on('streamStart', startSpy);
             provider.on('streamChunk', chunkSpy);
             provider.on('streamComplete', completeSpy);
@@ -535,13 +535,13 @@ describe('LLMProvider', () => {
                 { content: '' }, // Empty chunk
                 { content: 'world!' }
             ];
-            
+
             async function* mockStreamWithEmpty() {
                 for (const chunk of mockChunksWithEmpty) {
                     yield chunk;
                 }
             }
-            
+
             mockChatModel.stream.mockResolvedValue(mockStreamWithEmpty());
 
             const chunks: string[] = [];
@@ -564,7 +564,7 @@ describe('LLMProvider', () => {
             mockChatModel.stream.mockResolvedValue(mockGen());
 
             const result = await provider.chat([{ role: 'user', content: 'Hello' }]);
-            
+
             // Should return async generator
             expect(result).toBeDefined();
             expect(typeof (result as any)[Symbol.asyncIterator]).toBe('function');
@@ -574,7 +574,7 @@ describe('LLMProvider', () => {
             const nonStreamingConfig = { ...baseConfig, streaming: false };
             const nonStreamingProvider = new LLMProvider(nonStreamingConfig);
             await nonStreamingProvider.initialize();
-            
+
             mockChatModel.invoke.mockResolvedValue(new AIMessage('Response'));
 
             const result = await nonStreamingProvider.chat([{ role: 'user', content: 'Hello' }]);
@@ -720,7 +720,7 @@ describe('LLMProvider', () => {
                 provider: 'ollama',
                 ollama: {
                     model: 'llama2',
-                    baseUrl: 'http://127.0.0.1:11434',
+                    baseUrl: 'http://127.0.0.1:11435',
                     temperature: 0.7
                 },
                 streaming: true,
@@ -742,7 +742,7 @@ describe('LLMProvider', () => {
                 provider: 'ollama',
                 ollama: {
                     model: 'llama2',
-                    baseUrl: 'http://127.0.0.1:11434',
+                    baseUrl: 'http://127.0.0.1:11435',
                     temperature: 0.7
                 },
                 streaming: true,
@@ -791,7 +791,7 @@ describe('LLMProvider', () => {
                 provider: 'ollama',
                 ollama: {
                     model: 'llama2',
-                    baseUrl: 'http://127.0.0.1:11434',
+                    baseUrl: 'http://127.0.0.1:11435',
                     temperature: 0.7
                 },
                 streaming: true,
@@ -810,7 +810,7 @@ describe('LLMProvider', () => {
 
                 expect(success).toBe(true);
                 expect(mockedAxios.post).toHaveBeenCalledWith(
-                    'http://127.0.0.1:11434/api/pull',
+                    'http://127.0.0.1:11435/api/pull',
                     { name: 'llama2' }
                 );
             });
@@ -897,10 +897,10 @@ describe('LLMProvider', () => {
 
         it('should emit error events', async () => {
             await provider.initialize();
-            
+
             const errorSpy = jest.fn();
             provider.on('invokeError', errorSpy);
-            
+
             mockChatModel.invoke.mockRejectedValue(new Error('Test error'));
 
             await expect(provider.invoke([{ role: 'user', content: 'Hello' }]))
@@ -928,7 +928,7 @@ describe('LLMProvider', () => {
 
             // Access private method for testing
             const isBaseMessageArray = (provider as any).isBaseMessageArray;
-            
+
             expect(isBaseMessageArray(baseMessages)).toBe(true);
             expect(isBaseMessageArray(chatMessages)).toBe(false);
             expect(isBaseMessageArray([])).toBe(false);

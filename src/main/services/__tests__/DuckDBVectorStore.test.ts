@@ -102,7 +102,7 @@ describe('DuckDBVectorStore', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
-        
+
         baseConfig = {
             databasePath: '/tmp/test-vector.db',
             embeddingProvider: 'openai' as const,
@@ -127,7 +127,7 @@ describe('DuckDBVectorStore', () => {
         it('should create DuckDBVectorStore with OpenAI provider', () => {
             expect(vectorStore).toBeInstanceOf(DuckDBVectorStore);
             expect(vectorStore).toBeInstanceOf(EventEmitter);
-            
+
             const { OpenAIEmbeddings } = require('@langchain/openai');
             expect(OpenAIEmbeddings).toHaveBeenCalledWith({
                 modelName: 'text-embedding-ada-002',
@@ -139,15 +139,15 @@ describe('DuckDBVectorStore', () => {
             const ollamaConfig = {
                 databasePath: '/tmp/test-vector.db',
                 embeddingProvider: 'ollama' as const,
-                ollamaBaseUrl: 'http://localhost:11434'
+                ollamaBaseUrl: 'http://localhost:11435'
             };
 
             const ollamaStore = new DuckDBVectorStore(ollamaConfig);
 
             const { OllamaEmbeddings } = require('@langchain/ollama');
             expect(OllamaEmbeddings).toHaveBeenCalledWith({
-                model: 'dengcao/Qwen3-Embedding-0.6B:Q8_0',
-                baseUrl: 'http://localhost:11434'
+                model: 'granite-embedding:278m',
+                baseUrl: 'http://localhost:11435'
             });
         });
 
@@ -196,11 +196,11 @@ describe('DuckDBVectorStore', () => {
 
             const { Database } = require('duckdb-async');
             expect(Database.create).toHaveBeenCalledWith('/tmp/test-vector.db');
-            
+
             // Should install VSS extension
             expect(mockDatabase.exec).toHaveBeenCalledWith('INSTALL vss;');
             expect(mockDatabase.exec).toHaveBeenCalledWith('LOAD vss;');
-            
+
             // Should create tables
             expect(mockDatabase.exec).toHaveBeenCalledWith(
                 expect.stringContaining('CREATE TABLE IF NOT EXISTS documents')
@@ -359,9 +359,9 @@ describe('DuckDBVectorStore', () => {
 
         it('should sanitize content for database storage', async () => {
             const documents = [
-                new Document({ 
-                    pageContent: "Content with 'quotes' and \"double quotes\"", 
-                    metadata: { source: 'test' } 
+                new Document({
+                    pageContent: "Content with 'quotes' and \"double quotes\"",
+                    metadata: { source: 'test' }
                 })
             ];
 
@@ -385,7 +385,7 @@ describe('DuckDBVectorStore', () => {
             ];
 
             mockOpenAIEmbeddings.embedDocuments.mockResolvedValueOnce([[0.1, 0.2, 0.3]]);
-            
+
             const preparedStatement = await mockDatabase.prepare();
             preparedStatement.run
                 .mockRejectedValueOnce(new Error('First try failed'))
@@ -405,7 +405,7 @@ describe('DuckDBVectorStore', () => {
 
         it('should perform vector similarity search', async () => {
             const query = 'test query';
-            
+
             mockOpenAIEmbeddings.embedQuery.mockResolvedValueOnce([0.1, 0.2, 0.3]);
             mockDatabase.all.mockResolvedValueOnce([
                 {
@@ -421,13 +421,13 @@ describe('DuckDBVectorStore', () => {
             expect(results).toHaveLength(1);
             expect(results[0].pageContent).toBe('Similar content');
             expect(results[0].metadata).toEqual({ source: 'test' });
-            
+
             expect(mockOpenAIEmbeddings.embedQuery).toHaveBeenCalledWith(query);
         });
 
         it('should fallback to text search when vector search fails', async () => {
             const query = 'test query';
-            
+
             mockOpenAIEmbeddings.embedQuery.mockResolvedValueOnce([0.1, 0.2, 0.3]);
             mockDatabase.all
                 .mockRejectedValueOnce(new Error('Vector search failed')) // First method fails
@@ -452,7 +452,7 @@ describe('DuckDBVectorStore', () => {
 
         it('should handle query embedding errors', async () => {
             const query = 'test query';
-            
+
             mockOpenAIEmbeddings.embedQuery.mockRejectedValueOnce(new Error('Embedding failed'));
 
             await expect(vectorStore.similaritySearch(query)).rejects.toThrow('Embedding failed');
@@ -460,7 +460,7 @@ describe('DuckDBVectorStore', () => {
 
         it('should return empty array when no results found', async () => {
             const query = 'nonexistent query';
-            
+
             mockOpenAIEmbeddings.embedQuery.mockResolvedValueOnce([0.1, 0.2, 0.3]);
             mockDatabase.all.mockResolvedValue([]); // All search methods return empty
 
@@ -472,7 +472,7 @@ describe('DuckDBVectorStore', () => {
         it('should limit results to k parameter', async () => {
             const query = 'test query';
             const k = 2;
-            
+
             mockOpenAIEmbeddings.embedQuery.mockResolvedValueOnce([0.1, 0.2, 0.3]);
             mockDatabase.all.mockResolvedValueOnce([
                 { id: '1', content: 'Result 1', metadata: '{}', distance: 0.1 },
@@ -482,7 +482,7 @@ describe('DuckDBVectorStore', () => {
             const results = await vectorStore.similaritySearch(query, k);
 
             expect(results).toHaveLength(2);
-            
+
             // Should use LIMIT in query
             expect(mockDatabase.all).toHaveBeenCalledWith(
                 expect.stringContaining('LIMIT 2')
@@ -497,14 +497,14 @@ describe('DuckDBVectorStore', () => {
 
         it('should index all files in folder', async () => {
             const folderPath = '/test/folder';
-            
+
             mockFs.existsSync.mockReturnValue(true);
             mockFs.readdirSync.mockReturnValue(['file1.txt', 'file2.pdf', 'subdir']);
             mockFs.lstatSync
                 .mockReturnValueOnce({ isDirectory: () => false }) // file1.txt
                 .mockReturnValueOnce({ isDirectory: () => false }) // file2.pdf
                 .mockReturnValueOnce({ isDirectory: () => true });  // subdir
-            
+
             mockFs.statSync.mockReturnValue({
                 size: 1000,
                 mtime: new Date(),
@@ -539,7 +539,7 @@ describe('DuckDBVectorStore', () => {
 
         it('should handle file indexing errors gracefully', async () => {
             const folderPath = '/test/folder';
-            
+
             mockFs.existsSync.mockReturnValue(true);
             mockFs.readdirSync.mockReturnValue(['file1.txt', 'file2.txt']);
             mockFs.lstatSync.mockReturnValue({ isDirectory: () => false });
@@ -569,7 +569,7 @@ describe('DuckDBVectorStore', () => {
 
         it('should skip unsupported file types', async () => {
             const folderPath = '/test/folder';
-            
+
             mockFs.existsSync.mockReturnValue(true);
             mockFs.readdirSync.mockReturnValue(['file.txt', 'image.jpg', 'video.mp4']);
             mockFs.lstatSync.mockReturnValue({ isDirectory: () => false });
@@ -614,7 +614,7 @@ describe('DuckDBVectorStore', () => {
 
         it('should handle non-existent folder', async () => {
             const folderPath = '/nonexistent/folder';
-            
+
             mockFs.existsSync.mockReturnValue(false);
 
             const result = await vectorStore.indexFolder(folderPath);
@@ -676,7 +676,7 @@ describe('DuckDBVectorStore', () => {
 
         it('should detect new, modified, and deleted files', async () => {
             const folderPath = '/test/folder';
-            
+
             // Mock current files in directory
             mockFs.existsSync.mockReturnValue(true);
             mockFs.readdirSync.mockReturnValue(['new.txt', 'modified.txt', 'unchanged.txt']);
@@ -688,21 +688,21 @@ describe('DuckDBVectorStore', () => {
 
             // Mock indexed files in database
             mockDatabase.all.mockResolvedValueOnce([
-                { 
+                {
                     file_path: '/test/folder/modified.txt',
                     file_name: 'modified.txt',
                     file_size: 1000,
                     file_mtime: '2023-01-02T00:00:00.000Z', // older
                     chunk_count: 2
                 },
-                { 
+                {
                     file_path: '/test/folder/unchanged.txt',
                     file_name: 'unchanged.txt',
                     file_size: 1500,
                     file_mtime: '2023-01-02T00:00:00.000Z', // same
                     chunk_count: 3
                 },
-                { 
+                {
                     file_path: '/test/folder/deleted.txt',
                     file_name: 'deleted.txt',
                     file_size: 500,
@@ -722,7 +722,7 @@ describe('DuckDBVectorStore', () => {
 
         it('should return no changes when directory matches index', async () => {
             const folderPath = '/test/folder';
-            
+
             mockFs.existsSync.mockReturnValue(true);
             mockFs.readdirSync.mockReturnValue(['file.txt']);
             mockFs.lstatSync.mockReturnValue({ isDirectory: () => false });
@@ -749,7 +749,7 @@ describe('DuckDBVectorStore', () => {
 
         it('should handle non-existent directory', async () => {
             const folderPath = '/nonexistent';
-            
+
             mockFs.existsSync.mockReturnValue(false);
 
             const status = await vectorStore.checkDirectoryStatus(folderPath);
@@ -779,7 +779,7 @@ describe('DuckDBVectorStore', () => {
         it('should clear in-memory indexed files map', async () => {
             // Add some files to in-memory map
             (vectorStore as any).indexedFiles.set('/test/file.txt', { name: 'test' });
-            
+
             await vectorStore.clearIndex();
 
             expect((vectorStore as any).indexedFiles.size).toBe(0);
@@ -849,7 +849,7 @@ describe('DuckDBVectorStore', () => {
 
         it('should handle retriever methods correctly', async () => {
             const retriever = vectorStore.asRetriever();
-            
+
             const docs = [new Document({ pageContent: 'test', metadata: {} })];
             mockOpenAIEmbeddings.embedDocuments.mockResolvedValueOnce([[0.1, 0.2, 0.3]]);
             mockDatabase.all.mockResolvedValueOnce([{ count: 1 }]);
@@ -873,7 +873,7 @@ describe('DuckDBVectorStore', () => {
 
             await expect(uninitializedStore.addDocuments([]))
                 .rejects.toThrow('Database not initialized');
-            
+
             await expect(uninitializedStore.similaritySearch('query'))
                 .rejects.toThrow('Database not initialized');
         });

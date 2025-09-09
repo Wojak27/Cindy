@@ -196,14 +196,14 @@ class HotpotQATrainer {
 
     private async initializeResultsDatabase(): Promise<void> {
         this.log('📊 Initializing results database...');
-        
+
         // Generate run ID
         this.currentRunId = `run_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-        
+
         // Determine database path
-        const resultsDbPath = this.config.resultsDbPath || 
+        const resultsDbPath = this.config.resultsDbPath ||
             path.join(os.homedir(), '.hotpot-qa', 'results.db');
-        
+
         this.resultsDb.dbPath = resultsDbPath;
         this.resultsDb.isTemporary = !this.config.persistResults;
 
@@ -216,10 +216,10 @@ class HotpotQATrainer {
         try {
             // Initialize DuckDB for results
             this.resultsDb.db = await Database.create(resultsDbPath);
-            
+
             // Create results schema
             await this.createResultsSchema();
-            
+
             this.log(`✅ Results database initialized at: ${resultsDbPath}`);
             this.log(`📝 Run ID: ${this.currentRunId}`);
         } catch (error) {
@@ -307,7 +307,7 @@ class HotpotQATrainer {
                 vectorConfig.openaiApiKey = this.config.openaiApiKey;
                 break;
             case 'ollama':
-                vectorConfig.ollamaBaseUrl = this.config.ollamaBaseUrl || 'http://127.0.0.1:11434';
+                vectorConfig.ollamaBaseUrl = this.config.ollamaBaseUrl || 'http://127.0.0.1:11435';
                 break;
             case 'huggingface':
                 vectorConfig.huggingfaceModel = 'Xenova/all-MiniLM-L6-v2';
@@ -339,7 +339,7 @@ class HotpotQATrainer {
         } else if (this.config.llmProvider === 'ollama') {
             llmConfig.ollama = {
                 model: 'qwen3:1.7b',
-                baseUrl: this.config.ollamaBaseUrl || 'http://127.0.0.1:11434',
+                baseUrl: this.config.ollamaBaseUrl || 'http://127.0.0.1:11435',
                 temperature: 0.1
             };
         }
@@ -562,14 +562,14 @@ class HotpotQATrainer {
             // Load from local file
             this.log(`📂 Loading from local file: ${datasetPath}`);
             const data = JSON.parse(fs.readFileSync(datasetPath, 'utf-8'));
-            
+
             // Handle official HotpotQA format
             const rawExamples = Array.isArray(data) ? data : data.data || [];
-            
+
             // Convert to our internal format and validate
             examples = rawExamples.map(this.convertToInternalFormat.bind(this))
-                                 .filter(example => example !== null) as HotpotQAExample[];
-            
+                .filter(example => example !== null) as HotpotQAExample[];
+
             this.log(`📋 Converted ${examples.length} valid examples from ${rawExamples.length} raw examples`);
         } else {
             // Create sample data for demonstration
@@ -588,7 +588,7 @@ class HotpotQATrainer {
         this.log(`✅ Final dataset: ${examples.length} examples ready for evaluation`);
         return { examples, totalCount: examples.length };
     }
-    
+
     /**
      * Convert official HotpotQA format to internal format
      */
@@ -599,7 +599,7 @@ class HotpotQATrainer {
                 this.log(`⚠️ Skipping invalid example: missing required fields`, 'warn');
                 return null;
             }
-            
+
             return {
                 _id: rawExample._id,
                 question: rawExample.question,
@@ -614,59 +614,59 @@ class HotpotQATrainer {
             return null;
         }
     }
-    
+
     /**
      * Filter dataset based on question type and level for focused evaluation
      */
     private filterDataset(examples: HotpotQAExample[]): HotpotQAExample[] {
         let filtered = examples;
-        
+
         // Filter by question type if specified in config
         if ((this.config as any).questionType) {
             const targetType = (this.config as any).questionType;
             filtered = filtered.filter(ex => ex.type === targetType);
             this.log(`🔍 Filtered to ${targetType} questions: ${filtered.length} examples`);
         }
-        
+
         // Filter by difficulty level if specified
         if ((this.config as any).difficultyLevel) {
             const targetLevel = (this.config as any).difficultyLevel;
             filtered = filtered.filter(ex => ex.level === targetLevel);
             this.log(`🔍 Filtered to ${targetLevel} difficulty: ${filtered.length} examples`);
         }
-        
+
         return filtered;
     }
-    
+
     /**
      * Download official HotpotQA dev set if not present
      */
     async downloadOfficialDevSet(): Promise<string> {
         const devSetPath = path.join(__dirname, 'hotpot_dev_distractor_v1.json');
-        
+
         if (fs.existsSync(devSetPath)) {
             this.log(`✅ Found existing dev set: ${devSetPath}`);
             return devSetPath;
         }
-        
+
         this.log('📥 Official HotpotQA dev set not found locally');
         this.log('🌐 To download the official dev set:');
         this.log('   wget http://curtis.ml.cmu.edu/datasets/hotpot/hotpot_dev_distractor_v1.json');
         this.log('   or');
         this.log('   curl -O http://curtis.ml.cmu.edu/datasets/hotpot/hotpot_dev_distractor_v1.json');
-        
+
         throw new Error('Official dev set not found. Please download manually.');
     }
-    
+
     /**
      * Validate that the dataset follows HotpotQA format
      */
     private validateHotpotQAFormat(examples: HotpotQAExample[]): boolean {
         const requiredFields = ['_id', 'question', 'answer', 'supporting_facts', 'context'];
-        
+
         for (let i = 0; i < Math.min(10, examples.length); i++) {
             const example = examples[i];
-            
+
             // Check required fields
             for (const field of requiredFields) {
                 if (!(field in example)) {
@@ -674,20 +674,20 @@ class HotpotQATrainer {
                     return false;
                 }
             }
-            
+
             // Validate supporting facts format
             if (!Array.isArray(example.supporting_facts)) {
                 this.log(`❌ Invalid supporting_facts format in example ${example._id}`, 'error');
                 return false;
             }
-            
+
             // Validate context format
             if (!Array.isArray(example.context)) {
                 this.log(`❌ Invalid context format in example ${example._id}`, 'error');
                 return false;
             }
         }
-        
+
         this.log('✅ Dataset format validation passed');
         return true;
     }
@@ -847,7 +847,7 @@ class HotpotQATrainer {
         this.log(`📊 Training on ${trainExamples.length} examples, evaluating on ${evalExamples.length} examples`);
 
         // Create test run record
-        const runId = this.config.persistResults ? 
+        const runId = this.config.persistResults ?
             await this.createTestRun(dataset.examples.length, trainExamples.length, evalExamples.length) : null;
 
         // For this implementation, we'll focus on evaluation since we're using pre-trained models
@@ -877,13 +877,13 @@ class HotpotQATrainer {
                 // Calculate answer metrics using official HotpotQA evaluation
                 const exactMatch = this.calculateExactMatch(result.answer, example.answer);
                 const f1 = this.calculateF1Score(result.answer, example.answer);
-                
+
                 // Calculate supporting facts metrics
                 const [sfPrecision, sfRecall, sfF1] = this.calculateSupportingFactMetrics(
                     result.supporting_facts,
                     example.supporting_facts
                 );
-                
+
                 // Joint metrics (both answer and supporting facts must be correct)
                 const jointEM = exactMatch === 1 && sfF1 === 1 ? 1 : 0;
                 const jointF1 = (f1 + sfF1) / 2; // Average of answer F1 and supporting facts F1
@@ -892,7 +892,7 @@ class HotpotQATrainer {
                 totalF1 += f1;
                 totalSupportingFactPrecision += sfPrecision;
                 totalSupportingFactRecall += sfRecall;
-                
+
                 // Track additional metrics for comprehensive evaluation
                 if (!this.additionalMetrics) {
                     this.additionalMetrics = {
@@ -904,11 +904,11 @@ class HotpotQATrainer {
                         bothCorrect: 0
                     };
                 }
-                
+
                 this.additionalMetrics.totalSupportingFactF1 += sfF1;
                 this.additionalMetrics.totalJointEM += jointEM;
                 this.additionalMetrics.totalJointF1 += jointF1;
-                
+
                 // Track different types of correctness
                 if (exactMatch === 1 && sfF1 < 1) {
                     this.additionalMetrics.answerOnlyCorrect += 1;
@@ -952,7 +952,7 @@ class HotpotQATrainer {
             } catch (error) {
                 const errorMsg = error instanceof Error ? error.message : String(error);
                 this.log(`❌ Error evaluating example ${i + 1}: ${errorMsg}`, 'error');
-                
+
                 // Create error test result
                 testResult = {
                     question_id: example._id,
@@ -991,7 +991,7 @@ class HotpotQATrainer {
             f1_score: totalF1 / evalExamples.length,
             supporting_fact_precision: totalSupportingFactPrecision / evalExamples.length,
             supporting_fact_recall: totalSupportingFactRecall / evalExamples.length,
-            supporting_fact_f1: this.additionalMetrics ? 
+            supporting_fact_f1: this.additionalMetrics ?
                 this.additionalMetrics.totalSupportingFactF1 / evalExamples.length :
                 2 * (totalSupportingFactPrecision * totalSupportingFactRecall) /
                 (totalSupportingFactPrecision + totalSupportingFactRecall + 1e-10),
@@ -999,7 +999,7 @@ class HotpotQATrainer {
             reasoning_accuracy: totalReasoningAccuracy / evalExamples.length,
             total_examples: evalExamples.length
         };
-        
+
         // Store additional HotpotQA-specific metrics
         if (this.additionalMetrics) {
             (metrics as any).joint_exact_match = this.additionalMetrics.totalJointEM / evalExamples.length;
@@ -1017,11 +1017,11 @@ class HotpotQATrainer {
         this.evaluationMetrics = metrics;
         this.testResults = testResults;
         this.log('✅ Evaluation complete');
-        
+
         if (this.config.persistResults) {
             this.log(`💾 Results saved to: ${this.config.resultsDbPath}`);
         }
-        
+
         return metrics;
     }
 
@@ -1053,19 +1053,19 @@ class HotpotQATrainer {
     private normalizeAnswer(text: string): string {
         // Remove articles
         const articles = ['a', 'an', 'the'];
-        
+
         // Convert to lowercase and tokenize
         let tokens = text.toLowerCase().split(/\s+/);
-        
+
         // Remove articles
         tokens = tokens.filter(token => !articles.includes(token));
-        
+
         // Remove punctuation and join
         const cleanedText = tokens.join(' ')
             .replace(/[^\w\s]/g, '')  // Remove punctuation
             .replace(/\s+/g, ' ')     // Normalize whitespace
             .trim();
-            
+
         return cleanedText;
     }
 
@@ -1086,33 +1086,33 @@ class HotpotQATrainer {
     private calculateF1Score(predicted: string, actual: string): number {
         const predNorm = this.normalizeAnswer(predicted);
         const actualNorm = this.normalizeAnswer(actual);
-        
+
         // Tokenize
         const predTokens = predNorm.split(/\s+/);
         const actualTokens = actualNorm.split(/\s+/);
-        
+
         if (predTokens.length === 0 && actualTokens.length === 0) {
             return 1.0;
         }
-        
+
         if (predTokens.length === 0 || actualTokens.length === 0) {
             return 0.0;
         }
-        
+
         // Count common tokens
         const predCounter = new Map<string, number>();
         const actualCounter = new Map<string, number>();
-        
+
         // Count predicted tokens
         for (const token of predTokens) {
             predCounter.set(token, (predCounter.get(token) || 0) + 1);
         }
-        
+
         // Count actual tokens
         for (const token of actualTokens) {
             actualCounter.set(token, (actualCounter.get(token) || 0) + 1);
         }
-        
+
         // Count intersection
         let intersection = 0;
         for (const [token, count] of Array.from(predCounter.entries())) {
@@ -1120,14 +1120,14 @@ class HotpotQATrainer {
                 intersection += Math.min(count, actualCounter.get(token)!);
             }
         }
-        
+
         const precision = intersection / predTokens.length;
         const recall = intersection / actualTokens.length;
-        
+
         if (precision + recall === 0) {
             return 0;
         }
-        
+
         return (2 * precision * recall) / (precision + recall);
     }
 
@@ -1143,7 +1143,7 @@ class HotpotQATrainer {
         const actualFacts = new Set(
             actual.map(f => `${this.normalizeTitle(f.title)}:${f.sent_id}`)
         );
-        
+
         // Convert predicted supporting facts (assume they come as "title:sent_id" format)
         const predFacts = new Set(
             predicted.map(fact => {
@@ -1152,20 +1152,20 @@ class HotpotQATrainer {
                 return normalized;
             }).filter(fact => fact !== null)
         ) as Set<string>;
-        
+
         // Calculate metrics
         if (predFacts.size === 0 && actualFacts.size === 0) {
             return [1.0, 1.0, 1.0]; // Perfect match when both are empty
         }
-        
+
         if (predFacts.size === 0) {
             return [0.0, 0.0, 0.0]; // No predictions
         }
-        
+
         if (actualFacts.size === 0) {
             return [0.0, 0.0, 0.0]; // No ground truth
         }
-        
+
         // Count intersection
         let intersection = 0;
         for (const predFact of Array.from(predFacts)) {
@@ -1173,21 +1173,21 @@ class HotpotQATrainer {
                 intersection++;
             }
         }
-        
+
         const precision = intersection / predFacts.size;
         const recall = intersection / actualFacts.size;
         const f1 = precision + recall > 0 ? (2 * precision * recall) / (precision + recall) : 0;
-        
+
         return [precision, recall, f1];
     }
-    
+
     /**
      * Normalize title for supporting fact matching
      */
     private normalizeTitle(title: string): string {
         return title.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, '_');
     }
-    
+
     /**
      * Extract supporting fact from prediction string
      * Tries to identify title:sent_id pattern
@@ -1202,7 +1202,7 @@ class HotpotQATrainer {
             // Pattern: "Title states that" -> extract title
             /^([^\s]+(?:\s+[^\s]+)*?)\s+(?:states|says|mentions)/i
         ];
-        
+
         for (let i = 0; i < patterns.length; i++) {
             const match = fact.match(patterns[i]);
             if (match && match[1]) {
@@ -1211,7 +1211,7 @@ class HotpotQATrainer {
                 return `${title}:0`;
             }
         }
-        
+
         // Fallback: try to use the whole fact as a title
         const normalized = this.normalizeTitle(fact);
         return normalized ? `${normalized}:0` : null;
@@ -1225,27 +1225,27 @@ class HotpotQATrainer {
         console.log('='.repeat(80));
         console.log(`📊 Total Examples Evaluated: ${metrics.total_examples}`);
         console.log('');
-        
+
         // Core Answer Metrics (following official HotpotQA evaluation)
         console.log('📝 ANSWER EVALUATION:');
         console.log(`   🎯 Exact Match (EM): ${(metrics.exact_match * 100).toFixed(2)}%`);
         console.log(`   📏 F1 Score: ${(metrics.f1_score * 100).toFixed(2)}%`);
         console.log('');
-        
+
         // Supporting Facts Evaluation
         console.log('📚 SUPPORTING FACTS EVALUATION:');
         console.log(`   🔍 Precision: ${(metrics.supporting_fact_precision * 100).toFixed(2)}%`);
         console.log(`   📖 Recall: ${(metrics.supporting_fact_recall * 100).toFixed(2)}%`);
         console.log(`   🔗 F1 Score: ${(metrics.supporting_fact_f1 * 100).toFixed(2)}%`);
         console.log('');
-        
+
         // Joint Evaluation (HotpotQA standard)
         if (metrics.joint_exact_match !== undefined) {
             console.log('🤝 JOINT EVALUATION (Answer + Supporting Facts):');
             console.log(`   🎯 Joint Exact Match: ${(metrics.joint_exact_match * 100).toFixed(2)}%`);
             console.log(`   📏 Joint F1 Score: ${(metrics.joint_f1 * 100).toFixed(2)}%`);
             console.log('');
-            
+
             // Detailed Breakdown
             console.log('🔍 PERFORMANCE BREAKDOWN:');
             console.log(`   ✅ Both Correct: ${(metrics.both_correct * 100).toFixed(2)}%`);
@@ -1253,14 +1253,14 @@ class HotpotQATrainer {
             console.log(`   📚 Supporting Facts Only Correct: ${(metrics.supporting_facts_only_correct * 100).toFixed(2)}%`);
             console.log('');
         }
-        
+
         // Additional System Metrics
         console.log('⚙️ SYSTEM PERFORMANCE:');
         console.log(`   🦘 Average Hops per Question: ${metrics.average_hops.toFixed(2)}`);
         console.log(`   🧠 Reasoning Confidence: ${(metrics.reasoning_accuracy * 100).toFixed(2)}%`);
-        
+
         console.log('='.repeat(80));
-        
+
         // Summary comparison with official baselines
         console.log('📈 HOTPOTQA LEADERBOARD METRICS:');
         console.log(`   Answer EM: ${(metrics.exact_match * 100).toFixed(2)}% | Answer F1: ${(metrics.f1_score * 100).toFixed(2)}%`);
@@ -1274,7 +1274,7 @@ class HotpotQATrainer {
         }
 
         const runId = `run_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
-        
+
         await this.resultsDb.db.run(
             `INSERT INTO test_runs (
                 run_id, timestamp, config, 
@@ -1594,7 +1594,7 @@ async function main(): Promise<void> {
         maxExamples: parseInt(args.find((_, i) => args[i - 1] === '--max-examples') || '50'),
         evaluationSplit: parseFloat(args.find((_, i) => args[i - 1] === '--eval-split') || '0.8'),
         openaiApiKey: process.env.OPENAI_API_KEY,
-        ollamaBaseUrl: args.find((_, i) => args[i - 1] === '--ollama-url') || 'http://127.0.0.1:11434',
+        ollamaBaseUrl: args.find((_, i) => args[i - 1] === '--ollama-url') || 'http://127.0.0.1:11435',
         verbose: args.includes('--verbose') || args.includes('-v'),
         persistResults: args.includes('--persist-results'),
         keepVectorDb: args.includes('--keep-vector-db'),
@@ -1618,7 +1618,7 @@ async function main(): Promise<void> {
     console.log(`   Official Evaluation Mode: ${config.officialEval ? 'Yes' : 'No'}`);
     console.log(`   Vector DB: ${config.vectorDbPath}`);
     console.log(`   Persist Results: ${config.persistResults ? 'Yes' : 'No'}`);
-    
+
     if (config.officialEval) {
         console.log(`\n🏆 OFFICIAL HOTPOTQA EVALUATION MODE`);
         console.log(`   Using official metrics and evaluation protocol`);
@@ -1642,7 +1642,7 @@ async function main(): Promise<void> {
                 console.log(`📝 Continuing with sample data for demonstration`);
             }
         }
-        
+
         const dataset = await trainer.loadHotpotQADataset(datasetPath);
 
         // Index context into vector database

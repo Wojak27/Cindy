@@ -447,7 +447,7 @@ class SettingsService extends EventEmitter {
                 },
                 ollama: {
                     model: 'qwen3:1.7b',
-                    baseUrl: 'http://127.0.0.1:11434',
+                    baseUrl: 'http://127.0.0.1:11435',
                     temperature: 0.7
                 }
             },

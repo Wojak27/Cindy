@@ -72,61 +72,61 @@ const ModernSettingsPanel: React.FC = () => {
     const [selectedProvider, setSelectedProvider] = useState(settings?.llm?.provider || 'ollama');
     // Initialize provider configs with preserved API keys from settings
     const [providerConfigs, setProviderConfigs] = useState({
-        openai: { 
-            model: settings?.llm?.openai?.model || 'gpt-4o-mini', 
-            apiKey: settings?.llm?.openai?.apiKey || '', 
-            temperature: settings?.llm?.openai?.temperature || 0.7, 
-            maxTokens: settings?.llm?.openai?.maxTokens || 4096 
+        openai: {
+            model: settings?.llm?.openai?.model || 'gpt-4o-mini',
+            apiKey: settings?.llm?.openai?.apiKey || '',
+            temperature: settings?.llm?.openai?.temperature || 0.7,
+            maxTokens: settings?.llm?.openai?.maxTokens || 4096
         },
-        anthropic: { 
-            model: settings?.llm?.anthropic?.model || 'claude-3-haiku-20240307', 
-            apiKey: settings?.llm?.anthropic?.apiKey || '', 
-            temperature: settings?.llm?.anthropic?.temperature || 0.7, 
-            maxTokens: settings?.llm?.anthropic?.maxTokens || 4000 
+        anthropic: {
+            model: settings?.llm?.anthropic?.model || 'claude-3-haiku-20240307',
+            apiKey: settings?.llm?.anthropic?.apiKey || '',
+            temperature: settings?.llm?.anthropic?.temperature || 0.7,
+            maxTokens: settings?.llm?.anthropic?.maxTokens || 4000
         },
-        openrouter: { 
-            model: settings?.llm?.openrouter?.model || 'openai/gpt-4-turbo', 
-            apiKey: settings?.llm?.openrouter?.apiKey || '', 
-            temperature: settings?.llm?.openrouter?.temperature || 0.7, 
-            maxTokens: settings?.llm?.openrouter?.maxTokens || 4096, 
-            siteUrl: settings?.llm?.openrouter?.siteUrl || 'https://localhost:3000', 
-            appName: settings?.llm?.openrouter?.appName || 'Cindy Voice Assistant' 
+        openrouter: {
+            model: settings?.llm?.openrouter?.model || 'openai/gpt-4-turbo',
+            apiKey: settings?.llm?.openrouter?.apiKey || '',
+            temperature: settings?.llm?.openrouter?.temperature || 0.7,
+            maxTokens: settings?.llm?.openrouter?.maxTokens || 4096,
+            siteUrl: settings?.llm?.openrouter?.siteUrl || 'https://localhost:3000',
+            appName: settings?.llm?.openrouter?.appName || 'Cindy Voice Assistant'
         },
-        groq: { 
-            model: settings?.llm?.groq?.model || 'llama3-8b-8192', 
-            apiKey: settings?.llm?.groq?.apiKey || '', 
-            temperature: settings?.llm?.groq?.temperature || 0.7, 
-            maxTokens: settings?.llm?.groq?.maxTokens || 4096 
+        groq: {
+            model: settings?.llm?.groq?.model || 'llama3-8b-8192',
+            apiKey: settings?.llm?.groq?.apiKey || '',
+            temperature: settings?.llm?.groq?.temperature || 0.7,
+            maxTokens: settings?.llm?.groq?.maxTokens || 4096
         },
-        google: { 
-            model: settings?.llm?.google?.model || 'gemini-pro', 
-            apiKey: settings?.llm?.google?.apiKey || '', 
-            temperature: settings?.llm?.google?.temperature || 0.7, 
-            maxOutputTokens: settings?.llm?.google?.maxOutputTokens || 2048 
+        google: {
+            model: settings?.llm?.google?.model || 'gemini-pro',
+            apiKey: settings?.llm?.google?.apiKey || '',
+            temperature: settings?.llm?.google?.temperature || 0.7,
+            maxOutputTokens: settings?.llm?.google?.maxOutputTokens || 2048
         },
-        cohere: { 
-            model: settings?.llm?.cohere?.model || 'command', 
-            apiKey: settings?.llm?.cohere?.apiKey || '', 
-            temperature: settings?.llm?.cohere?.temperature || 0.7 
+        cohere: {
+            model: settings?.llm?.cohere?.model || 'command',
+            apiKey: settings?.llm?.cohere?.apiKey || '',
+            temperature: settings?.llm?.cohere?.temperature || 0.7
         },
-        azure: { 
-            deploymentName: settings?.llm?.azure?.deploymentName || '', 
-            apiKey: settings?.llm?.azure?.apiKey || '', 
-            apiVersion: settings?.llm?.azure?.apiVersion || '2024-02-01', 
-            instanceName: settings?.llm?.azure?.instanceName || '', 
-            temperature: settings?.llm?.azure?.temperature || 0.7, 
-            maxTokens: settings?.llm?.azure?.maxTokens || 4096 
+        azure: {
+            deploymentName: settings?.llm?.azure?.deploymentName || '',
+            apiKey: settings?.llm?.azure?.apiKey || '',
+            apiVersion: settings?.llm?.azure?.apiVersion || '2024-02-01',
+            instanceName: settings?.llm?.azure?.instanceName || '',
+            temperature: settings?.llm?.azure?.temperature || 0.7,
+            maxTokens: settings?.llm?.azure?.maxTokens || 4096
         },
-        huggingface: { 
-            model: settings?.llm?.huggingface?.model || 'meta-llama/Llama-2-70b-chat-hf', 
-            apiKey: settings?.llm?.huggingface?.apiKey || '', 
-            temperature: settings?.llm?.huggingface?.temperature || 0.7, 
-            maxTokens: settings?.llm?.huggingface?.maxTokens || 2048 
+        huggingface: {
+            model: settings?.llm?.huggingface?.model || 'meta-llama/Llama-2-70b-chat-hf',
+            apiKey: settings?.llm?.huggingface?.apiKey || '',
+            temperature: settings?.llm?.huggingface?.temperature || 0.7,
+            maxTokens: settings?.llm?.huggingface?.maxTokens || 2048
         },
-        ollama: { 
-            model: settings?.llm?.ollama?.model || 'llama3:8b', 
-            baseUrl: settings?.llm?.ollama?.baseUrl || 'http://127.0.0.1:11434', 
-            temperature: settings?.llm?.ollama?.temperature || 0.7 
+        ollama: {
+            model: settings?.llm?.ollama?.model || 'llama3:8b',
+            baseUrl: settings?.llm?.ollama?.baseUrl || 'http://127.0.0.1:11435',
+            temperature: settings?.llm?.ollama?.temperature || 0.7
         },
     });
 
@@ -477,13 +477,13 @@ const ModernSettingsPanel: React.FC = () => {
             // For Ollama, test the base URL connectivity
             if (providerId === 'ollama') {
                 try {
-                    const baseUrl = config?.baseUrl || 'http://127.0.0.1:11434';
+                    const baseUrl = config?.baseUrl || 'http://127.0.0.1:11435';
                     const response = await fetch(`${baseUrl}/api/tags`, {
                         method: 'GET',
                         headers: { 'Content-Type': 'application/json' },
                         signal: AbortSignal.timeout(5000)
                     });
-                    
+
                     if (response.ok) {
                         setConnectionStatus(prev => ({ ...prev, [providerId]: true }));
                     } else {
@@ -501,10 +501,10 @@ const ModernSettingsPanel: React.FC = () => {
                 // This would be the ideal implementation but the channel might not exist yet
                 // const result = await ipcRenderer.invoke(IPC_CHANNELS.LLM_TEST_CONNECTION, testConfig);
                 // setConnectionStatus(prev => ({ ...prev, [providerId]: result.success }));
-                
+
                 // For now, just check if required fields are present
                 let isValid = true;
-                
+
                 switch (providerId) {
                     case 'openai':
                         isValid = !!config?.apiKey && !!config?.model;
@@ -533,7 +533,7 @@ const ModernSettingsPanel: React.FC = () => {
                     default:
                         isValid = false;
                 }
-                
+
                 setConnectionStatus(prev => ({ ...prev, [providerId]: isValid }));
             } catch (ipcError) {
                 console.log('IPC test connection failed, falling back to basic validation:', ipcError);
@@ -701,7 +701,7 @@ const ModernSettingsPanel: React.FC = () => {
                 },
                 ollama: {
                     model: settings?.llm?.ollama?.model || prevConfigs.ollama?.model || 'llama3:8b',
-                    baseUrl: settings?.llm?.ollama?.baseUrl || prevConfigs.ollama?.baseUrl || 'http://127.0.0.1:11434',
+                    baseUrl: settings?.llm?.ollama?.baseUrl || prevConfigs.ollama?.baseUrl || 'http://127.0.0.1:11435',
                     temperature: settings?.llm?.ollama?.temperature ?? prevConfigs.ollama?.temperature ?? 0.7
                 }
             }));
@@ -908,7 +908,7 @@ const ModernSettingsPanel: React.FC = () => {
                         <Box sx={{ px: 3 }}>
                             {/* Email & Reference Connectors */}
                             <ConnectorIntegrations onSettingsChange={setHasUnsavedChanges} />
-                            
+
                             <Box sx={{ mt: 4 }}>
                                 <Typography variant="h6" gutterBottom fontWeight={600}>
                                     Web Search & Browsers
