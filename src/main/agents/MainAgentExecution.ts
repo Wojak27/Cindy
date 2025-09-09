@@ -316,12 +316,17 @@ export class MainAgentExecution {
             { version: "v2" } // important; use the unified event schema
         );
 
-        // 2) Yield updates on node/tool start/end (and optionally LLM token stream)
+        // 2) Yield structured updates on node/tool start/end (and optionally LLM token stream)
         for await (const ev of evStream) {
             switch (ev.event) {
                 case "on_chain_start": {
                     const node = ev.name ?? "unknown";
-                    yield `▶️ ${node} started\n`;
+                    yield {
+                        stepId: node,
+                        title: `${node} started`,
+                        status: "running",
+                        timestamp: Date.now()
+                    };
                     break;
                 }
                 case "on_llm_stream": {
@@ -331,17 +336,59 @@ export class MainAgentExecution {
                 }
                 case "on_chain_end": {
                     const node = ev.name ?? "unknown";
-                    yield `✅ ${node} finished\n`;
+                    yield {
+                        stepId: node,
+                        title: `${node} finished`,
+                        status: "completed",
+                        timestamp: Date.now()
+                    };
                     break;
                 }
                 case "on_tool_start": {
                     const tool = ev.name ?? "tool";
-                    yield `🛠️ ${tool} running...\n`;
+                    yield {
+                        stepId: `tool-${Date.now()}`,
+                        title: `Executing ${tool}`,
+                        status: "running",
+                        context: { toolName: tool },
+                        timestamp: Date.now()
+                    };
                     break;
                 }
                 case "on_tool_end": {
                     const tool = ev.name ?? "tool";
-                    yield `🛠️ ${tool} done\n`;
+                    yield {
+                        stepId: `tool-${Date.now()}`,
+                        title: `Executed ${tool}`,
+                        status: "completed",
+                        context: { toolName: tool },
+                        timestamp: Date.now()
+                    };
+
+                    // Handle document search results
+                    if (tool === "'VectorSearchTool'" && ev.data?.output) {
+                        const output = typeof ev.data.output === "string" ? ev.data.output : JSON.stringify(ev.data.output);
+                        const rawResultsMatch = output.match(/<!-- RAW_RESULTS: (\[.*?\]) -->/);
+                        if (rawResultsMatch) {
+                            try {
+                                const rawResults = JSON.parse(rawResultsMatch[1]);
+                                for (const file of rawResults) {
+                                    console.log("[MainAgentExecution] Retrieved document:", file);
+                                    yield {
+                                        stepId: `document-${Date.now()}`,
+                                        title: "Document Retrieved",
+                                        status: "completed",
+                                        context: { file },
+                                        timestamp: Date.now()
+                                    };
+                                    // Explicit side-panel marker for renderer
+                                    yield `side-panel-document ${JSON.stringify(file)}`;
+                                }
+                            } catch (parseError) {
+                                console.error("[MainAgentExecution] Failed to parse RAW_RESULTS:", parseError);
+                            }
+                        }
+                    }
                     break;
                 }
                 // Optional: stream LLM tokens as they arrive
@@ -408,7 +455,7 @@ export class MainAgentExecution {
      * Get the current provider being used
      */
     getCurrentProvider(): string {
-        return this.llmProvider.getCurrentProvider();
+        return this.llmProvider.getCurrentProvider() ?? "unknown";
     }
 
 }

@@ -828,6 +828,7 @@ const App: React.FC = () => {
     useEffect(() => {
         const handleStreamChunk = (_: any, data: { chunk: string, conversationId: string }) => {
             if (data.conversationId === currentConversationIdRef.current) {
+                console.log('📨 Stream chunk received for conversation', data.conversationId, ':', data.chunk);
                 // Process the chunk for thinking tokens
                 const processedThinking = thinkingTokenHandler.processChunk(data.chunk, currentConversationIdRef.current);
 
@@ -916,6 +917,7 @@ const App: React.FC = () => {
 
                 // Append the display content to the current assistant message
                 if (processedTools.displayContent) {
+                    console.log('🧩 Appending to assistant message:', processedTools.displayContent);
                     dispatch({ type: 'APPEND_TO_LAST_ASSISTANT_MESSAGE', payload: processedTools.displayContent });
                 }
 
@@ -924,6 +926,7 @@ const App: React.FC = () => {
 
                     // Try to extract JSON from the side view marker  
                     const jsonMatch = data.chunk.match(/side-panel-weather (.+)/);
+                    console.log('🌤️ Detected side-panel-weather marker in stream:', jsonMatch);
                     if (jsonMatch) {
                         const sideViewContent = jsonMatch[1].trim();
 
@@ -948,7 +951,22 @@ const App: React.FC = () => {
                         }
                     }
                 }
+                // Detect side-panel-document marker from agent stream
+                if (data.chunk.includes('side-panel-document')) {
+                    const jsonMatch = data.chunk.match(/side-panel-document (.+)/);
+                    console.log('📄 Detected side-panel-document marker in stream:', jsonMatch);
+                    if (jsonMatch) {
+                        try {
+                            const docData = JSON.parse(jsonMatch[1]);
+                            handleShowDocument(docData);
+                        } catch (e) {
+                            console.error("❌ Failed to parse side-panel-document JSON:", e);
+                        }
+                    }
+                }
             }
+
+
         };
 
         const handleStreamComplete = (_: any, data: { conversationId: string }) => {
@@ -1021,6 +1039,13 @@ const App: React.FC = () => {
                         detectAndShowDocuments(lastMessage.content).then(detectedDocs => {
                             if (detectedDocs.length > 0) {
                                 console.log('🔍 DEBUG: Auto-detected', detectedDocs.length, 'documents from AI response');
+                                // Show the first detected document in side panel
+                                handleShowDocument(detectedDocs[0]);
+
+                                // Log all detected documents
+                                detectedDocs.forEach(doc => {
+                                    console.log('📄 [Detected Document]:', doc.name, doc.path);
+                                });
                             }
                         }).catch(error => {
                             console.warn('🔍 DEBUG: Document detection failed:', error);

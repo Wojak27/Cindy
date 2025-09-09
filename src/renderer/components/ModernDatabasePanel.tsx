@@ -516,7 +516,7 @@ const ModernDatabasePanel: React.FC = () => {
                                             }}
                                         >
                                             <MenuItem value="granite-embedding:278m">Granite Embedding 278m</MenuItem>
-                                            <MenuItem value="granite-embedding:278m">Embedding Gemma</MenuItem>
+                                            <MenuItem value="embeddinggemma">Embedding Gemma</MenuItem>
                                         </Select>
                                     </FormControl>
 

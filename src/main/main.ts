@@ -630,7 +630,7 @@ const setupDatabaseIPC = () => {
                     }
 
                     try {
-                        duckDBVectorStore = new DuckDBVectorStore(vectorStoreConfig);
+                        duckDBVectorStore = await createDuckDBVectorStore(databasePath, vectorStoreConfig, app.getPath('userData'));
                         await duckDBVectorStore.initialize();
                         console.log('[IPC] Vector store initialized successfully for reading');
                     } catch (error) {
@@ -644,12 +644,6 @@ const setupDatabaseIPC = () => {
                 console.log('[IPC] Fetching indexed files from DuckDB...');
                 const items = await duckDBVectorStore.getIndexedFiles();
                 console.log('[IPC] Found', items.length, 'indexed files');
-                return { success: true, items };
-            }
-
-            // Use LangChain vector store if available
-            if (langChainVectorStoreService) {
-                const items = langChainVectorStoreService.getIndexedFiles();
                 return { success: true, items };
             }
 
@@ -1807,7 +1801,13 @@ app.on('ready', async () => {
             // Get connected connectors for tool loading
             const connectors = connectorManagerService?.getConnectedConnectors() || {};
             console.log('🔧 DEBUG: Connected connectors for tool loading:', Object.keys(connectors));
+            const llmSettings = settingsService.settings.database
+            const databasePath = llmSettings.path
+            const appDataPath = app.getPath('userData')
 
+            duckDBVectorStore = await createDuckDBVectorStore(databasePath, llmSettings, appDataPath);
+            await duckDBVectorStore.initialize();
+            console.log('🔧 DEBUG: DuckDBVectorStore initialized for tool loading');
             await serviceManager?.initializeTools(duckDBVectorStore, connectors);
             console.log('✅ DEBUG: Early tool initialization completed');
         } catch (error) {
@@ -1934,7 +1934,7 @@ app.on('ready', async () => {
                     console.log('[IPC] Using default Ollama embeddings with smallest Qwen model');
                 }
 
-                vectorStore = new DuckDBVectorStore(vectorStoreConfig);
+                vectorStore = await createDuckDBVectorStore(vectorStoreConfig.databasePath, vectorStoreConfig);
 
                 // Assign to global variable so IPC handlers can access it
                 duckDBVectorStore = vectorStore;
@@ -2311,7 +2311,7 @@ app.on('ready', async () => {
                     });
 
                     // Create the vector store for tool registration
-                    duckDBVectorStore = new DuckDBVectorStore(vectorStoreConfig);
+                    duckDBVectorStore = await createDuckDBVectorStore(vectorStoreConfig.databasePath, vectorStoreConfig, "/Users/karwo09/code/voice-assistant/data/appDataPathTest");
                     await duckDBVectorStore.initialize();
                     console.log('✅ DEBUG: DuckDB vector store initialized for tool registration');
                 } catch (vectorStoreError) {
@@ -2911,6 +2911,16 @@ app.on('ready', async () => {
 
                     // Use streaming processing from the agent
                     for await (const chunk of langChainCindyAgent.processStreaming(message, agentContext)) {
+                        // Handle structured action blocks
+                        if (typeof chunk === 'object' && chunk !== null && 'stepId' in chunk) {
+                            event.sender.send('agent-flow-event', {
+                                type: 'step-update',
+                                data: chunk
+                            });
+                            continue;
+                        }
+
+                        // Handle raw string chunks (LLM tokens, final content)
                         assistantContent += chunk;
 
                         // Filter out tool executions and internal data from user-facing content

@@ -40,11 +40,11 @@
         "src/shared/**/*"
     ],
     "exclude": [
-        "node_modules",
-        "dist",
-        "build",
-        "release",
-        "sherpa-onnx",
+        "node_modules/*",
+        "dist/*",
+        "build/*",
+        "release/*",
+        "sherpa-onnx/*",
         ".next",
         ".turbo",
         ".cache",

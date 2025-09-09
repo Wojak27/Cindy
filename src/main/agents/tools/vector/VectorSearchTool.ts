@@ -82,7 +82,23 @@ ${formattedResults}
 Based on the above retrieved documents, please provide a detailed answer to your question. Include specific information from the documents and cite the sources with file links when referencing specific details.`;
 
             console.log(`[VectorSearchTool] Successfully found ${results.length} results`);
-            return resultMessage;
+
+            // Append raw results in a comment for backend processing
+            const rawResults = results.map((doc: any) => {
+                const metadata = doc.metadata || {};
+                const source = metadata.source || metadata.fileName || 'Unknown source';
+                const fileName = source.split('/').pop() || source;
+                return {
+                    path: source,
+                    name: fileName,
+                    size: metadata.size || 0,
+                    mtime: metadata.mtime || new Date().toISOString(),
+                    chunks: metadata.chunks || 1
+                };
+            });
+
+            const rawResultsComment = `<!-- RAW_RESULTS: ${JSON.stringify(rawResults)} -->`;
+            return resultMessage + '\n\n' + rawResultsComment;
 
         } catch (error: any) {
             console.error('[VectorSearchTool] Error during search:', error);

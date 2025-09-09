@@ -150,14 +150,21 @@ export class ToolTokenHandler {
      */
     private parseToolCall(content: string, conversationId: string, isError: boolean = false): ToolCall | null {
         try {
-            // Clean up the content by removing trailing backslashes and whitespace
-            let cleanContent = content.trim();
+            // Debug log before cleaning
+            console.debug("[ToolTokenHandler] Raw incoming content chunk:", JSON.stringify(content));
+            
+            // Clean up the content: preserve leading spaces from streaming tokens,
+            // remove only trailing newlines, spaces, and stray backslashes
+            let cleanContent = content;
 
             // Remove trailing backslashes that might appear from malformed XML
-            cleanContent = cleanContent.replace(/\\+$/, '');
+            cleanContent = cleanContent.replace(/\\+$/, "");
 
-            // Remove any trailing newlines or extra characters
-            cleanContent = cleanContent.replace(/[\n\r\s]*$/, '');
+            // Remove only trailing whitespace (not leading!)
+            cleanContent = cleanContent.replace(/[\n\r\s]*$/, "");
+
+            // Debug log after cleaning
+            console.debug("[ToolTokenHandler] Cleaned content chunk:", JSON.stringify(cleanContent));
 
 
 
