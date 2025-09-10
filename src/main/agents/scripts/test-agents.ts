@@ -1,6 +1,5 @@
 import { LLMProvider } from "../../services/LLMProvider";
 import { MainAgentExecution } from "../MainAgentExecution";
-import { LangChainMemoryService } from "../../services/LangChainMemoryService";
 import * as dotenv from 'dotenv';
 import path from 'path';
 
@@ -49,11 +48,6 @@ async function initializeAgent(): Promise<MainAgentExecution> {
     console.log('🧠 Initializing Memory Service...');
     // Create a mock memory service that doesn't depend on Electron
     // We'll skip the actual initialization since it requires Electron's app module
-    const memoryService = new LangChainMemoryService(
-        {},  // Empty store for testing
-        null,  // vectorStore (optional)
-        llmProvider.getChatModel()  // LLM model for summarization
-    );
 
     // Skip initialization to avoid Electron dependency
     // await memoryService.initialize();
@@ -63,7 +57,6 @@ async function initializeAgent(): Promise<MainAgentExecution> {
     console.log('🤖 Creating RouterLangGraphAgent...');
     const agent = new MainAgentExecution({
         llmProvider,
-        memoryService,
         config: {
             enableStreaming: true,
             enableDeepResearch: true,

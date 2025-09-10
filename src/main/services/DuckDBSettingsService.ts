@@ -175,6 +175,7 @@ export interface Settings {
 }
 
 export class DuckDBSettingsService extends EventEmitter {
+    private static instance: DuckDBSettingsService | null = null;
     private db: Database | null = null;
     private DB_PATH: string;
     private settings: Settings;
@@ -184,9 +185,30 @@ export class DuckDBSettingsService extends EventEmitter {
     private readonly SERVICE_NAME = 'Cindy';
     private readonly ACCOUNT_NAME = 'openai_api_key';
 
-    constructor() {
+    private constructor() {
         super();
         this.settings = this.getDefaultSettings();
+    }
+
+    /**
+     * Get the singleton instance of DuckDBSettingsService
+     * This ensures only one database connection exists at any time
+     */
+    public static getInstance(): DuckDBSettingsService {
+        if (!DuckDBSettingsService.instance) {
+            DuckDBSettingsService.instance = new DuckDBSettingsService();
+        }
+        return DuckDBSettingsService.instance;
+    }
+
+    /**
+     * Reset singleton instance (mainly for testing)
+     */
+    public static resetInstance(): void {
+        if (DuckDBSettingsService.instance) {
+            DuckDBSettingsService.instance.cleanup().catch(console.error);
+            DuckDBSettingsService.instance = null;
+        }
     }
 
     async initialize(): Promise<void> {
@@ -814,9 +836,35 @@ export class DuckDBSettingsService extends EventEmitter {
     }
 
     async cleanup(): Promise<void> {
-        if (this.db) {
-            await this.db.close();
-            this.db = null;
+        try {
+            if (this.db) {
+                await this.db.close();
+                this.db = null;
+            }
+            this.isInitialized = false;
+            this.isMigrating = false;
+            console.log('[DuckDBSettingsService] Database connection closed and cleaned up');
+        } catch (error) {
+            console.error('[DuckDBSettingsService] Error during cleanup:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get instance status - useful for debugging
+     */
+    public isInstanceInitialized(): boolean {
+        return this.isInitialized;
+    }
+
+    /**
+     * Force cleanup and reset singleton - useful for process shutdown
+     */
+    public static async forceCleanup(): Promise<void> {
+        if (DuckDBSettingsService.instance) {
+            await DuckDBSettingsService.instance.cleanup();
+            DuckDBSettingsService.instance = null;
+            console.log('[DuckDBSettingsService] Singleton instance force cleaned up');
         }
     }
 }

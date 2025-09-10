@@ -119,8 +119,8 @@ export class ConnectorManagerService extends EventEmitter {
       let credentialsToUse = stateInfo.config;
 
       if (!credentialsToUse) {
-        // Try to get credentials from settings service
-        const settingsService = new DuckDBSettingsService();
+        // Try to get credentials from settings service singleton
+        const settingsService = DuckDBSettingsService.getInstance();
         try {
           if (settingsService) {
             const storedCredentials = await settingsService.getOAuthCredentials?.(provider);
@@ -434,9 +434,9 @@ export class ConnectorManagerService extends EventEmitter {
       let credentialsToUse = oauthConfig;
 
       if (!credentialsToUse) {
-        // Try to get credentials from settings service
+        // Try to get credentials from settings service singleton
         try {
-          const settingsService = new DuckDBSettingsService();
+          const settingsService = DuckDBSettingsService.getInstance();
           if (settingsService) {
             const storedCredentials = await settingsService.getOAuthCredentials?.(provider);
             if (storedCredentials) {

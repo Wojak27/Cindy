@@ -4,7 +4,6 @@
 
 import { MainAgentExecution, MainAgentGraphOptions } from '../MainAgentExecution';
 import { LLMProvider } from '../../services/LLMProvider';
-import { LangChainMemoryService } from '../../services/LangChainMemoryService';
 
 // Mock dependencies
 const mockLLMProvider = {

@@ -27,6 +27,7 @@ import { TextToSpeechService } from './services/TextToSpeechService.ts';
 import { ConnectorManagerService } from './services/ConnectorManagerService.ts';
 import { generateStepDescription } from '../shared/AgentFlowStandard.ts';
 import { IPC_CHANNELS } from '../shared/ipcChannels.ts';
+import { ProcessCleanup } from './utils/ProcessCleanup.ts';
 
 import  {
     REDUX_DEVTOOLS,
@@ -1411,7 +1412,6 @@ let duckDBVectorStore: DuckDBVectorStore | null = null;
 let langChainVectorStoreService: any = null; // Type as any for now
 // Dynamic loading - no static types, will be loaded on-demand
 let serviceManager: ServiceManager | null = null;
-let langChainMemoryService: any = null;
 let agenticMemoryService: any = null; // A-Mem service
 let globalTodoListState: any[] = []; // Global todo list state
 let toolRegistry: any = null;
@@ -1661,16 +1661,33 @@ app.on('ready', async () => {
         }
     });
 
+    // Clean up any stale processes that might be holding database locks
+    console.log('🔧 DEBUG: Checking for stale Electron processes...');
+    try {
+        const dbPath = path.join(app.getPath('userData'), 'cindy-settings.db');
+        const cleanup = await ProcessCleanup.performFullCleanup(dbPath);
+        
+        if (cleanup.processCleanup.killed.length > 0) {
+            console.log(`✅ Cleaned up ${cleanup.processCleanup.killed.length} stale processes:`, cleanup.processCleanup.killed);
+        }
+        
+        if (cleanup.databaseCleanup?.wasLocked) {
+            console.log(`✅ Database lock cleanup: ${cleanup.databaseCleanup.cleanupSuccessful ? 'successful' : 'failed'}`);
+        }
+    } catch (cleanupError) {
+        console.warn('⚠️  Process cleanup failed (continuing anyway):', cleanupError);
+    }
+
     // Test SettingsService initialization
     console.log('🔧 DEBUG: Testing SettingsService initialization');
 
-    // Initialize SettingsService
+    // Initialize SettingsService using singleton pattern
     if (!settingsService) {
         try {
-            console.log('🔧 DEBUG: Initializing SettingsService...');
-            settingsService = new DuckDBSettingsService();
+            console.log('🔧 DEBUG: Initializing SettingsService singleton...');
+            settingsService = DuckDBSettingsService.getInstance();
             await settingsService.initialize();
-            console.log('🔧 DEBUG: SettingsService initialized successfully');
+            console.log('🔧 DEBUG: SettingsService singleton initialized successfully');
         } catch (error) {
             console.error('🚨 DEBUG: Failed to initialize SettingsService:', error);
             console.error('🚨 DEBUG: Error stack:', error.stack);
@@ -2335,15 +2352,6 @@ app.on('ready', async () => {
                 toolRegistry = null;
             }
 
-            try {
-                console.log('🔧 DEBUG: Loading LangChain MemoryService via ServiceManager');
-                langChainMemoryService = await serviceManager.getMemoryService();
-                console.log('✅ DEBUG: LangChain MemoryService loaded successfully');
-            } catch (memoryServiceError) {
-                console.error('❌ DEBUG: Failed to load LangChain MemoryService:', memoryServiceError);
-                console.error('Continuing without memory service');
-                langChainMemoryService = null;
-            }
 
             try {
                 console.log('🔧 DEBUG: Creating LLM Provider');
@@ -2364,13 +2372,13 @@ app.on('ready', async () => {
 
             // Initialize Cindy Agent after LLM and tools are ready (with error handling)
             try {
-                if (!langChainCindyAgent && langChainMemoryService && toolRegistry && llmProvider) {
+                if (!langChainCindyAgent && toolRegistry && llmProvider) {
                     console.log('🔧 DEBUG: Loading LangChain CindyAgent via ServiceManager');
                     langChainCindyAgent = await serviceManager.getCindyAgent(duckDBVectorStore);
                     console.log('✅ DEBUG: LangChain CindyAgent loaded successfully');
                 } else {
                     console.warn('⚠️ DEBUG: Skipping Cindy Agent - required services not available');
-                    console.warn(`Memory service: ${!!langChainMemoryService}, Tool registry: ${!!toolRegistry}, LLM: ${!!llmProvider}`);
+                    console.warn(`Tool registry: ${!!toolRegistry}, LLM: ${!!llmProvider}`);
                 }
             } catch (agentError) {
                 console.error('❌ DEBUG: Failed to load Cindy Agent:', agentError);
@@ -2579,7 +2587,7 @@ app.on('ready', async () => {
                                     serviceManager.updateCoreServices(settingsService, llmProvider);
 
                                     // Reinitialize Cindy Agent with the new provider
-                                    if (langChainMemoryService && toolRegistry) {
+                                    if (toolRegistry) {
                                         console.log('🔄 Reinitializing Cindy Agent with new provider');
                                         console.log('🔄 Clearing old Cindy Agent instance');
                                         langChainCindyAgent = null; // Clear old instance first
@@ -3631,4 +3639,44 @@ graph TD
             console.log('✅ DEBUG: LLM service already initialized');
         }
     }, 5000); // 5 second delay after app startup
+});
+
+// Quit when all windows are closed (except on macOS)
+app.on('window-all-closed', () => {
+    console.log('🔧 DEBUG: All windows closed, cleaning up...');
+    
+    // Perform cleanup
+    DuckDBSettingsService.forceCleanup()
+        .then(() => console.log('✅ Settings service cleaned up'))
+        .catch(err => console.error('❌ Settings cleanup error:', err));
+        
+    // On macOS, keep app running until user explicitly quits
+    if (process.platform !== 'darwin') {
+        app.quit();
+    }
+});
+
+// Clean shutdown handler
+app.on('before-quit', async (event) => {
+    console.log('🔧 DEBUG: App quitting, performing cleanup...');
+    event.preventDefault();
+    
+    try {
+        // Force cleanup of singleton instances
+        await DuckDBSettingsService.forceCleanup();
+        console.log('✅ All services cleaned up successfully');
+    } catch (error) {
+        console.error('❌ Error during cleanup:', error);
+    } finally {
+        // Allow the app to quit
+        process.nextTick(() => app.quit());
+    }
+});
+
+// Handle app reactivation on macOS
+app.on('activate', async () => {
+    // On macOS, re-create window if none exist
+    if (BrowserWindow.getAllWindows().length === 0) {
+        await createWindow();
+    }
 });

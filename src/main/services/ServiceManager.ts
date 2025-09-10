@@ -16,13 +16,11 @@ export class ServiceManager extends EventEmitter {
     private llmProvider: LLMProvider | null;
 
     // Dynamic service references
-    private langChainMemoryService: any = null;
     private langChainCindyAgent: any = null;
     private toolsInitialized: boolean = false;
 
     // Loading state tracking
     private isLoadingToolRegistry = false;
-    private isLoadingMemoryService = false;
     private isLoadingCindyAgent = false;
 
     constructor(settingsService: DuckDBSettingsService | null = null, llmProvider: LLMProvider | null = null) {
@@ -128,56 +126,6 @@ export class ServiceManager extends EventEmitter {
         return toolRegistry.getTools();
     }
 
-    /**
-     * Dynamically load LangChain MemoryService
-     */
-    async getMemoryService(): Promise<any> {
-        if (this.langChainMemoryService) {
-            return this.langChainMemoryService;
-        }
-
-        if (this.isLoadingMemoryService) {
-            // Wait for existing load to complete
-            return new Promise((resolve) => {
-                this.once('memoryServiceLoaded', resolve);
-            });
-        }
-
-        this.isLoadingMemoryService = true;
-
-        try {
-            console.log('[ServiceManager] Dynamically loading LangChainMemoryService...');
-
-            // Dynamic import to avoid loading at startup
-            const { LangChainMemoryService } = await import('./LangChainMemoryService');
-
-            // Vector store not needed - using DuckDBVectorStore directly
-            let vectorStore = null;
-
-            // Get the actual chat model from LLM provider
-            let llmModel = null;
-            if (this.llmProvider) {
-                try {
-                    llmModel = this.llmProvider.getChatModel();
-                } catch (error) {
-                    console.warn('[ServiceManager] Could not get chat model from LLM provider:', error.message);
-                }
-            }
-
-            this.langChainMemoryService = new LangChainMemoryService({}, vectorStore, llmModel);
-            await this.langChainMemoryService.initialize();
-
-            console.log('[ServiceManager] LangChainMemoryService loaded successfully');
-            this.emit('memoryServiceLoaded', this.langChainMemoryService);
-
-            return this.langChainMemoryService;
-        } catch (error) {
-            console.error('[ServiceManager] Failed to load LangChainMemoryService:', error);
-            throw error;
-        } finally {
-            this.isLoadingMemoryService = false;
-        }
-    }
 
     // Note: LangChainVectorStoreService removed - using DuckDBVectorStore directly in main.ts
 
@@ -209,8 +157,6 @@ export class ServiceManager extends EventEmitter {
                 throw new Error('Settings service required for Cindy agent initialization');
             }
 
-            // Load dependencies
-            const memoryService = await this.getMemoryService();
             // Ensure tools are initialized for the agent (connectors will be passed when available)
             await this.initializeTools(duckdbVectorStore);
 
@@ -221,7 +167,6 @@ export class ServiceManager extends EventEmitter {
 
             // Initialize thinking agent with enhanced capabilities
             this.langChainCindyAgent = new MainAgentExecution({
-                memoryService: memoryService,
                 config: {
                     enableStreaming: true,
                     ...agentConfig
@@ -246,12 +191,10 @@ export class ServiceManager extends EventEmitter {
      */
     getLoadedServices(): {
         toolRegistry: boolean;
-        memory: boolean;
         cindyAgent: boolean;
     } {
         return {
             toolRegistry: this.toolsInitialized,
-            memory: !!this.langChainMemoryService,
             cindyAgent: !!this.langChainCindyAgent
         };
     }
@@ -261,12 +204,10 @@ export class ServiceManager extends EventEmitter {
      */
     getServiceInstances(): {
         toolRegistry: any;
-        memory: any;
         cindyAgent: any;
     } {
         return {
             toolRegistry: toolRegistry,
-            memory: this.langChainMemoryService,
             cindyAgent: this.langChainCindyAgent
         };
     }
@@ -283,10 +224,6 @@ export class ServiceManager extends EventEmitter {
                 await this.langChainCindyAgent.cleanup();
             }
 
-            if (this.langChainMemoryService && typeof this.langChainMemoryService.cleanup === 'function') {
-                await this.langChainMemoryService.cleanup();
-            }
-
             // Tool registry cleanup is handled automatically
 
             // Vector store cleanup handled by DuckDBVectorStore in main.ts
@@ -296,7 +233,6 @@ export class ServiceManager extends EventEmitter {
 
         // Reset all references
         this.langChainCindyAgent = null;
-        this.langChainMemoryService = null;
         this.toolsInitialized = false;
 
         console.log('[ServiceManager] Cleanup complete');
