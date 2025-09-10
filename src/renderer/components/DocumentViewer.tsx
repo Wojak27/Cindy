@@ -58,6 +58,12 @@ const workerPath = isProduction
 pdfjs.GlobalWorkerOptions.workerSrc = workerPath;
 console.log(`[PDF.js] Worker configured: ${workerPath} (version ${pdfjs.version})`);
 
+// Additional debugging for worker loading
+if (!isProduction) {
+    console.log(`[PDF.js] Development mode - worker will be loaded from webpack dev server`);
+    console.log(`[PDF.js] If worker fails to load, check that webpack dev server is serving static files`);
+}
+
 interface IndexedFile {
     path: string;
     name: string;

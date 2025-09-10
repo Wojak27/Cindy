@@ -1374,9 +1374,14 @@ const setupConnectorIPC = () => {
 async function waitForDevServer(maxRetries = 10, delay = 1000): Promise<boolean> {
     for (let i = 0; i < maxRetries; i++) {
         try {
-            await axios.get('http://localhost:3004');
+            const response = await axios.get('http://localhost:3004');
             return true;
-        } catch (error) {
+        } catch (error: any) {
+            // If we get a 404, that means the server is responding, just no content at root
+            if (error.response && error.response.status === 404) {
+                console.log('🔧 DEBUG: Dev server responding (404 is expected at root)');
+                return true;
+            }
             console.log(`Dev server not ready yet. Retrying in ${delay}ms... (${i + 1}/${maxRetries})`);
             await new Promise(resolve => setTimeout(resolve, delay));
         }

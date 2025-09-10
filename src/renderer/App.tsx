@@ -828,7 +828,7 @@ const App: React.FC = () => {
     useEffect(() => {
         const handleStreamChunk = (_: any, data: { chunk: string, conversationId: string }) => {
             if (data.conversationId === currentConversationIdRef.current) {
-                console.log('📨 Stream chunk received for conversation', data.conversationId, ':', data.chunk);
+                // console.log('📨 Stream chunk received for conversation', data.conversationId, ':', data.chunk);
                 // Process the chunk for thinking tokens
                 const processedThinking = thinkingTokenHandler.processChunk(data.chunk, currentConversationIdRef.current);
 
@@ -917,7 +917,7 @@ const App: React.FC = () => {
 
                 // Append the display content to the current assistant message
                 if (processedTools.displayContent) {
-                    console.log('🧩 Appending to assistant message:', processedTools.displayContent);
+                    // console.log('🧩 Appending to assistant message:', processedTools.displayContent);
                     dispatch({ type: 'APPEND_TO_LAST_ASSISTANT_MESSAGE', payload: processedTools.displayContent });
                 }
 
@@ -2057,6 +2057,7 @@ const App: React.FC = () => {
                     {(showSettings || showDatabase || showDebugGraph) && (
                         <div className="sidebar-overlay" />
                     )}
+
 
                 </div>
             </div>

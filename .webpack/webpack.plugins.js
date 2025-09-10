@@ -36,4 +36,6 @@ module.exports = [
       },
     ],
   }),
-];
+  // Add HMR plugin for development
+  process.env.NODE_ENV === 'development' && new webpack.HotModuleReplacementPlugin(),
+].filter(Boolean);

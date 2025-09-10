@@ -41,9 +41,30 @@ module.exports = {
   devServer: {
     port: 3004,
     hot: true,
+    liveReload: true,
     historyApiFallback: true,
+    allowedHosts: 'all',
     headers: {
       'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': '*',
+      'Access-Control-Allow-Headers': '*',
+    },
+    client: {
+      webSocketURL: 'ws://localhost:3004/ws',
+      overlay: {
+        errors: true,
+        warnings: false,
+      },
+    },
+    webSocketServer: 'ws',
+    static: false, // Don't serve static files - let webpack serve everything
+    // Add proper MIME type for ES modules
+    setupMiddlewares: (middlewares, devServer) => {
+      devServer.app.get('/workers/*.mjs', (req, res, next) => {
+        res.set('Content-Type', 'application/javascript');
+        next();
+      });
+      return middlewares;
     },
   },
 };

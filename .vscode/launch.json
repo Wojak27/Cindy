@@ -60,6 +60,38 @@
                 "PATH": "/Users/karwo09/.nvm/versions/node/v22.18.0/bin:${env:PATH}"
             }
         },
+        // Quick Debug - Build and Run (Recommended)
+        {
+            "name": "Quick Debug - Build & Run",
+            "type": "node",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "runtimeExecutable": "/Users/karwo09/.nvm/versions/node/v22.18.0/bin/node",
+            "program": "${workspaceFolder}/node_modules/electron/cli.js",
+            "args": [
+                "${workspaceFolder}/dist/main.js",
+                "--enable-logging"
+            ],
+            "preLaunchTask": "build:main",
+            "console": "integratedTerminal",
+            "sourceMaps": true,
+            "outFiles": [
+                "${workspaceFolder}/dist/**/*.js"
+            ],
+            "sourceMapPathOverrides": {
+                "webpack:///./src/*": "${workspaceFolder}/src/*",
+                "webpack:///*": "${workspaceFolder}/*"
+            },
+            "env": {
+                "NODE_ENV": "development",
+                "NODE_OPTIONS": "--max-old-space-size=8192",
+                "ELECTRON_ENABLE_LOGGING": "1"
+            },
+            "skipFiles": [
+                "<node_internals>/**",
+                "node_modules/**"
+            ]
+        },
         // Optional: build+run main from dist instead of ts-node (if you ever switch)
         {
             "name": "Electron Main (Webpack build)",
@@ -84,8 +116,14 @@
                 "webpack:///*": "${workspaceFolder}/*"
             },
             "env": {
-                "NODE_ENV": "development"
-            }
+                "NODE_ENV": "development",
+                "NODE_OPTIONS": "--max-old-space-size=8192",
+                "ELECTRON_ENABLE_LOGGING": "1"
+            },
+            "skipFiles": [
+                "<node_internals>/**",
+                "node_modules/**"
+            ]
         },
         {
             "name": "Debug VectorSearch Agent test",
@@ -221,8 +259,7 @@
             "name": "Full Application Debug",
             "configurations": [
                 "Debug: Start Dev Server",
-                "Electron Main (Webpack build)",
-                "Attach to Renderer (9222)"
+                "Electron Main (Webpack build)"
             ],
             "stopAll": true,
             "presentation": {
