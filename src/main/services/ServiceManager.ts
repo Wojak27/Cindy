@@ -94,9 +94,9 @@ export class ServiceManager extends EventEmitter {
             };
 
             // Initialize all tools
-            await toolLoader.loadAllTools(toolConfig);
+            // await toolLoader.loadAllTools(toolConfig);
 
-            console.log('[ServiceManager] Tools initialized successfully via ToolLoader');
+            // console.log('[ServiceManager] Tools initialized successfully via ToolLoader');
 
             this.toolsInitialized = true;
             this.emit('toolsInitialized');

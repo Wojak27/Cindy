@@ -56,13 +56,11 @@ export class MainAgentExecution {
 
     constructor(options: MainAgentGraphOptions) {
         this.llmProvider = options.llmProvider;
-        this.memoryService = options.memoryService;
         this.persistState = options.persistState !== false; // Default to enabled
-        toolLoader.loadAllTools(options.config || {});
 
         // Create a minimal settings service for compatibility
         this.settingsService = this.createCompatibilitySettingsService();
-        this.initialize()
+        this.initialize(options)
 
 
 
@@ -74,8 +72,8 @@ export class MainAgentExecution {
         });
     }
 
-    public async initialize(): Promise<void> {
-
+    public async initialize(options: MainAgentGraphOptions): Promise<void> {
+                await toolLoader.loadAllTools(options.config || {});
         this.initializeState();
         this.agent = await this.buildGraph();
         if (true) {
