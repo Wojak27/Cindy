@@ -3,7 +3,7 @@ import { DuckDBSettingsService } from './DuckDBSettingsService.ts';
 import { LLMProvider } from './LLMProvider.ts';
 import { toolRegistry } from '../agents/tools/ToolRegistry.ts';
 import { toolLoader } from '../agents/tools/ToolLoader.ts';
-import { MainAgentExecution } from '../agents/MainAgentExecution.ts';
+import { MainAgentExecution } from '../agents/MainAgentExecutionv2.ts';
 
 /**
  * ServiceManager - Handles dynamic loading of heavy LangChain services

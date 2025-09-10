@@ -72,9 +72,8 @@ async function initializeAgent(): Promise<MainAgentExecution> {
         llmProvider,
         config: {
             enableStreaming: true,
-            enableDeepResearch: true,
             vectorStore,
-            fallbackToOriginal: true
+            saveGraph: false // Set to true if you want to save graph visualization
         }
     });
     await agent.initialize();

@@ -15,7 +15,7 @@ import { OutlookConnector } from '../../connectors/OutlookConnector.ts';
 import { ZoteroConnector } from '../../connectors/ZoteroConnector.ts';
 import { WikipediaQueryRun } from "@langchain/community/tools/wikipedia_query_run";
 import { MendeleyConnector } from '../../connectors/MendeleyConnector.ts';
-import VectorSearchTool from './vector/VectorSearchTool.ts';
+import { createVectorSearchTool } from './vector/VectorSearchTool.ts';
 import { AccuWeatherTool } from './weather/AccuWeatherTool.ts';
 import MapsDisplayTool from './maps/MapsDisplayTool.ts';
 import { StructuredTool } from '@langchain/core/tools';
@@ -297,7 +297,7 @@ export class ToolLoader {
         // Vector Search Tool
         if (enabledTools.vector !== false && config.vectorStore) {
             try {
-                const spec = new VectorSearchTool(config.vectorStore);
+                const spec = createVectorSearchTool(config.vectorStore);
                 if (spec && !this.loadedTools.has(spec.name)) {
                     toolRegistry.registerTool(spec);
                     this.loadedTools.add(spec.name);
