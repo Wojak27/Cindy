@@ -7,7 +7,7 @@ rules.push({
 });
 
 module.exports = {
-  entry: ['./src/renderer/polyfills.ts', './src/renderer/index.tsx'],
+  entry: ['./src/renderer/index.tsx'],
   mode: 'development',
   target: 'electron-renderer',
   module: {

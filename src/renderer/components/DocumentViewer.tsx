@@ -42,7 +42,6 @@ import {
 import { ipcRenderer } from 'electron';
 import { IPC_CHANNELS } from '../../shared/ipcChannels';
 // Ensure polyfill is loaded before PDF.js
-import '../polyfills';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -50,7 +49,7 @@ import 'react-pdf/dist/Page/TextLayer.css';
 // Configure pdfjs worker for Electron
 // Use local bundled worker for better compatibility and security
 const isProduction = process.env.NODE_ENV === 'production';
-const workerPath = isProduction 
+const workerPath = isProduction
     ? './workers/pdf.worker.min.mjs'  // Production: use bundled worker
     : `http://localhost:3004/workers/pdf.worker.min.mjs`;  // Development: use dev server
 

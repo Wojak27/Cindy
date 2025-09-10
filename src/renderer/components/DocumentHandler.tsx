@@ -17,7 +17,6 @@ import { ipcRenderer } from 'electron';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
-import '../polyfills';
 
 // Configure pdfjs worker for Electron
 const isProduction = process.env.NODE_ENV === 'production';

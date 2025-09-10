@@ -4,6 +4,11 @@ import type { NativeImage } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { dialog } from 'electron';
+import { fileURLToPath } from 'url';
+
+// ES Module compatibility: Replace CommonJS __dirname with ES module equivalent
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import * as os from 'os';
 import { DuckDBSettingsService } from './services/DuckDBSettingsService.ts';
 import type { Settings } from './services/SettingsService.ts';
@@ -22,15 +27,12 @@ import { TextToSpeechService } from './services/TextToSpeechService.ts';
 import { ConnectorManagerService } from './services/ConnectorManagerService.ts';
 import { generateStepDescription } from '../shared/AgentFlowStandard.ts';
 import { IPC_CHANNELS } from '../shared/ipcChannels.ts';
-import { dirname } from 'path';
-import { fileURLToPath } from 'url';
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 
-import installExtension, {
+import  {
     REDUX_DEVTOOLS,
     REACT_DEVELOPER_TOOLS
 } from 'electron-devtools-installer';
+import installExtension from 'electron-devtools-installer';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
@@ -1428,9 +1430,9 @@ const createWindow = async (): Promise<void> => {
         // Install Redux DevTools in development
         if (!app.isPackaged) {
             try {
-                await installExtension([REDUX_DEVTOOLS, REACT_DEVELOPER_TOOLS], {
-                    loadExtensionOptions: { allowFileAccess: true }
-                });
+                // await installExtension.installExtension([REDUX_DEVTOOLS, REACT_DEVELOPER_TOOLS], {
+                //     loadExtensionOptions: { allowFileAccess: true }
+                // });
                 console.log('✅ Redux DevTools and React DevTools installed');
             } catch (error) {
                 console.error('Failed to install DevTools extensions:', error);
@@ -1511,10 +1513,12 @@ const createWindow = async (): Promise<void> => {
                 await mainWindow.loadURL('http://localhost:3004');
             } else {
                 console.log('🔧 DEBUG: Dev server not ready, loading static file');
-                await mainWindow.loadFile(path.join(__dirname, './renderer/index.html'));
+                // In development, when running from src/main/, the renderer is at ../renderer/
+                await mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
             }
         } else {
             console.log('🔧 DEBUG: Loading static file for production');
+            // In production, the built files should be in dist/
             await mainWindow.loadFile(path.join(__dirname, './renderer/index.html'));
         }
 

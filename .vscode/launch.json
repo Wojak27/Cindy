@@ -32,6 +32,22 @@
             "timeout": 60000
         },
         {
+            "name": "Frontend",
+            "type": "node",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "runtimeExecutable": "npm",
+            "runtimeArgs": [
+                "run",
+                "dev:renderer"
+            ],
+            "console": "integratedTerminal",
+            "env": {
+                "NODE_ENV": "development",
+                "PATH": "/Users/karwo09/.nvm/versions/node/v22.18.0/bin:${env:PATH}"
+            }
+        },
+        {
             "name": "Electron: Main",
             "type": "node",
             "request": "launch",
@@ -300,8 +316,9 @@
         {
             "name": "Electron: Debug All (ts-node)",
             "configurations": [
+                "Debug: Start Dev Server",
+                "Electron: Renderer (attach 9222)",
                 "Electron: Main (ts-node/esm, Node 22)",
-                "Electron: Renderer (attach 9222)"
             ]
         },
         {

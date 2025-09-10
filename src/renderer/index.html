@@ -6,7 +6,7 @@
     <script>
         // Critical polyfill - must load before ANY other scripts including webpack
         if (typeof Promise.withResolvers === 'undefined') {
-            Promise.withResolvers = function() {
+            Promise.withResolvers = function () {
                 let resolve, reject;
                 const promise = new Promise((res, rej) => {
                     resolve = res;

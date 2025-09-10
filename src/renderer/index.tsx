@@ -1,6 +1,3 @@
-// Load polyfills before anything else
-import './polyfills';
-
 // Ensure TTSWorker IPC listener is registered as early as possible
 import React from 'react';
 import ReactDOM from 'react-dom/client';
@@ -32,7 +29,7 @@ if (process.env.NODE_ENV === 'development' && module.hot) {
         console.log('🔥 Hot reloading App component');
         renderApp();
     });
-    
+
     module.hot.accept('./store/store', () => {
         console.log('🔥 Hot reloading Redux store');
         renderApp();
