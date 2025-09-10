@@ -2,6 +2,8 @@ import 'dotenv/config'; // same as: import { config } from 'dotenv'; config();
 import { app, BrowserWindow, Menu, nativeImage, ipcMain, desktopCapturer, shell, session } from 'electron';
 import type { NativeImage } from 'electron';
 import * as path from 'path';
+import * as fs from 'fs';
+import { dialog } from 'electron';
 import * as os from 'os';
 import { DuckDBSettingsService } from './services/DuckDBSettingsService.ts';
 import type { Settings } from './services/SettingsService.ts';
@@ -20,11 +22,17 @@ import { TextToSpeechService } from './services/TextToSpeechService.ts';
 import { ConnectorManagerService } from './services/ConnectorManagerService.ts';
 import { generateStepDescription } from '../shared/AgentFlowStandard.ts';
 import { IPC_CHANNELS } from '../shared/ipcChannels.ts';
+import { dirname } from 'path';
+import { fileURLToPath } from 'url';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 import installExtension, {
     REDUX_DEVTOOLS,
     REACT_DEVELOPER_TOOLS
 } from 'electron-devtools-installer';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 
 // Set the application name to ensure it shows as "Cindy" instead of "Electron"
 app.setName('Cindy');
@@ -364,8 +372,6 @@ const setupSettingsIPC = () => {
 const setupDatabaseIPC = () => {
     console.log('🔧 DEBUG: Setting up database IPC handlers');
 
-    const fs = require('fs');
-    const { dialog } = require('electron');
 
     // Remove any existing handlers first
     const handlersToRemove = [
@@ -421,7 +427,7 @@ const setupDatabaseIPC = () => {
     ipcMain.handle(IPC_CHANNELS.SHOW_DIRECTORY_DIALOG, async (event, defaultPath) => {
         console.log('[IPC] Showing directory dialog, default path:', defaultPath);
         try {
-            const result = await dialog.showOpenDialog(mainWindow, {
+            const result = await dialog.showOpenDialog(mainWindow!, {
                 properties: ['openDirectory', 'createDirectory'],
                 defaultPath: defaultPath || undefined,
                 title: 'Select Database Directory'
@@ -1075,7 +1081,6 @@ const setupTTSIPC = () => {
         console.log('[IPC] TTS model download permission requested:', request.modelName);
 
         try {
-            const { dialog } = require('electron');
             const mainWindow = global.mainWindow;
 
             if (!mainWindow) {
@@ -1391,12 +1396,6 @@ async function waitForDevServer(maxRetries = 10, delay = 1000): Promise<boolean>
     return false;
 }
 
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (process.platform === 'win32') {
-    if (require('electron-squirrel-startup')) {
-        app.quit();
-    }
-}
 
 let mainWindow: BrowserWindow | null = null;
 let trayService: TrayService | null = null;
@@ -1442,16 +1441,12 @@ const createWindow = async (): Promise<void> => {
 
         // Helper function to find app icon with fallback path resolution
         const findAppIconPath = (): string => {
-            const fs = require('fs');
             const iconName = 'cindy-icon-v1.png';
 
             // Try different possible locations for the Cindy app icon
             const possiblePaths = [
                 path.join(process.cwd(), 'assets/icons/', iconName),                    // Source directory
-                path.join(__dirname, '../assets/icons/', iconName),                    // Relative to compiled main
-                path.join(__dirname, '../../assets/icons/', iconName),                 // From dist directory
                 path.join(process.cwd(), 'src/renderer/assets/icons/', iconName),      // Alternative source location
-                path.join(__dirname, '../renderer/assets/icons/', iconName),           // Alternative compiled location
             ];
 
             for (const iconPath of possiblePaths) {
@@ -1553,7 +1548,6 @@ const createWindow = async (): Promise<void> => {
 const createTray = async (): Promise<void> => {
     // Determine platform-appropriate icon format
     const getTrayIcon = (): string | NativeImage => {
-        const fs = require('fs');
 
         // Helper function to find icon with fallback path resolution
         const findIconPath = (iconName: string): string => {
@@ -1647,7 +1641,6 @@ const createTray = async (): Promise<void> => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', async () => {
-    debugger;
     // Initialize desktopCapturer IPC handler first
     ipcMain.handle(IPC_CHANNELS.GET_DESKTOP_AUDIO_SOURCES, async () => {
         console.log('DEBUG: Main process - get-desktop-audio-sources IPC called');
@@ -1888,7 +1881,6 @@ app.on('ready', async () => {
     ipcMain.handle(IPC_CHANNELS.START_FULL_INDEXING, async (_, databasePath: string, notesPath?: string) => {
         console.log('[IPC] Full indexing called - Database:', databasePath, 'Notes:', notesPath);
 
-        const fs = require('fs');
 
         if (!databasePath) {
             return { success: false, message: 'Database path is required' };
@@ -2005,8 +1997,6 @@ app.on('ready', async () => {
     ipcMain.handle(IPC_CHANNELS.OLLAMA_LIST_MODELS, async () => {
         console.log('Main process - ollama-list-models IPC called');
         try {
-            const { exec } = require('child_process');
-            const { promisify } = require('util');
             const execAsync = promisify(exec);
 
             const result = await execAsync('ollama list');
@@ -2030,8 +2020,6 @@ app.on('ready', async () => {
     ipcMain.handle(IPC_CHANNELS.OLLAMA_PULL_MODEL, async (_, modelName: string) => {
         console.log('Main process - ollama-pull-model IPC called for model:', modelName);
         try {
-            const { exec } = require('child_process');
-            const { promisify } = require('util');
             const execAsync = promisify(exec);
 
             // Pull the model with timeout
@@ -2048,8 +2036,6 @@ app.on('ready', async () => {
     ipcMain.handle(IPC_CHANNELS.OLLAMA_REMOVE_MODEL, async (_, modelName: string) => {
         console.log('Main process - ollama-remove-model IPC called for model:', modelName);
         try {
-            const { exec } = require('child_process');
-            const { promisify } = require('util');
             const execAsync = promisify(exec);
 
             await execAsync(`ollama rm ${modelName}`);
@@ -2271,7 +2257,6 @@ app.on('ready', async () => {
 
                     // If no database path configured, use default app data directory
                     if (!databasePath) {
-                        const { app } = require('electron');
                         databasePath = path.join(app.getPath('userData'), 'default-database');
                         console.log('🔧 DEBUG: No database path configured, using default:', databasePath);
                     }
@@ -2579,7 +2564,6 @@ app.on('ready', async () => {
                                 };
 
                                 // Create new LLM provider instance
-                                const { LLMProvider } = require('./services/LLMProvider');
                                 llmProvider = new LLMProvider(llmConfig);
 
                                 // Initialize the new LLM provider
@@ -2691,7 +2675,6 @@ app.on('ready', async () => {
                             };
 
                             // Create new LLM provider instance
-                            const { LLMProvider } = require('./services/LLMProvider');
                             llmProvider = new LLMProvider(llmConfig);
                             console.log('✅ LLM provider auto-initialized successfully');
 

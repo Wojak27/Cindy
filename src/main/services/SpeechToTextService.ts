@@ -1,5 +1,8 @@
 import { EventEmitter } from 'events';
 import { SpeechConfig, AudioConfig, SpeechRecognizer, ResultReason } from 'microsoft-cognitiveservices-speech-sdk';
+import path from 'path';
+import fs from 'fs';
+import os from 'os';
 
 interface STTConfig {
     provider: 'online' | 'offline' | 'auto' | 'sherpa';
@@ -228,8 +231,8 @@ class OnlineSTTEngine {
         return new Promise((resolve, reject) => {
             try {
                 // Convert ArrayBuffer to temporary file
-                const tempFilePath = require('path').join(require('os').tmpdir(), `cindy_audio_${Date.now()}.wav`);
-                require('fs').promises.writeFile(tempFilePath, Buffer.from(audioData))
+                const tempFilePath = path.join(os.tmpdir(), `cindy_audio_${Date.now()}.wav`);
+                fs.promises.writeFile(tempFilePath, Buffer.from(audioData))
                     .then(() => {
                         const audioConfig = AudioConfig.fromWavFileInput(tempFilePath);
                         const recognizer = new SpeechRecognizer(this.speechConfig!, audioConfig);
@@ -237,7 +240,7 @@ class OnlineSTTEngine {
                         recognizer.recognizeOnceAsync(
                             (result: any) => {
                                 recognizer.close();
-                                require('fs').promises.unlink(tempFilePath).catch(console.warn);
+                                fs.promises.unlink(tempFilePath).catch(console.warn);
                                 if (result.reason === ResultReason.RecognizedSpeech) {
                                     resolve(result.text);
                                 } else {
@@ -246,7 +249,7 @@ class OnlineSTTEngine {
                             },
                             (error: any) => {
                                 recognizer.close();
-                                require('fs').promises.unlink(tempFilePath).catch(console.warn);
+                                fs.promises.unlink(tempFilePath).catch(console.warn);
                                 reject(new Error(`Speech recognition error: ${error}`));
                             }
                         );
@@ -286,7 +289,6 @@ class SherpaSTTEngine {
             console.log('[SherpaSTTEngine] Initializing sherpa-onnx engine...');
 
             // Import sherpa-onnx
-            this.sherpa = require('sherpa-onnx');
 
             // Sherpa-onnx requires proper model files to work correctly
             // Since we don't have models configured, we'll simulate basic functionality

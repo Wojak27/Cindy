@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir, access } from 'fs/promises';
 import { join, dirname } from 'path';
 import { app } from 'electron';
 import { constants } from 'fs';
+import os from 'os';
 
 class ConfigManager {
     private configPath: string;
@@ -9,7 +10,7 @@ class ConfigManager {
     constructor() {
         // Determine config path based on platform
         const userDataPath = app?.getPath('userData') ||
-            join(require('os').homedir(), '.cindy');
+            join(os.homedir(), '.cindy');
         this.configPath = join(userDataPath, 'config.json');
     }
 

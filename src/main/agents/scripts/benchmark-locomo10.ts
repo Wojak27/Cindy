@@ -27,7 +27,6 @@ import * as path from 'path';
 import * as fs from 'fs';
 
 // Import evaluation packages
-const rouge = require('js-rouge');
 // Note: autoevals has ES module issues, we'll implement LLM judge manually
 import { logger } from '../../utils/ColorLogger.ts';
 import { trimThinkTags } from "../../utils/strings.ts";
@@ -973,17 +972,10 @@ async function initializeBenchmarkAgent(): Promise<{ agent: MainAgentExecution, 
     await llmProvider.initialize();
     logger.success('BenchmarkSetup', `LLM Provider initialized: ${llmProvider.getCurrentProvider()}`);
 
-    // 3. Initialize Memory Service (simplified for benchmarking)
-    const memoryService = new LangChainMemoryService(
-        {},
-        null,
-        llmProvider.getChatModel()
-    );
 
     // 4. Create RouterLangGraphAgent
     const agent = new MainAgentExecution({
         llmProvider,
-        memoryService,
         config: {
             enableStreaming: false,
             enableDeepResearch: false, // Disable for faster evaluation

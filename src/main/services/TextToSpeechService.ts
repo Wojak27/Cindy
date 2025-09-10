@@ -8,6 +8,7 @@ import { BackpressureController } from './BackpressureController.ts';
 import type { BackpressureAdjustments } from './BackpressureController.ts';
 import { ProsodySmoother } from './ProsodySmoother.ts';
 import type { AudioSegment, CrossfadeConfig, ProsodyCorrection } from './ProsodySmoother.ts';
+import { spawn } from 'child_process';
 
 interface TTSOptions {
     provider?: 'kokoro';
@@ -396,7 +397,6 @@ export class TextToSpeechService extends EventEmitter {
             // Use our optimized encoding pipeline — ensure header matches actual encoded rate
             const wavBuffer = this.encodeWAV(processedData, targetRate);
             console.log(`[TextToSpeechService] Encoding WAV with header sample rate: ${targetRate}Hz`);
-            const fs = require('fs');
             fs.writeFileSync(outputPath, Buffer.from(wavBuffer));
 
             console.log(`[TextToSpeechService] Audio saved to: ${outputPath}`);
@@ -488,8 +488,7 @@ export class TextToSpeechService extends EventEmitter {
 
                         // DEBUG: Log chunk start/end amplitudes to detect discontinuities
                         try {
-                            const fsDbg = require('fs');
-                            const buf = fsDbg.readFileSync(chunkAudioPath);
+                            const buf = fs.readFileSync(chunkAudioPath);
                             if (buf.length > 44) { // skip WAV header
                                 const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
                                 const bitsPerSample = dv.getUint16(34, true);
@@ -887,7 +886,6 @@ export class TextToSpeechService extends EventEmitter {
     private async playAudioFile(filePath: string): Promise<void> {
         return new Promise((resolve, reject) => {
             try {
-                const { spawn } = require('child_process');
                 let command: string;
                 let args: string[];
 

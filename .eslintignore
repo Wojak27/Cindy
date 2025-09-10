@@ -1,0 +1,55 @@
+# ESLint ignore patterns for performance optimization
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build outputs
+dist/
+build/
+release/
+coverage/
+.webpack/
+.next/
+.nuxt/
+.cache/
+
+# Large data directories
+sherpa-onnx/
+datasets/
+data/
+models/
+papers/
+website/
+
+# Generated and compiled files
+*.min.js
+*.min.css
+*.map
+*.d.ts
+
+# Database files
+*.db
+*.wal
+*.sqlite
+*.sqlite3
+
+# Log files
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Configuration files that don't need linting
+*.config.js
+*.config.ts
+webpack.config.js
+jest.config.js
+
+# Test files (optional - remove if you want to lint tests)
+**/*.spec.ts
+**/*.spec.tsx
+**/*.test.ts
+**/*.test.tsx
+**/__tests__/**

@@ -4,5 +4,121 @@
   },
   "npm.packageManager": "npm",
   "eslint.nodePath": "/Users/karwo09/.nvm/versions/node/v22.18.0/bin/node",
-  "typescript.tsdk": "node_modules/typescript/lib"
+  "typescript.tsdk": "node_modules/typescript/lib",
+  
+  // File exclusion patterns to improve VS Code performance
+  "files.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/build": true,
+    "**/release": true,
+    "**/coverage": true,
+    "**/.git": true,
+    "**/.DS_Store": true,
+    "**/Thumbs.db": true,
+    "**/*.log": true,
+    "**/*.tmp": true,
+    "**/*.temp": true,
+    "**/sherpa-onnx": true,
+    "**/datasets": true,
+    "**/models": true,
+    "**/data/appDataPathTest": true,
+    "**/*.db": true,
+    "**/*.wal": true,
+    "**/*.sqlite": true,
+    "**/*.sqlite3": true,
+    "**/website/node_modules": true,
+    "**/.webpack": true,
+    "**/.next": true,
+    "**/.nuxt": true,
+    "**/.cache": true,
+    "**/*.min.js": true,
+    "**/*.min.css": true,
+    "**/papers": true
+  },
+  
+  // Search exclusion patterns
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/build": true,
+    "**/release": true,
+    "**/coverage": true,
+    "**/.git": true,
+    "**/sherpa-onnx": true,
+    "**/datasets": true,
+    "**/models": true,
+    "**/data/appDataPathTest": true,
+    "**/*.db": true,
+    "**/*.wal": true,
+    "**/*.sqlite": true,
+    "**/*.sqlite3": true,
+    "**/website/node_modules": true,
+    "**/.webpack": true,
+    "**/*.min.js": true,
+    "**/*.min.css": true,
+    "**/papers": true,
+    "**/*.log": true
+  },
+  
+  // File watcher exclusions to reduce resource usage
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/dist/**": true,
+    "**/build/**": true,
+    "**/release/**": true,
+    "**/coverage/**": true,
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/sherpa-onnx/**": true,
+    "**/datasets/**": true,
+    "**/models/**": true,
+    "**/data/appDataPathTest/**": true,
+    "**/*.db": true,
+    "**/*.wal": true,
+    "**/*.sqlite": true,
+    "**/*.sqlite3": true,
+    "**/website/node_modules/**": true,
+    "**/.webpack/**": true,
+    "**/*.min.js": true,
+    "**/*.min.css": true,
+    "**/papers/**": true,
+    "**/*.log": true,
+    "**/*.tmp": true,
+    "**/*.temp": true
+  },
+  
+  // TypeScript configuration
+  "typescript.preferences.excludePackageJsonAutoImports": "on",
+  "typescript.tsc.autoDetect": "build",
+  "typescript.suggest.autoImports": true,
+  "typescript.preferences.includePackageJsonAutoImports": "off",
+  
+  // ESLint configuration
+  "eslint.workingDirectories": ["src"],
+  "eslint.options": {
+    "ignore": true,
+    "ignorePath": ".eslintignore"
+  },
+  
+  // Editor performance settings
+  "editor.quickSuggestions": {
+    "other": true,
+    "comments": false,
+    "strings": true
+  },
+  "editor.suggest.localityBonus": true,
+  "editor.suggest.shareSuggestSelections": false,
+  "editor.wordBasedSuggestions": "matchingDocuments",
+  
+  // Language specific settings
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  }
 }

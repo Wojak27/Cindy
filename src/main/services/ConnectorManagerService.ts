@@ -11,6 +11,7 @@ import { OutlookConnector } from '../connectors/OutlookConnector.ts';
 import { ZoteroConnector } from '../connectors/ZoteroConnector.ts';
 import { MendeleyConnector } from '../connectors/MendeleyConnector.ts';
 import { BaseConnector } from '../connectors/BaseConnector.ts';
+import { DuckDBSettingsService } from './DuckDBSettingsService.ts';
 import type { ConnectorCredentials, ConnectorProvider } from '../connectors/types.ts';
 import * as keytar from 'keytar';
 
@@ -119,8 +120,8 @@ export class ConnectorManagerService extends EventEmitter {
 
       if (!credentialsToUse) {
         // Try to get credentials from settings service
+        const settingsService = new DuckDBSettingsService();
         try {
-          const settingsService = require('./DuckDBSettingsService');
           if (settingsService) {
             const storedCredentials = await settingsService.getOAuthCredentials?.(provider);
             if (storedCredentials) {
@@ -435,7 +436,7 @@ export class ConnectorManagerService extends EventEmitter {
       if (!credentialsToUse) {
         // Try to get credentials from settings service
         try {
-          const settingsService = require('./DuckDBSettingsService');
+          const settingsService = new DuckDBSettingsService();
           if (settingsService) {
             const storedCredentials = await settingsService.getOAuthCredentials?.(provider);
             if (storedCredentials) {

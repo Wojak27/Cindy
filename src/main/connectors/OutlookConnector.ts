@@ -6,13 +6,9 @@
 // Use stubs for compilation when dependencies are not available
 let Client: any;
 
-try {
-  const microsoftGraph = require('@microsoft/microsoft-graph-client');
-  Client = microsoftGraph.Client;
-} catch {
-  const stub = require('../stubs/microsoft-graph-client');
-  Client = stub.Client;
-}
+import microsoftGraph from '@microsoft/microsoft-graph-client';
+Client = microsoftGraph.Client;
+
 import { BaseConnector } from './BaseConnector.ts';
 import type { ConnectorCredentials, ConnectorConfig, SearchOptions, ConnectorResponse, EmailHit } from './types.ts';
 import { z } from 'zod';

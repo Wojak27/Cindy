@@ -12,6 +12,7 @@ import { PDFLoader } from '@langchain/community/document_loaders/fs/pdf';
 import { TextLoader } from 'langchain/document_loaders/fs/text';
 import { JSONLoader } from 'langchain/document_loaders/fs/json';
 import { DocxLoader } from '@langchain/community/document_loaders/fs/docx';
+import crypto from 'crypto';
 import { th } from 'zod/v4/locales';
 
 interface DuckDBVectorStoreConfig {
@@ -970,7 +971,6 @@ export async function createDuckDBVectorStore(databasePath: string, llmConfig: {
     }
 
     // Use a hash of the source path to create unique database names
-    const crypto = require('crypto');
     const sourcePathHash = crypto.createHash('md5').update(databasePath).digest('hex').substring(0, 8);
     const dbName = `vector-store-${sourcePathHash}.db`;
 

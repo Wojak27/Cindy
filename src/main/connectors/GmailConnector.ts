@@ -3,26 +3,31 @@
  * Uses Gmail API v1 with OAuth 2.0 authentication
  */
 
-// Use stubs for compilation when dependencies are not available  
+// Gmail API dependencies - handle gracefully if not available
 let google: any, OAuth2Client: any;
 
-try {
-  const googleapis = require('googleapis');
-  google = googleapis.google;
-} catch {
-  const stub = require('../stubs/googleapis');
-  google = stub.google;
+async function initializeGmailDependencies() {
+  try {
+    // Try to import googleapis
+    const googleapis = await import('googleapis');
+    google = googleapis.google;
+  } catch (error) {
+    console.warn('[GmailConnector] googleapis not available, connector will be disabled');
+    google = null;
+  }
+
+  try {
+    // Try to import google-auth-library
+    const googleAuth = await import('google-auth-library');
+    OAuth2Client = googleAuth.OAuth2Client;
+  } catch (error) {
+    console.warn('[GmailConnector] google-auth-library not available, connector will be disabled');
+    OAuth2Client = null;
+  }
 }
 
-try {
-  const googleAuth = require('google-auth-library');
-  OAuth2Client = googleAuth.OAuth2Client;
-} catch {
-  const stub = require('../stubs/google-auth-library');
-  OAuth2Client = stub.OAuth2Client;
-}
 import { BaseConnector } from './BaseConnector.ts';
-import type { ConnectorCredentials, ConnectorConfig, SearchOptions, ConnectorResponse, EmailHit } from './types.ts';
+import type { ConnectorCredentials, ConnectorConfig, SearchOptions, ConnectorResponse, EmailHit } from './types';
 import { z } from 'zod';
 
 // Validation schemas
@@ -68,6 +73,8 @@ export class GmailConnector extends BaseConnector {
 
   constructor(config: ConnectorConfig = { provider: 'gmail', enabled: true, connected: false }) {
     super('gmail', config);
+    // Initialize dependencies asynchronously
+    initializeGmailDependencies();
     console.log('[GmailConnector] Initialized');
   }
 
@@ -209,7 +216,7 @@ export class GmailConnector extends BaseConnector {
 
       for (let i = 0; i < messages.length; i += batchSize) {
         const batch = messages.slice(i, i + batchSize);
-        const batchPromises = batch.map(message =>
+        const batchPromises = batch.map((message: any) =>
           this.fetchMessageDetails(message.id!)
         );
 
@@ -316,9 +323,9 @@ export class GmailConnector extends BaseConnector {
       const headers = message.payload?.headers || [];
 
       // Extract header values
-      const fromHeader = headers.find(h => h.name?.toLowerCase() === 'from')?.value || 'Unknown';
-      const subjectHeader = headers.find(h => h.name?.toLowerCase() === 'subject')?.value || 'No Subject';
-      const dateHeader = headers.find(h => h.name?.toLowerCase() === 'date')?.value || '';
+      const fromHeader = headers.find((h: any) => h.name?.toLowerCase() === 'from')?.value || 'Unknown';
+      const subjectHeader = headers.find((h: any) => h.name?.toLowerCase() === 'subject')?.value || 'No Subject';
+      const dateHeader = headers.find((h: any) => h.name?.toLowerCase() === 'date')?.value || '';
 
       // Get snippet (preview text)
       const snippet = this.stripHtml(message.snippet || '');
