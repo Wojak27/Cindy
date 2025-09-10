@@ -3,8 +3,8 @@
     "tasks": [
         {
             "label": "build:main",
-            "type": "npm",
-            "script": "build:main",
+            "type": "shell",
+            "command": "NODE_ENV=development npx webpack --config ./.webpack/main.js",
             "problemMatcher": ["$tsc"],
             "group": {
                 "kind": "build",
