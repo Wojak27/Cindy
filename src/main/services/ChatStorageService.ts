@@ -1,5 +1,6 @@
 import { open } from 'sqlite';
-import { Database } from 'sqlite3';
+import pkg from 'sqlite3';
+const { Database } = pkg;
 import path from 'path';
 import { app } from 'electron';
 export interface ChatMessage {

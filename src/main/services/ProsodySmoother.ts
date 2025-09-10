@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 
-export interface AudioSegment {
+export type AudioSegment = {
     id: string;
     audioData: Float32Array;
     sampleRate: number;
@@ -9,13 +9,13 @@ export interface AudioSegment {
     chunkId: string;
 }
 
-export interface CrossfadeConfig {
+export type CrossfadeConfig = {
     crossfadeMs: number;
     maxRetimesPerSentence: number;
     retimeThresholdMs: number;
 }
 
-export interface ProsodyCorrection {
+export type ProsodyCorrection = {
     originalSegmentId: string;
     correctedSegmentId: string;
     crossfadeStartMs: number;

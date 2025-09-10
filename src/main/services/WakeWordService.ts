@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
-import { WhisperWakeWordDetector } from '../utils/WhisperWakeWordDetector';
-import { SettingsService } from './SettingsService';
+import { WhisperWakeWordDetector } from '../utils/WhisperWakeWordDetector.ts';
+import { SettingsService } from './SettingsService.ts';
 
 class WakeWordService extends EventEmitter {
     private whisperDetector: WhisperWakeWordDetector;
@@ -15,7 +15,7 @@ class WakeWordService extends EventEmitter {
         this.settingsService = settingsService;
         this.whisperDetector = new WhisperWakeWordDetector();
         this.mainWindow = mainWindow;
-        
+
         console.log('WakeWordService: Initialized with Whisper-based wake word detection');
     }
 
@@ -29,7 +29,7 @@ class WakeWordService extends EventEmitter {
         try {
             // Get settings
             const voiceSettings = await this.settingsService.get('voice');
-            
+
             // Set audio threshold from settings (default 0.01 if not specified)
             this.audioThreshold = voiceSettings.audioThreshold || 0.01;
 
@@ -107,9 +107,9 @@ class WakeWordService extends EventEmitter {
             // For now, this is disabled to prevent the import error
             // The wake word detection will need to be refactored to use IPC communication
             // instead of direct access to the renderer process AudioCaptureService
-            
+
             console.log('WakeWordService: Wake word detection temporarily disabled - needs IPC refactoring');
-            
+
         } catch (error) {
             console.error('WakeWordService: Error in wake word detection:', error);
         }

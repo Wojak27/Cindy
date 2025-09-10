@@ -14,7 +14,7 @@ try {
   Client = stub.Client;
 }
 import { BaseConnector } from './BaseConnector.ts';
-import { ConnectorCredentials, ConnectorConfig, SearchOptions, ConnectorResponse, EmailHit } from './types.ts';
+import type { ConnectorCredentials, ConnectorConfig, SearchOptions, ConnectorResponse, EmailHit } from './types.ts';
 import { z } from 'zod';
 
 // Validation schemas

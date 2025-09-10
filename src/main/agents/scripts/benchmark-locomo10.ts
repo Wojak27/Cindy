@@ -21,7 +21,6 @@
 
 import { LLMProvider } from "../../services/LLMProvider.ts";
 import { MainAgentExecution } from "../MainAgentExecution.ts";
-import { LangChainMemoryService } from "../../services/LangChainMemoryService.ts";
 import { HumanMessage } from '@langchain/core/messages';
 import * as dotenv from 'dotenv';
 import * as path from 'path';

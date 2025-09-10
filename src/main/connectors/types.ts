@@ -20,7 +20,7 @@ export type RefHit = {
   provider: "zotero" | "mendeley";
 };
 
-export interface ConnectorCredentials {
+export type ConnectorCredentials = {
   provider: string;
   userId?: string;
   workspaceId?: string;
@@ -35,7 +35,7 @@ export interface ConnectorCredentials {
   config?: Record<string, any>;
 }
 
-export interface ConnectorConfig {
+export type ConnectorConfig = {
   provider: string;
   enabled: boolean;
   connected: boolean;
@@ -46,7 +46,7 @@ export interface ConnectorConfig {
   retryDelay?: number;
 }
 
-export interface SearchOptions {
+export type SearchOptions = {
   query: string;
   maxResults?: number;
   limit?: number;
@@ -70,7 +70,7 @@ export interface SearchOptions {
   collection?: string;
 }
 
-export interface ConnectorResponse<T> {
+export type ConnectorResponse<T> = {
   success: boolean;
   data: T[];
   error?: string;
@@ -85,7 +85,7 @@ export interface ConnectorResponse<T> {
 
 export type ConnectorProvider = 'gmail' | 'outlook' | 'zotero' | 'mendeley';
 
-export interface RetryConfig {
+export type RetryConfig = {
   maxAttempts: number;
   baseDelay: number;
   maxDelay: number;

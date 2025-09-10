@@ -1,8 +1,10 @@
 import 'dotenv/config'; // same as: import { config } from 'dotenv'; config();
-import { app, BrowserWindow, Menu, nativeImage, NativeImage, ipcMain, desktopCapturer, shell, session } from 'electron';
+import { app, BrowserWindow, Menu, nativeImage, ipcMain, desktopCapturer, shell, session } from 'electron';
+import type { NativeImage } from 'electron';
 import * as path from 'path';
 import * as os from 'os';
-import { DuckDBSettingsService, Settings } from './services/DuckDBSettingsService.ts';
+import { DuckDBSettingsService } from './services/DuckDBSettingsService.ts';
+import type { Settings } from './services/SettingsService.ts';
 import { TrayService } from './services/TrayService.ts';
 import axios from 'axios';
 import { ChatStorageService } from './services/ChatStorageService.ts';

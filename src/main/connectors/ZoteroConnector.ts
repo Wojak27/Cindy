@@ -4,7 +4,7 @@
  */
 
 import { BaseConnector } from './BaseConnector.ts';
-import { ConnectorConfig, SearchOptions, ConnectorResponse, RefHit, ConnectorCredentials } from './types.ts';
+import type { ConnectorConfig, SearchOptions, ConnectorResponse, RefHit, ConnectorCredentials } from './types.ts';
 import { z } from 'zod';
 
 // Validation schemas

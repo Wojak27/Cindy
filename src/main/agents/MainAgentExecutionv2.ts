@@ -1,5 +1,4 @@
 import { LLMProvider } from '../services/LLMProvider.ts';
-import { LangChainMemoryService } from '../services/LangChainMemoryService.ts';
 import { toolRegistry } from './tools/ToolRegistry.ts';
 import { SettingsService } from '../services/SettingsService.ts';
 import { ToolNode } from "@langchain/langgraph/prebuilt";
@@ -26,7 +25,6 @@ import { AccuWeatherTool } from './tools/weather/AccuWeatherTool.ts';
  */
 export interface MainAgentGraphOptions {
     llmProvider: LLMProvider;
-    memoryService: LangChainMemoryService;
     config?: any;
     enableStateManagement?: boolean;
     persistState?: boolean;
@@ -47,7 +45,6 @@ async function renderLocallyWithMermaidCLI(mermaid: string, outPath: string) {
  */
 export class MainAgentExecution {
     private llmProvider: LLMProvider;
-    private memoryService: LangChainMemoryService;
     private settingsService: SettingsService | null = null;
     private researchAgent: any;
     private writterAgent: any;
@@ -290,12 +287,6 @@ export class MainAgentExecution {
         } as any;
     }
 
-    /**
-     * Get the memory service for external access (used by benchmark)
-     */
-    public getMemoryService(): LangChainMemoryService {
-        return this.memoryService;
-    }
 
     public async process(input: string): Promise<string> {
         const output = await this.agent.invoke(

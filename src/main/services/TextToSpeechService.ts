@@ -2,9 +2,12 @@ import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { MicroChunker, MicroChunk, MicroChunkConfig, ChunkMetrics } from './MicroChunker.ts';
-import { BackpressureController, BackpressureAdjustments } from './BackpressureController.ts';
-import { ProsodySmoother, AudioSegment, CrossfadeConfig, ProsodyCorrection } from './ProsodySmoother.ts';
+import { MicroChunker } from './MicroChunker.ts';
+import type { MicroChunk, MicroChunkConfig, ChunkMetrics } from './MicroChunker.ts';
+import { BackpressureController } from './BackpressureController.ts';
+import type { BackpressureAdjustments } from './BackpressureController.ts';
+import { ProsodySmoother } from './ProsodySmoother.ts';
+import type { AudioSegment, CrossfadeConfig, ProsodyCorrection } from './ProsodySmoother.ts';
 
 interface TTSOptions {
     provider?: 'kokoro';

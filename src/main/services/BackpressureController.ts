@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import type { MicroChunkConfig } from './MicroChunker.ts';
 
-export interface BackpressureMetrics {
+export type BackpressureMetrics = {
     estimatedClientBufferMs: number;
     serverTtsQueueLength: number;
     underrunsInLastMinute: number;
@@ -9,7 +9,7 @@ export interface BackpressureMetrics {
     lastBufferUpdateTimestamp: number;
 }
 
-export interface BackpressureAdjustments {
+export type BackpressureAdjustments = {
     lookaheadTokens: number;
     chunkTokenBudget: number;
     timeBudgetMs: number;

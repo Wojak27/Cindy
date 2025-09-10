@@ -3,7 +3,7 @@
  */
 
 import { EventEmitter } from 'events';
-import {
+import type {
   ConnectorCredentials,
   ConnectorConfig,
   SearchOptions,

@@ -1,5 +1,4 @@
 import { LLMProvider } from '../services/LLMProvider.ts';
-import { LangChainMemoryService } from '../services/LangChainMemoryService.ts';
 import { toolRegistry } from './tools/ToolRegistry.ts';
 import { SettingsService } from '../services/SettingsService.ts';
 import { ToolNode } from "@langchain/langgraph/prebuilt";
@@ -7,7 +6,7 @@ import { END, Annotation, StateGraph, START } from "@langchain/langgraph";
 import { AIMessage, BaseMessage, HumanMessage } from "@langchain/core/messages";
 import { ChatPromptTemplate, MessagesPlaceholder } from '@langchain/core/prompts';
 import { StructuredTool } from '@langchain/core/tools';
-import { Runnable, RunnableConfig } from '@langchain/core/runnables';
+import { Runnable } from '@langchain/core/runnables';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { trimThinkTags } from '../utils/strings.ts';
 import toolLoader from './tools/ToolLoader.ts';
@@ -26,7 +25,6 @@ import { AccuWeatherTool } from './tools/weather/AccuWeatherTool.ts';
  */
 export interface MainAgentGraphOptions {
     llmProvider: LLMProvider;
-    memoryService: LangChainMemoryService;
     config?: any;
     enableStateManagement?: boolean;
     persistState?: boolean;
@@ -47,7 +45,6 @@ async function renderLocallyWithMermaidCLI(mermaid: string, outPath: string) {
  */
 export class MainAgentExecution {
     private llmProvider: LLMProvider;
-    private memoryService: LangChainMemoryService;
     private settingsService: SettingsService | null = null;
     private researchAgent: any;
     private writterAgent: any;
@@ -204,7 +201,7 @@ export class MainAgentExecution {
         state: typeof this.AgentState.State;
         agent: Runnable;
         name: string;
-        config?: RunnableConfig;
+        config?: any;
     }) {
         logger.info('RouterLangGraphAgent', `Running agent node: ${props.name}, recent message: "${trimThinkTags(props.state.messages.slice(-1)[0]?.content ?? "")}"`);
         const { state, agent, name, config } = props;
@@ -290,13 +287,6 @@ export class MainAgentExecution {
         } as any;
     }
 
-    /**
-     * Get the memory service for external access (used by benchmark)
-     */
-    public getMemoryService(): LangChainMemoryService {
-        return this.memoryService;
-    }
-
     public async process(input: string): Promise<string> {
         const output = await this.agent.invoke(
             { messages: [new HumanMessage(input)] },
@@ -372,19 +362,19 @@ export class MainAgentExecution {
                         if (rawResultsMatch) {
                             try {
                                 const rawResults = JSON.parse(rawResultsMatch[1]);
-                                
+
                                 // Yield event for document retrieval completion
                                 yield {
                                     stepId: `documents-${Date.now()}`,
                                     title: `Retrieved ${rawResults.length} document${rawResults.length === 1 ? '' : 's'}`,
                                     status: "completed",
-                                    context: { 
+                                    context: {
                                         documentCount: rawResults.length,
                                         documents: rawResults.map((file: any) => file.name || file.path)
                                     },
                                     timestamp: Date.now()
                                 };
-                                
+
                                 // Send documents as a batch to the side panel
                                 if (rawResults.length > 0) {
                                     // Convert to RetrievedDocument format
@@ -397,11 +387,11 @@ export class MainAgentExecution {
                                         relevanceScore: file.relevanceScore || file.score,
                                         matchedContent: file.matchedContent
                                     }));
-                                    
+
                                     // Emit multiple documents marker
                                     yield `side-panel-documents ${JSON.stringify(retrievedDocs)}`;
                                 }
-                                
+
                                 // Still emit individual document markers for backward compatibility
                                 for (const file of rawResults) {
                                     console.log("[MainAgentExecution] Retrieved document:", file);

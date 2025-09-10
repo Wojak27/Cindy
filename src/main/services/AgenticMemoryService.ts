@@ -6,7 +6,7 @@
 import { EventEmitter } from 'events';
 import { Database } from 'duckdb-async';
 import { v4 as uuidv4 } from 'uuid';
-import { LLMProvider } from '../services/LLMProvider';
+import { LLMProvider } from '../services/LLMProvider.ts';
 import path from 'path';
 import { app } from 'electron';
 
@@ -86,7 +86,7 @@ export class AgenticMemoryService extends EventEmitter {
 
         try {
             this.db = await Database.create(this.config.databasePath!);
-            
+
             // Create memory notes table
             await this.db.run(`
                 CREATE TABLE IF NOT EXISTS memory_notes (
@@ -156,7 +156,7 @@ export class AgenticMemoryService extends EventEmitter {
      */
     async constructNote(content: string, conversationId?: string): Promise<MemoryNote> {
         console.log('[AgenticMemoryService] Constructing note from content');
-        
+
         // Generate structured components using LLM
         const prompt = `Generate a structured analysis of the following content by:
 1. Identifying the most salient keywords (focus on nouns, verbs, and key concepts)
@@ -180,13 +180,13 @@ ${content}`;
                     content: 'You are a memory construction agent that creates structured memory notes from user input. Return valid JSON only.'
                 },
                 {
-                    role: 'user', 
+                    role: 'user',
                     content: prompt
                 }
             ]);
             const responseContent = (response as any).choices?.[0]?.message?.content || (response as any).content || response;
             const structured = JSON.parse(responseContent);
-            
+
             // Generate embedding for the complete note
             const embedding = await this.generateEmbedding(
                 `${content} ${structured.keywords.join(' ')} ${structured.context} ${structured.tags.join(' ')}`
@@ -222,10 +222,10 @@ ${content}`;
      */
     async generateLinks(note: MemoryNote): Promise<string[]> {
         console.log('[AgenticMemoryService] Generating links for note:', note.id);
-        
+
         // Find nearest neighbors based on embedding similarity
         const nearestMemories = await this.findNearestMemories(note.embedding, this.config.topK!);
-        
+
         if (nearestMemories.length === 0) {
             console.log('[AgenticMemoryService] No existing memories to link');
             return [];
@@ -255,18 +255,18 @@ Return your decision as a JSON array of memory IDs:
                     content: 'You are a memory construction agent that creates structured memory notes from user input. Return valid JSON only.'
                 },
                 {
-                    role: 'user', 
+                    role: 'user',
                     content: prompt
                 }
             ]);
             const responseContent = (response as any).choices?.[0]?.message?.content || (response as any).content || response;
             const linkedIds = JSON.parse(responseContent);
-            
+
             // Create bidirectional links
             for (const targetId of linkedIds) {
                 await this.createLink(note.id, targetId, 'semantic');
             }
-            
+
             console.log('[AgenticMemoryService] Created', linkedIds.length, 'links');
             return linkedIds;
         } catch (error) {
@@ -280,10 +280,10 @@ Return your decision as a JSON array of memory IDs:
      */
     async evolveMemories(newNote: MemoryNote, relatedMemories: MemoryNote[]): Promise<void> {
         console.log('[AgenticMemoryService] Evolving', relatedMemories.length, 'related memories');
-        
+
         for (const memory of relatedMemories) {
             const similarity = this.cosineSimilarity(newNote.embedding, memory.embedding);
-            
+
             // Only evolve if similarity exceeds threshold
             if (similarity < this.config.evolutionThreshold!) continue;
 
@@ -313,18 +313,18 @@ Return as JSON:
 
             try {
                 const response = await this.llmProvider.chat([
-                {
-                    role: 'system',
-                    content: 'You are a memory construction agent that creates structured memory notes from user input. Return valid JSON only.'
-                },
-                {
-                    role: 'user', 
-                    content: prompt
-                }
-            ]);
+                    {
+                        role: 'system',
+                        content: 'You are a memory construction agent that creates structured memory notes from user input. Return valid JSON only.'
+                    },
+                    {
+                        role: 'user',
+                        content: prompt
+                    }
+                ]);
                 const responseContent = (response as any).choices?.[0]?.message?.content || (response as any).content || response;
                 const evolution = JSON.parse(responseContent);
-                
+
                 if (evolution.should_evolve) {
                     await this.applyEvolution(memory, evolution.new_context, evolution.new_tags);
                     await this.createLink(newNote.id, memory.id, 'evolved');
@@ -340,29 +340,29 @@ Return as JSON:
      */
     async addMemory(content: string, conversationId?: string): Promise<MemoryNote> {
         await this.initialize();
-        
+
         // Step 1: Construct the note
         const note = await this.constructNote(content, conversationId);
-        
+
         // Step 2: Generate links with existing memories
         const linkedMemoryIds = await this.generateLinks(note);
         note.links = linkedMemoryIds;
-        
+
         // Step 3: Evolve related memories
         if (linkedMemoryIds.length > 0) {
             const relatedMemories = await this.getMemoriesByIds(linkedMemoryIds);
             await this.evolveMemories(note, relatedMemories);
         }
-        
+
         // Save to database
         await this.saveMemory(note);
-        
+
         // Update cache
         this.memoryCache.set(note.id, note);
-        
+
         // Emit event for real-time updates
         this.emit('memory-added', note);
-        
+
         return note;
     }
 
@@ -371,30 +371,30 @@ Return as JSON:
      */
     async retrieveMemories(query: string, limit: number = 10): Promise<MemoryNote[]> {
         await this.initialize();
-        
+
         // Generate query embedding
         const queryEmbedding = await this.generateEmbedding(query);
-        
+
         // Find most similar memories
         const memories = await this.findNearestMemories(queryEmbedding, limit);
-        
+
         // Update access counts and last accessed times
         for (const memory of memories) {
             memory.accessCount++;
             memory.lastAccessed = Date.now();
             await this.updateMemoryAccess(memory.id);
         }
-        
+
         // Also retrieve linked memories for context
         const allMemoryIds = new Set<string>();
         memories.forEach(m => {
             allMemoryIds.add(m.id);
             m.links.forEach(link => allMemoryIds.add(link));
         });
-        
+
         // Get all unique memories
         const expandedMemories = await this.getMemoriesByIds(Array.from(allMemoryIds));
-        
+
         return expandedMemories;
     }
 
@@ -406,13 +406,13 @@ Return as JSON:
         edges: Array<any>;
     }> {
         await this.initialize();
-        
+
         // Get all memories
         const memories = await this.getAllMemories();
-        
+
         // Get all links
         const links = await this.getAllLinks();
-        
+
         // Format for graph visualization
         const nodes = memories.map(m => ({
             id: m.id,
@@ -428,21 +428,21 @@ Return as JSON:
             color: m.evolved ? '#ff6b6b' : '#4ecdc4',
             size: Math.max(10, Math.min(50, m.importance * 50))
         }));
-        
+
         const edges = links.map(l => ({
             source: l.sourceId,
             target: l.targetId,
             strength: l.strength,
             type: l.type
         }));
-        
+
         return { nodes, edges };
     }
 
     /**
      * Private helper methods
      */
-    
+
     private async generateEmbedding(text: string): Promise<number[]> {
         // Use the LLM provider's embedding capability
         // For now, returning a mock embedding
@@ -460,13 +460,13 @@ Return as JSON:
 
     private async findNearestMemories(embedding: number[], k: number): Promise<MemoryNote[]> {
         const allMemories = await this.getAllMemories();
-        
+
         // Calculate similarities
         const similarities = allMemories.map(m => ({
             memory: m,
             similarity: this.cosineSimilarity(embedding, m.embedding)
         }));
-        
+
         // Sort by similarity and return top k
         similarities.sort((a, b) => b.similarity - a.similarity);
         return similarities.slice(0, k).map(s => s.memory);
@@ -474,7 +474,7 @@ Return as JSON:
 
     private async saveMemory(note: MemoryNote): Promise<void> {
         if (!this.db) throw new Error('Database not initialized');
-        
+
         await this.db.run(`
             INSERT INTO memory_notes (
                 id, conversation_id, content, context, keywords, tags, 
@@ -500,7 +500,7 @@ Return as JSON:
 
     private async createLink(sourceId: string, targetId: string, type: 'semantic' | 'temporal' | 'evolved'): Promise<void> {
         if (!this.db) throw new Error('Database not initialized');
-        
+
         await this.db.run(`
             INSERT OR REPLACE INTO memory_links (source_id, target_id, strength, type, created_at)
             VALUES (?, ?, ?, ?, ?)
@@ -509,7 +509,7 @@ Return as JSON:
 
     private async applyEvolution(memory: MemoryNote, newContext: string, newTags: string[]): Promise<void> {
         if (!this.db) throw new Error('Database not initialized');
-        
+
         // Save evolution history
         await this.db.run(`
             INSERT INTO memory_evolution (memory_id, old_context, new_context, old_tags, new_tags, reason, timestamp)
@@ -523,24 +523,24 @@ Return as JSON:
             'Evolved based on new related information',
             Date.now()
         ]);
-        
+
         // Update memory
         memory.context = newContext;
         memory.tags = newTags;
         memory.evolved = true;
-        
+
         await this.db.run(`
             UPDATE memory_notes 
             SET context = ?, tags = ?, evolved = ?
             WHERE id = ?
         `, [newContext, JSON.stringify(newTags), true, memory.id]);
-        
+
         this.emit('memory-evolved', memory);
     }
 
     private async updateMemoryAccess(memoryId: string): Promise<void> {
         if (!this.db) throw new Error('Database not initialized');
-        
+
         await this.db.run(`
             UPDATE memory_notes 
             SET access_count = access_count + 1, last_accessed = ?
@@ -550,9 +550,9 @@ Return as JSON:
 
     private async getAllMemories(): Promise<MemoryNote[]> {
         if (!this.db) throw new Error('Database not initialized');
-        
+
         const rows = await this.db.all('SELECT * FROM memory_notes ORDER BY timestamp DESC');
-        
+
         return rows.map(row => ({
             id: row.id,
             conversationId: row.conversation_id,
@@ -572,13 +572,13 @@ Return as JSON:
 
     private async getMemoriesByIds(ids: string[]): Promise<MemoryNote[]> {
         if (!this.db || ids.length === 0) return [];
-        
+
         const placeholders = ids.map(() => '?').join(',');
         const rows = await this.db.all(
             `SELECT * FROM memory_notes WHERE id IN (${placeholders})`,
             ids
         );
-        
+
         return rows.map(row => ({
             id: row.id,
             conversationId: row.conversation_id,
@@ -598,9 +598,9 @@ Return as JSON:
 
     private async getAllLinks(): Promise<MemoryLink[]> {
         if (!this.db) throw new Error('Database not initialized');
-        
+
         const rows = await this.db.all('SELECT * FROM memory_links');
-        
+
         return rows.map(row => ({
             sourceId: row.source_id,
             targetId: row.target_id,
@@ -615,14 +615,14 @@ Return as JSON:
      */
     async applyForgettingCurve(): Promise<void> {
         await this.initialize();
-        
+
         const now = Date.now();
         const memories = await this.getAllMemories();
-        
+
         for (const memory of memories) {
             const daysSinceAccess = (now - memory.lastAccessed) / (1000 * 60 * 60 * 24);
             const newImportance = memory.importance * Math.pow(this.config.decayRate!, daysSinceAccess);
-            
+
             if (newImportance !== memory.importance) {
                 await this.db!.run(
                     'UPDATE memory_notes SET importance = ? WHERE id = ?',
@@ -630,7 +630,7 @@ Return as JSON:
                 );
             }
         }
-        
+
         console.log('[AgenticMemoryService] Applied forgetting curve to', memories.length, 'memories');
     }
 }

@@ -11,7 +11,7 @@ import { OutlookConnector } from '../connectors/OutlookConnector.ts';
 import { ZoteroConnector } from '../connectors/ZoteroConnector.ts';
 import { MendeleyConnector } from '../connectors/MendeleyConnector.ts';
 import { BaseConnector } from '../connectors/BaseConnector.ts';
-import { ConnectorCredentials, ConnectorProvider } from '../connectors/types.ts';
+import type { ConnectorCredentials, ConnectorProvider } from '../connectors/types.ts';
 import * as keytar from 'keytar';
 
 // Note: ConnectorConfigSchema removed as unused
