@@ -1509,11 +1509,11 @@ const createWindow = async (): Promise<void> => {
                 await mainWindow.loadURL('http://localhost:3004');
             } else {
                 console.log('🔧 DEBUG: Dev server not ready, loading static file');
-                await mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+                await mainWindow.loadFile(path.join(__dirname, './renderer/index.html'));
             }
         } else {
             console.log('🔧 DEBUG: Loading static file for production');
-            await mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+            await mainWindow.loadFile(path.join(__dirname, './renderer/index.html'));
         }
 
         console.log('🔧 DEBUG: Content loading initiated');

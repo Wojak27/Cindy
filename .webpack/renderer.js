@@ -33,6 +33,11 @@ module.exports = {
   experiments: {
     topLevelAwait: true,
   },
+  output: {
+    path: require('path').resolve(__dirname, '..', 'dist', 'renderer'),
+    filename: '[name].js',
+    publicPath: './',
+  },
   devServer: {
     port: 3004,
     hot: true,

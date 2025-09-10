@@ -4,12 +4,13 @@
         "module": "commonjs",
         "moduleResolution": "node",
         "lib": [
-            "ES2024",
+            "ES2023",
             "DOM"
         ],
         "jsx": "react-jsx",
-        "strict": true, // optional but recommended
-        "noEmit": true, // editor only – no build output
+        "strict": true,
+        "noEmit": true,
+        "allowSyntheticDefaultImports": true,
         "baseUrl": ".",
         "paths": {
             "@main/*": [
@@ -29,10 +30,11 @@
         "esModuleInterop": true,
         "forceConsistentCasingInFileNames": true,
         "resolveJsonModule": true,
-        "skipLibCheck": true, // <<< major perf boost
+        "skipLibCheck": true,
         "types": [
-            "node"
-        ] // add "electron" here if you use it
+            "node",
+            "electron"
+        ]
     },
     "include": [
         "src/main/**/*",

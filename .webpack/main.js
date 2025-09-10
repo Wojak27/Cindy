@@ -75,5 +75,6 @@ module.exports = {
   output: {
     filename: 'main.js',
     path: require('path').resolve(__dirname, '..', 'dist'),
+    publicPath: './',
   },
 };

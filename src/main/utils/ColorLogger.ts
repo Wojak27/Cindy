@@ -3,7 +3,7 @@
  * Provides consistent colorful logging across all agent execution files
  */
 
-const chalk = require('chalk');
+import chalk from 'chalk';
 
 /**
  * Log level types for different message categories
