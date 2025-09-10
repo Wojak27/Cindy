@@ -8,7 +8,7 @@ import { ChatGroq } from '@langchain/groq';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { BaseMessage, HumanMessage, AIMessage, SystemMessage } from '@langchain/core/messages';
 import axios from 'axios';
-import { logger } from '../utils/ColorLogger';
+import { logger } from '../utils/ColorLogger.ts';
 
 interface LLMConfig {
     provider: 'openai' | 'ollama' | 'anthropic' | 'google' | 'cohere' | 'azure' | 'huggingface' | 'openrouter' | 'groq' | 'auto';

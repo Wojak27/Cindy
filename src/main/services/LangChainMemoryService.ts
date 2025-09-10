@@ -4,11 +4,11 @@ import { ConversationSummaryBufferMemory } from 'langchain/memory';
 import { VectorStoreRetrieverMemory } from 'langchain/memory';
 import { ChatMessageHistory } from '@langchain/community/stores/message/in_memory';
 import { BaseMessage, HumanMessage, AIMessage, SystemMessage } from '@langchain/core/messages';
-import { ChatStorageService } from './ChatStorageService';
+import { ChatStorageService } from './ChatStorageService.ts';
 // import { LangChainVectorStoreService } from './LangChainVectorStoreService'; // Unused - using DuckDBVectorStore instead
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 
-interface MemoryEntry {
+export interface MemoryEntry {
     id: string;
     type: 'conversation' | 'fact' | 'preference';
     key: string;
@@ -17,7 +17,7 @@ interface MemoryEntry {
     expiresAt?: Date;
 }
 
-interface ConversationContext {
+export interface ConversationContext {
     conversationId: string;
     shortTermMemory: BufferWindowMemory;
     longTermMemory?: ConversationSummaryBufferMemory;
@@ -30,10 +30,10 @@ export class LangChainMemoryService extends EventEmitter {
     private chatStorage: ChatStorageService;
     private vectorStore?: any; // Using DuckDBVectorStore instead of LangChainVectorStoreService
     private llmModel?: BaseChatModel;
-    
+
     // Conversation-specific memory instances
     private conversations: Map<string, ConversationContext> = new Map();
-    
+
     // Memory configuration
     private readonly DEFAULT_WINDOW_SIZE = 20; // Number of messages to keep in short-term memory
     private readonly MAX_TOKEN_LIMIT = 4000; // Token limit for conversation buffer
@@ -43,7 +43,7 @@ export class LangChainMemoryService extends EventEmitter {
         this.chatStorage = new ChatStorageService();
         this.vectorStore = vectorStore;
         this.llmModel = llmModel;
-        
+
         console.log('[LangChainMemoryService] Initialized with enhanced memory capabilities');
     }
 
@@ -57,17 +57,17 @@ export class LangChainMemoryService extends EventEmitter {
      */
     private async getConversationContext(conversationId: string): Promise<ConversationContext> {
         let context = this.conversations.get(conversationId);
-        
+
         if (!context) {
             console.log(`[LangChainMemoryService] Creating new memory context for conversation: ${conversationId}`);
-            
+
             // Create message history from existing chat storage
             const chatHistory = new ChatMessageHistory();
-            
+
             // Load existing conversation messages
             try {
                 const existingMessages = await this.chatStorage.getConversationHistory(conversationId);
-                
+
                 // Convert to LangChain message format
                 for (const msg of existingMessages) {
                     let message: BaseMessage;
@@ -86,7 +86,7 @@ export class LangChainMemoryService extends EventEmitter {
                     }
                     await chatHistory.addMessage(message);
                 }
-                
+
                 console.log(`[LangChainMemoryService] Loaded ${existingMessages.length} messages from storage`);
             } catch (error) {
                 console.warn('[LangChainMemoryService] Failed to load existing messages:', error);
@@ -119,7 +119,7 @@ export class LangChainMemoryService extends EventEmitter {
                     k: 6,
                     searchType: 'similarity'
                 });
-                
+
                 semanticMemory = new VectorStoreRetrieverMemory({
                     vectorStoreRetriever: retriever,
                     memoryKey: 'semantic_context',
@@ -155,7 +155,7 @@ export class LangChainMemoryService extends EventEmitter {
         timestamp: Date;
     }): Promise<void> {
         console.log(`[LangChainMemoryService] Adding message to conversation ${message.conversationId}`);
-        
+
         try {
             // Only save assistant messages to storage
             // User messages are already saved by the main process handler
@@ -218,7 +218,7 @@ export class LangChainMemoryService extends EventEmitter {
     async getConversationHistory(conversationId: string, limit?: number): Promise<any[]> {
         try {
             const context = await this.getConversationContext(conversationId);
-            
+
             // Get messages from short-term memory
             const memoryVariables = await context.shortTermMemory.loadMemoryVariables({});
             const chatHistory = memoryVariables.chat_history as BaseMessage[];
@@ -227,8 +227,8 @@ export class LangChainMemoryService extends EventEmitter {
             const messages = chatHistory.map((msg, index) => ({
                 id: `mem-${conversationId}-${index}`,
                 conversationId,
-                role: msg._getType() === 'human' ? 'user' : 
-                      msg._getType() === 'ai' ? 'assistant' : 'system',
+                role: msg._getType() === 'human' ? 'user' :
+                    msg._getType() === 'ai' ? 'assistant' : 'system',
                 content: msg.content as string,
                 timestamp: new Date() // LangChain doesn't preserve timestamps
             }));
@@ -256,7 +256,7 @@ export class LangChainMemoryService extends EventEmitter {
         tokenCount: number;
     }> {
         const context = await this.getConversationContext(conversationId);
-        
+
         // Get recent messages
         const shortTermContext = await context.shortTermMemory.loadMemoryVariables({});
         const recentMessages = shortTermContext.chat_history as BaseMessage[];
@@ -294,7 +294,7 @@ export class LangChainMemoryService extends EventEmitter {
      */
     async clearConversation(conversationId: string): Promise<void> {
         console.log(`[LangChainMemoryService] Clearing conversation memory: ${conversationId}`);
-        
+
         const context = this.conversations.get(conversationId);
         if (context) {
             // Clear all memory types
@@ -330,11 +330,11 @@ export class LangChainMemoryService extends EventEmitter {
         memoryTypes: string[];
     }> {
         const activeConversations = this.conversations.size;
-        
+
         // Calculate total messages across all conversations
         let totalMessages = 0;
         let totalContextLength = 0;
-        
+
         for (const [conversationId, context] of this.conversations) {
             try {
                 const memoryVars = await context.shortTermMemory.loadMemoryVariables({});
@@ -415,24 +415,24 @@ export class LangChainMemoryService extends EventEmitter {
      * Rough token count estimation
      */
     private estimateTokenCount(
-        messages?: BaseMessage[], 
-        summary?: string, 
+        messages?: BaseMessage[],
+        summary?: string,
         semanticContext?: string[]
     ): number {
         let count = 0;
-        
+
         if (messages) {
             count += messages.reduce((sum, msg) => sum + (msg.content as string).length, 0) / 4;
         }
-        
+
         if (summary) {
             count += summary.length / 4;
         }
-        
+
         if (semanticContext) {
             count += semanticContext.reduce((sum, ctx) => sum + ctx.length, 0) / 4;
         }
-        
+
         return Math.ceil(count);
     }
 
@@ -453,4 +453,4 @@ export class LangChainMemoryService extends EventEmitter {
     }
 }
 
-export { MemoryEntry, ConversationContext };
+// Interfaces exported at their definitions above

@@ -3,7 +3,7 @@
  */
 
 import { EventEmitter } from 'events';
-import { logger } from '../../utils/ColorLogger';
+import { logger } from '../../utils/ColorLogger.ts';
 import { StructuredTool, Tool } from '@langchain/core/tools';
 
 /**

@@ -17,7 +17,7 @@
         "build:renderer": "cross-env NODE_ENV=production webpack --config ./.webpack/renderer.js",
         "dev": "concurrently \"npm run dev:main\" \"npm run dev:renderer\"",
         "dev:webpack": "concurrently \"npm run build:main && npx electron ./dist/main.js\" \"npm run dev:renderer\"",
-        "dev:main": "cross-env NODE_ENV=development NODE_OPTIONS=\"--max-old-space-size=8192\" TS_NODE_TRANSPILE_ONLY=true TS_NODE_COMPILER_OPTIONS='{\"module\":\"commonjs\"}' electron -r ts-node/register src/main/main.ts",
+        "dev:main": "cross-env NODE_ENV=development NODE_OPTIONS=\"--max-old-space-size=8192 --inspect=9229\" TS_NODE_COMPILER_OPTIONS='{\"sourceMap\":true,\"inlineSourceMap\":true}' electron -r ts-node/register src/main/main.ts",
         "dev:renderer": "cross-env NODE_ENV=development webpack serve --config ./.webpack/renderer.js",
         "package": "npm run build && electron-builder build --publish never",
         "package:all": "npm run build && electron-builder build --publish never --mac --win --linux",

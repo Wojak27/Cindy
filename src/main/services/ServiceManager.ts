@@ -1,9 +1,9 @@
 import { EventEmitter } from 'events';
-import { DuckDBSettingsService } from './DuckDBSettingsService';
-import { LLMProvider } from './LLMProvider';
-import { toolRegistry } from '../agents/tools/ToolRegistry';
-import { toolLoader } from '../agents/tools/ToolLoader';
-import { MainAgentExecution } from '../agents/MainAgentExecution';
+import { DuckDBSettingsService } from './DuckDBSettingsService.ts';
+import { LLMProvider } from './LLMProvider.ts';
+import { toolRegistry } from '../agents/tools/ToolRegistry.ts';
+import { toolLoader } from '../agents/tools/ToolLoader.ts';
+import { MainAgentExecution } from '../agents/MainAgentExecution.ts';
 
 /**
  * ServiceManager - Handles dynamic loading of heavy LangChain services

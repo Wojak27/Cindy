@@ -19,9 +19,9 @@
  * - Category 4: Complex memory integration across multiple sessions
  */
 
-import { LLMProvider } from "../../services/LLMProvider";
-import { MainAgentExecution } from "../MainAgentExecution";
-import { LangChainMemoryService } from "../../services/LangChainMemoryService";
+import { LLMProvider } from "../../services/LLMProvider.ts";
+import { MainAgentExecution } from "../MainAgentExecution.ts";
+import { LangChainMemoryService } from "../../services/LangChainMemoryService.ts";
 import { HumanMessage } from '@langchain/core/messages';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
@@ -30,8 +30,8 @@ import * as fs from 'fs';
 // Import evaluation packages
 const rouge = require('js-rouge');
 // Note: autoevals has ES module issues, we'll implement LLM judge manually
-import { logger } from '../../utils/ColorLogger';
-import { trimThinkTags } from "../../utils/strings";
+import { logger } from '../../utils/ColorLogger.ts';
+import { trimThinkTags } from "../../utils/strings.ts";
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '../../../.env') });

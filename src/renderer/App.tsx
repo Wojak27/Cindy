@@ -15,6 +15,8 @@ import ModernDatabasePanel from './components/ModernDatabasePanel';
 import ChatSidePanel, { WidgetType, WeatherData, MapData, IndexedFile } from './components/ChatSidePanel';
 import ThemeToggle from './components/ThemeToggle';
 import { ThemeProvider } from './contexts/ThemeContext';
+import EventBlock from './components/EventBlock';
+import { RetrievedDocument } from './components/RetrievedDocuments';
 import AgentVisualizationPanel from './components/AgentVisualizationPanel';
 import AgentFlowVisualization from './components/AgentFlowVisualization';
 import ToolSelector from './components/ToolSelector';
@@ -78,7 +80,7 @@ const App: React.FC = () => {
     const [currentTTSMessage, setCurrentTTSMessage] = useState<string | null>(null);
     const [isInputExpanded, setIsInputExpanded] = useState(false);
     const [sidePanelWidgetType, setSidePanelWidgetType] = useState<WidgetType | null>(null);
-    const [sidePanelData, setSidePanelData] = useState<WeatherData | MapData | IndexedFile | null>(null);
+    const [sidePanelData, setSidePanelData] = useState<WeatherData | MapData | IndexedFile | RetrievedDocument[] | null>(null);
     const [showSidePanel, setShowSidePanel] = useState(false);
     const [conversationWidgets, setConversationWidgets] = useState<Array<{ type: WidgetType; data: any; timestamp: number }>>([]);
     const [widgetsByConversation, setWidgetsByConversation] = useState<Record<string, Array<{ type: WidgetType; data: any; timestamp: number }>>>({});
@@ -122,6 +124,17 @@ const App: React.FC = () => {
     const [agentFlowSteps, setAgentFlowSteps] = useState<any[]>([]);
     const [currentFlowMessageId, setCurrentFlowMessageId] = useState<string | null>(null);
     const [flowStepsByMessage, setFlowStepsByMessage] = useState<Record<string, any[]>>({});
+    const [agentEvents, setAgentEvents] = useState<Array<{
+        id: string;
+        title: string;
+        eventType: 'agent_transition' | 'tool_execution' | 'document_retrieval' | 'completion' | 'error';
+        status: 'running' | 'completed' | 'failed';
+        context?: any;
+        timestamp: number;
+        duration?: number;
+        messageId?: string;
+    }>>([]);
+    const [eventsByMessage, setEventsByMessage] = useState<Record<string, any[]>>({});
 
 
     // Memoize welcome message to prevent re-calculation on every render
@@ -921,6 +934,38 @@ const App: React.FC = () => {
                     dispatch({ type: 'APPEND_TO_LAST_ASSISTANT_MESSAGE', payload: processedTools.displayContent });
                 }
 
+                // Handle multiple retrieved documents
+                if (data.chunk.includes('side-panel-documents')) {
+                    const jsonMatch = data.chunk.match(/side-panel-documents (.+)/);
+                    console.log('📚 Detected side-panel-documents marker in stream:', jsonMatch);
+                    if (jsonMatch) {
+                        try {
+                            const docsData = JSON.parse(jsonMatch[1]);
+                            if (Array.isArray(docsData) && docsData.length > 0) {
+                                // Apply settings limit
+                                const maxDocs = settings?.ui?.retrievedDocuments?.maxDocuments || 5;
+                                const limitedDocs = docsData.slice(0, maxDocs);
+                                
+                                setSidePanelWidgetType('documents');
+                                setSidePanelData(limitedDocs as RetrievedDocument[]);
+                                
+                                if (settings?.ui?.retrievedDocuments?.showInSidePanel !== false) {
+                                    setShowSidePanel(true);
+                                }
+                                
+                                // Add to conversation widgets
+                                addWidgetToConversation({
+                                    type: 'documents',
+                                    data: limitedDocs,
+                                    timestamp: Date.now()
+                                });
+                            }
+                        } catch (e) {
+                            console.error("❌ Failed to parse side-panel-documents JSON:", e);
+                        }
+                    }
+                }
+                
                 // Check for side view data (weather/map) in streaming updates
                 if (data.chunk.includes('side-panel-weather')) {
 
@@ -962,6 +1007,57 @@ const App: React.FC = () => {
                         } catch (e) {
                             console.error("❌ Failed to parse side-panel-document JSON:", e);
                         }
+                    }
+                }
+                
+                // Handle agent events from structured streaming
+                if (data.chunk && typeof data.chunk === 'object' && (data.chunk as any).stepId) {
+                    const eventData = data.chunk as any;
+                    const eventId = eventData.stepId || `event-${Date.now()}`;
+                    
+                    // Map event types from MainAgentExecution streaming
+                    let eventType: 'agent_transition' | 'tool_execution' | 'document_retrieval' | 'completion' | 'error' = 'agent_transition';
+                    if (eventData.title?.includes('tool') || eventData.title?.includes('Tool')) {
+                        eventType = 'tool_execution';
+                    } else if (eventData.title?.includes('document') || eventData.title?.includes('Document')) {
+                        eventType = 'document_retrieval';
+                    } else if (eventData.status === 'completed') {
+                        eventType = 'completion';
+                    } else if (eventData.status === 'failed') {
+                        eventType = 'error';
+                    }
+                    
+                    const agentEvent = {
+                        id: eventId,
+                        title: eventData.title || 'Agent Event',
+                        eventType,
+                        status: eventData.status || 'running',
+                        context: eventData.context,
+                        timestamp: eventData.timestamp || Date.now(),
+                        duration: eventData.duration,
+                        messageId: currentAssistantId
+                    };
+                    
+                    // Add event to current message events
+                    setEventsByMessage(prev => ({
+                        ...prev,
+                        [currentAssistantId]: [...(prev[currentAssistantId] || []), agentEvent]
+                    }));
+                    
+                    // Add to global agent events if UI settings allow
+                    if (settings?.ui?.agentEvents?.showEventBlocks !== false) {
+                        setAgentEvents(prev => {
+                            const existingIndex = prev.findIndex(e => e.id === eventId);
+                            if (existingIndex >= 0) {
+                                // Update existing event
+                                const updated = [...prev];
+                                updated[existingIndex] = { ...updated[existingIndex], ...agentEvent };
+                                return updated;
+                            } else {
+                                // Add new event
+                                return [...prev, agentEvent];
+                            }
+                        });
                     }
                 }
             }
@@ -1738,6 +1834,33 @@ const App: React.FC = () => {
                                                                         isExpanded={false}
                                                                     />
                                                                 );
+                                                            }
+                                                            return null;
+                                                        })()}
+
+                                                        {/* Render Agent Event Blocks */}
+                                                        {(() => {
+                                                            const messageEvents = eventsByMessage[msg.id] || [];
+                                                            const showEventBlocks = settings?.ui?.agentEvents?.showEventBlocks !== false;
+                                                            
+                                                            if (showEventBlocks && messageEvents.length > 0) {
+                                                                return messageEvents.map((event: any) => (
+                                                                    <EventBlock
+                                                                        key={event.id}
+                                                                        id={event.id}
+                                                                        title={event.title}
+                                                                        eventType={event.eventType}
+                                                                        status={event.status}
+                                                                        context={event.context}
+                                                                        timestamp={event.timestamp}
+                                                                        duration={event.duration}
+                                                                        defaultOpen={!settings?.ui?.agentEvents?.autoCollapse}
+                                                                        onToggle={(isOpen) => {
+                                                                            // Optional: track event expand/collapse for analytics
+                                                                            console.log(`Event ${event.id} ${isOpen ? 'expanded' : 'collapsed'}`);
+                                                                        }}
+                                                                    />
+                                                                ));
                                                             }
                                                             return null;
                                                         })()}

@@ -2,22 +2,22 @@ import 'dotenv/config'; // same as: import { config } from 'dotenv'; config();
 import { app, BrowserWindow, Menu, nativeImage, NativeImage, ipcMain, desktopCapturer, shell, session } from 'electron';
 import * as path from 'path';
 import * as os from 'os';
-import { DuckDBSettingsService, Settings } from './services/DuckDBSettingsService';
-import { TrayService } from './services/TrayService';
+import { DuckDBSettingsService, Settings } from './services/DuckDBSettingsService.ts';
+import { TrayService } from './services/TrayService.ts';
 import axios from 'axios';
-import { ChatStorageService } from './services/ChatStorageService';
+import { ChatStorageService } from './services/ChatStorageService.ts';
 // Re-enable core LLM functionality
-import { LLMProvider } from './services/LLMProvider';
+import { LLMProvider } from './services/LLMProvider.ts';
 
-import { createDuckDBVectorStore, DuckDBVectorStore } from './services/DuckDBVectorStore';
-import { ServiceManager } from './services/ServiceManager';
-import { SpeechToTextService } from './services/SpeechToTextService';
-import RealTimeTranscriptionService from './services/RealTimeTranscriptionService';
-import { LinkPreviewService } from './services/LinkPreviewService';
-import { TextToSpeechService } from './services/TextToSpeechService';
-import { ConnectorManagerService } from './services/ConnectorManagerService';
-import { generateStepDescription } from '../shared/AgentFlowStandard';
-import { IPC_CHANNELS } from '../shared/ipcChannels';
+import { createDuckDBVectorStore, DuckDBVectorStore } from './services/DuckDBVectorStore.ts';
+import { ServiceManager } from './services/ServiceManager.ts';
+import { SpeechToTextService } from './services/SpeechToTextService.ts';
+import RealTimeTranscriptionService from './services/RealTimeTranscriptionService.ts';
+import { LinkPreviewService } from './services/LinkPreviewService.ts';
+import { TextToSpeechService } from './services/TextToSpeechService.ts';
+import { ConnectorManagerService } from './services/ConnectorManagerService.ts';
+import { generateStepDescription } from '../shared/AgentFlowStandard.ts';
+import { IPC_CHANNELS } from '../shared/ipcChannels.ts';
 
 import installExtension, {
     REDUX_DEVTOOLS,
@@ -1645,6 +1645,7 @@ const createTray = async (): Promise<void> => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', async () => {
+    debugger;
     // Initialize desktopCapturer IPC handler first
     ipcMain.handle(IPC_CHANNELS.GET_DESKTOP_AUDIO_SOURCES, async () => {
         console.log('DEBUG: Main process - get-desktop-audio-sources IPC called');

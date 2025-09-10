@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { SpeechToTextService } from './SpeechToTextService';
+import { SpeechToTextService } from './SpeechToTextService.ts';
 
 class RealTimeTranscriptionService extends EventEmitter {
     // @ts-ignore - temporarily unused during IPC refactoring
@@ -15,7 +15,7 @@ class RealTimeTranscriptionService extends EventEmitter {
     constructor(mainWindow: Electron.BrowserWindow) {
         super();
         this.mainWindow = mainWindow;
-        
+
         // Initialize STT service optimized for real-time transcription
         const sttConfig = {
             provider: 'offline' as const,
@@ -29,7 +29,7 @@ class RealTimeTranscriptionService extends EventEmitter {
 
     async startTranscription(): Promise<void> {
         console.log('RealTimeTranscriptionService: Starting real-time transcription');
-        
+
         if (this.isTranscribing) {
             console.log('RealTimeTranscriptionService: Already transcribing');
             return;
@@ -41,15 +41,15 @@ class RealTimeTranscriptionService extends EventEmitter {
             if (this.mainWindow && this.mainWindow.webContents) {
                 this.mainWindow.webContents.send('start-recording');
             }
-            
+
             // Start transcription loop
             this.isTranscribing = true;
             this.lastTranscription = '';
             this.silenceCount = 0;
-            
+
             // TODO: Real-time transcription needs IPC refactoring - temporarily disabled
             console.log('RealTimeTranscriptionService: Started (audio processing disabled - needs IPC refactoring)');
-            
+
         } catch (error) {
             console.error('RealTimeTranscriptionService: Failed to start:', error);
             throw error;
@@ -58,7 +58,7 @@ class RealTimeTranscriptionService extends EventEmitter {
 
     async stopTranscription(): Promise<void> {
         console.log('RealTimeTranscriptionService: Stopping real-time transcription');
-        
+
         if (!this.isTranscribing) {
             return;
         }
@@ -68,7 +68,7 @@ class RealTimeTranscriptionService extends EventEmitter {
             clearInterval(this.transcriptionInterval);
             this.transcriptionInterval = null;
         }
-        
+
         if (this.speechDetectionTimeout) {
             clearTimeout(this.speechDetectionTimeout);
             this.speechDetectionTimeout = null;
@@ -81,12 +81,12 @@ class RealTimeTranscriptionService extends EventEmitter {
 
         this.isTranscribing = false;
         this.silenceCount = 0;
-        
+
         // Send final transcription if we have one
         if (this.lastTranscription.trim()) {
             this.sendTranscriptionUpdate(this.lastTranscription, true);
         }
-        
+
         console.log('RealTimeTranscriptionService: Stopped successfully');
     }
 
@@ -104,10 +104,10 @@ class RealTimeTranscriptionService extends EventEmitter {
 
     private handleSilence(): void {
         this.silenceCount++;
-        
+
         // Send silence update to UI
         this.sendTranscriptionUpdate('', false);
-        
+
         // Auto-stop after prolonged silence
         if (this.silenceCount >= this.MAX_SILENCE_COUNT) {
             console.log('RealTimeTranscriptionService: Auto-stopping due to silence');
@@ -122,34 +122,34 @@ class RealTimeTranscriptionService extends EventEmitter {
         // 2. Or if it's completely different content
         const lengthDiff = Math.abs(newText.length - oldText.length);
         const similarity = this.calculateSimilarity(newText.toLowerCase(), oldText.toLowerCase());
-        
+
         return lengthDiff > 10 || similarity < 0.7;
     }
 
     private calculateSimilarity(str1: string, str2: string): number {
         if (str1 === str2) return 1.0;
         if (str1.length === 0 || str2.length === 0) return 0;
-        
+
         const longer = str1.length > str2.length ? str1 : str2;
         const shorter = str1.length > str2.length ? str2 : str1;
-        
+
         if (longer.length === 0) return 1.0;
-        
+
         const editDistance = this.levenshteinDistance(longer, shorter);
         return (longer.length - editDistance) / longer.length;
     }
 
     private levenshteinDistance(str1: string, str2: string): number {
         const matrix = Array(str2.length + 1).fill(null).map(() => Array(str1.length + 1).fill(null));
-        
+
         for (let i = 0; i <= str1.length; i++) {
             matrix[0][i] = i;
         }
-        
+
         for (let j = 0; j <= str2.length; j++) {
             matrix[j][0] = j;
         }
-        
+
         for (let j = 1; j <= str2.length; j++) {
             for (let i = 1; i <= str1.length; i++) {
                 if (str1[i - 1] === str2[j - 1]) {
@@ -163,7 +163,7 @@ class RealTimeTranscriptionService extends EventEmitter {
                 }
             }
         }
-        
+
         return matrix[str2.length][str1.length];
     }
 

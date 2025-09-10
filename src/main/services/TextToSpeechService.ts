@@ -2,9 +2,9 @@ import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { MicroChunker, MicroChunk, MicroChunkConfig, ChunkMetrics } from './MicroChunker';
-import { BackpressureController, BackpressureAdjustments } from './BackpressureController';
-import { ProsodySmoother, AudioSegment, CrossfadeConfig, ProsodyCorrection } from './ProsodySmoother';
+import { MicroChunker, MicroChunk, MicroChunkConfig, ChunkMetrics } from './MicroChunker.ts';
+import { BackpressureController, BackpressureAdjustments } from './BackpressureController.ts';
+import { ProsodySmoother, AudioSegment, CrossfadeConfig, ProsodyCorrection } from './ProsodySmoother.ts';
 
 interface TTSOptions {
     provider?: 'kokoro';
@@ -191,7 +191,7 @@ export class TextToSpeechService extends EventEmitter {
             console.log('[TextToSpeechService] Deferring Kokoro.js loading to synthesis time');
             this.isInitialized = true;
             this.modelAvailable = true; // Mark as available, actual check happens during synthesis
-            
+
             // Configure optimized settings for micro-streaming
             if (!this.options.microStreamingConfig) {
                 this.options.microStreamingConfig = {
@@ -203,7 +203,7 @@ export class TextToSpeechService extends EventEmitter {
                     forceFlushTimeoutMs: 500     // Force flush if chunk takes too long
                 };
             }
-            
+
             // Configure prosody smoothing for seamless audio
             if (!this.options.prosodyConfig) {
                 this.options.prosodyConfig = {
@@ -212,7 +212,7 @@ export class TextToSpeechService extends EventEmitter {
                     retimeThresholdMs: 120       // Low threshold for quick corrections
                 };
             }
-            
+
             console.log('[TextToSpeechService] ✅ Kokoro TTS initialized');
             this.emit('initialized', { provider: 'kokoro', streamingEnabled: this.options.enableStreaming });
         } catch (error) {

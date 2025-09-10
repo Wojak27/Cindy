@@ -17,12 +17,13 @@ import {
     Map as MapIcon,
     Info as InfoIcon,
 } from '@mui/icons-material';
-import WeatherWidget from './WeatherWidget';
-import MapsWidget from './MapsWidget';
-import DocumentHandler from './DocumentHandler';
+import WeatherWidget from './WeatherWidget.tsx';
+import MapsWidget from './MapsWidget.tsx';
+import DocumentHandler from './DocumentHandler.tsx';
+import RetrievedDocuments, { RetrievedDocument } from './RetrievedDocuments.tsx';
 
 // Widget types
-export type WidgetType = 'document' | 'weather' | 'map';
+export type WidgetType = 'document' | 'documents' | 'weather' | 'map';
 
 // Widget data interfaces
 export interface IndexedFile {
@@ -78,7 +79,7 @@ export interface MapData {
 
 interface ChatSidePanelProps {
     widgetType: WidgetType | null;
-    data: IndexedFile | WeatherData | MapData | null;
+    data: IndexedFile | WeatherData | MapData | RetrievedDocument[] | null;
     conversationWidgets: Array<{ type: WidgetType; data: any; timestamp: number }>;
     onClose: () => void;
 }
@@ -133,6 +134,8 @@ const ChatSidePanel: React.FC<ChatSidePanelProps> = ({ widgetType, data, convers
                 return <WeatherIcon sx={{ fontSize: 16, mr: 0.5 }} />;
             case 'map':
                 return <MapIcon sx={{ fontSize: 16, mr: 0.5 }} />;
+            case 'documents':
+                return <FileIcon sx={{ fontSize: 16, mr: 0.5 }} />;
             case 'document':
             default:
                 return <FileIcon sx={{ fontSize: 16, mr: 0.5 }} />;
@@ -149,6 +152,9 @@ const ChatSidePanel: React.FC<ChatSidePanelProps> = ({ widgetType, data, convers
                     return mapData.locations[0].name;
                 }
                 return `${mapData.locations.length} Locations`;
+            case 'documents':
+                const docs = widget.data as RetrievedDocument[];
+                return `${docs.length} Document${docs.length === 1 ? '' : 's'}`;
             case 'document':
                 return (widget.data as IndexedFile).name || 'Document';
             default:
@@ -162,6 +168,27 @@ const ChatSidePanel: React.FC<ChatSidePanelProps> = ({ widgetType, data, convers
                 return <WeatherWidget weatherData={widget.data as WeatherData} />;
             case 'map':
                 return <MapsWidget mapData={widget.data as MapData} />;
+            case 'documents':
+                const docs = widget.data as RetrievedDocument[];
+                return (
+                    <RetrievedDocuments
+                        documents={docs}
+                        onDocumentOpen={(doc) => {
+                            // Convert RetrievedDocument to IndexedFile format for DocumentHandler
+                            const indexedFile: IndexedFile = {
+                                path: doc.path,
+                                name: doc.name,
+                                size: doc.size,
+                                mtime: doc.mtime,
+                                chunks: doc.chunks
+                            };
+                            
+                            // Add as a new document widget
+                            setWidgets(prev => [...prev, { type: 'document', data: indexedFile }]);
+                            setActiveTab(widgets.length);
+                        }}
+                    />
+                );
             case 'document':
                 const file = widget.data as IndexedFile;
                 return (

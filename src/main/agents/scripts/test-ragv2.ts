@@ -1,5 +1,5 @@
 import { LLMProvider } from "../../services/LLMProvider";
-import { MainAgentExecution } from "../MainAgentExecution";
+import { MainAgentExecution } from "../MainAgentExecutionv2";
 import { LangChainMemoryService } from "../../services/LangChainMemoryService";
 import * as dotenv from 'dotenv';
 import path from 'path';

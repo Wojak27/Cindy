@@ -11,9 +11,12 @@ import { Tool } from '@langchain/core/tools';
 export class VectorSearchTool extends Tool {
     name = 'search_documents';
     description = 'Search through users personal, indexed documents and notes using semantic similarity. Use this when users ask about stored documents, notes, or need to find specific information from their knowledge base. Triggered by #search or #find hashtags.';
+    
+    private vectorStore: any;
 
-    constructor(private vectorStore: any) {
+    constructor(vectorStore: any) {
         super();
+        this.vectorStore = vectorStore;
     }
 
     async _call(input: any, _runManager?: CallbackManagerForToolRun): Promise<any> {

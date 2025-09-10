@@ -21,8 +21,8 @@ try {
   const stub = require('../stubs/google-auth-library');
   OAuth2Client = stub.OAuth2Client;
 }
-import { BaseConnector } from './BaseConnector';
-import { ConnectorCredentials, ConnectorConfig, SearchOptions, ConnectorResponse, EmailHit } from './types';
+import { BaseConnector } from './BaseConnector.ts';
+import { ConnectorCredentials, ConnectorConfig, SearchOptions, ConnectorResponse, EmailHit } from './types.ts';
 import { z } from 'zod';
 
 // Validation schemas
@@ -59,7 +59,7 @@ const GmailSearchOptionsSchema = z.object({
 export class GmailConnector extends BaseConnector {
   private oauth2Client: any = null;
   private gmail: any = null;
-  
+
   // Gmail OAuth scopes
   private static readonly SCOPES = [
     'https://www.googleapis.com/auth/gmail.readonly',
@@ -105,11 +105,11 @@ export class GmailConnector extends BaseConnector {
 
       // Test connection with a minimal API call
       await this.gmail.users.getProfile({ userId: 'me' });
-      
+
       console.log('[GmailConnector] Successfully connected to Gmail API');
     } catch (error: any) {
       console.error('[GmailConnector] Credential validation failed:', error);
-      
+
       if (error.code === 401 || error.message?.includes('invalid_token')) {
         // Try to refresh token if available
         if (await this.refreshCredentials?.()) {
@@ -118,7 +118,7 @@ export class GmailConnector extends BaseConnector {
         }
         throw new Error('Gmail authentication failed. Token may be expired or invalid.');
       }
-      
+
       throw new Error(`Gmail connector validation failed: ${error.message}`);
     }
   }
@@ -135,7 +135,7 @@ export class GmailConnector extends BaseConnector {
     try {
       console.log('[GmailConnector] Refreshing OAuth tokens...');
       const { credentials } = await this.oauth2Client.refreshAccessToken();
-      
+
       // Update stored credentials
       if (this.credentials?.tokens) {
         this.credentials.tokens.access_token = credentials.access_token!;
@@ -152,10 +152,10 @@ export class GmailConnector extends BaseConnector {
       return true;
     } catch (error: any) {
       console.error('[GmailConnector] Token refresh failed:', error);
-      this.emit('error', { 
-        provider: 'gmail', 
-        error: 'Token refresh failed', 
-        fatal: true 
+      this.emit('error', {
+        provider: 'gmail',
+        error: 'Token refresh failed',
+        fatal: true
       });
       return false;
     }
@@ -173,7 +173,7 @@ export class GmailConnector extends BaseConnector {
       // Validate and parse search options
       this.validateSearchOptions(options);
       const validatedOptions = GmailSearchOptionsSchema.parse(options);
-      
+
       console.log(`[GmailConnector] Searching Gmail with query: "${validatedOptions.query}"`);
 
       // Build Gmail search query
@@ -206,20 +206,20 @@ export class GmailConnector extends BaseConnector {
       // Fetch message details in batches to avoid rate limits
       const emailHits: EmailHit[] = [];
       const batchSize = 5;
-      
+
       for (let i = 0; i < messages.length; i += batchSize) {
         const batch = messages.slice(i, i + batchSize);
-        const batchPromises = batch.map(message => 
+        const batchPromises = batch.map(message =>
           this.fetchMessageDetails(message.id!)
         );
-        
+
         const batchResults = await Promise.allSettled(batchPromises);
-        
+
         batchResults.forEach((result, index) => {
           if (result.status === 'fulfilled' && result.value) {
             emailHits.push(result.value);
           } else {
-            console.warn(`[GmailConnector] Failed to fetch message ${batch[index].id}:`, 
+            console.warn(`[GmailConnector] Failed to fetch message ${batch[index].id}:`,
               result.status === 'rejected' ? result.reason : 'Unknown error');
           }
         });
@@ -237,7 +237,7 @@ export class GmailConnector extends BaseConnector {
         data: emailHits,
         metadata: {
           totalResults: emailHits.length,
-          hasMore: searchResponse.data.resultSizeEstimate ? 
+          hasMore: searchResponse.data.resultSizeEstimate ?
             searchResponse.data.resultSizeEstimate > emailHits.length : false,
           nextPageToken: searchResponse.data.nextPageToken,
           searchTime: Date.now()
@@ -246,7 +246,7 @@ export class GmailConnector extends BaseConnector {
 
     } catch (error: any) {
       console.error('[GmailConnector] Search failed:', error);
-      
+
       // Check if it's an authentication error
       if (error.code === 401) {
         if (await this.refreshCredentials?.()) {
@@ -314,15 +314,15 @@ export class GmailConnector extends BaseConnector {
 
       const message = response.data;
       const headers = message.payload?.headers || [];
-      
+
       // Extract header values
       const fromHeader = headers.find(h => h.name?.toLowerCase() === 'from')?.value || 'Unknown';
       const subjectHeader = headers.find(h => h.name?.toLowerCase() === 'subject')?.value || 'No Subject';
       const dateHeader = headers.find(h => h.name?.toLowerCase() === 'date')?.value || '';
-      
+
       // Get snippet (preview text)
       const snippet = this.stripHtml(message.snippet || '');
-      
+
       const emailHit: EmailHit = {
         id: messageId,
         subject: this.truncateText(subjectHeader, 100),
@@ -347,12 +347,12 @@ export class GmailConnector extends BaseConnector {
     if (emailMatch) {
       return emailMatch[1];
     }
-    
+
     // If no brackets, check if it's just an email
     if (fromHeader.includes('@')) {
       return fromHeader.trim();
     }
-    
+
     return fromHeader; // Return as-is if we can't parse
   }
 
@@ -386,7 +386,7 @@ export class GmailConnector extends BaseConnector {
 
     try {
       const { tokens } = await this.oauth2Client.getToken(code);
-      
+
       const credentials: ConnectorCredentials = {
         provider: 'gmail',
         tokens: {
@@ -432,7 +432,7 @@ export class GmailConnector extends BaseConnector {
   async test(): Promise<{ success: boolean; message: string; data?: any }> {
     try {
       console.log('[GmailConnector] Running connector test...');
-      
+
       if (!this.isConnected()) {
         return {
           success: false,
@@ -441,9 +441,9 @@ export class GmailConnector extends BaseConnector {
       }
 
       // Test with a simple search
-      const testResult = await this.search({ 
-        query: 'is:inbox', 
-        maxResults: 3 
+      const testResult = await this.search({
+        query: 'is:inbox',
+        maxResults: 3
       });
 
       if (testResult.success) {

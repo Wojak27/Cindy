@@ -1,8 +1,8 @@
 import { EventEmitter } from 'events';
-import { PathValidator } from '../utils/PathValidator';
+import { PathValidator } from '../utils/PathValidator.ts';
 import * as keytar from 'keytar';
 
-interface Settings {
+export interface Settings {
     // General settings
     general: {
         startAtLogin: boolean;
@@ -560,4 +560,4 @@ class SettingsService extends EventEmitter {
 
 }
 
-export { SettingsService, Settings };
+export { SettingsService };

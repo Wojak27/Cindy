@@ -6,12 +6,12 @@
 import { EventEmitter } from 'events';
 import { createServer, Server, IncomingMessage, ServerResponse } from 'http';
 import { URL } from 'url';
-import { GmailConnector } from '../connectors/GmailConnector';
-import { OutlookConnector } from '../connectors/OutlookConnector';
-import { ZoteroConnector } from '../connectors/ZoteroConnector';
-import { MendeleyConnector } from '../connectors/MendeleyConnector';
-import { BaseConnector } from '../connectors/BaseConnector';
-import { ConnectorCredentials, ConnectorProvider } from '../connectors/types';
+import { GmailConnector } from '../connectors/GmailConnector.ts';
+import { OutlookConnector } from '../connectors/OutlookConnector.ts';
+import { ZoteroConnector } from '../connectors/ZoteroConnector.ts';
+import { MendeleyConnector } from '../connectors/MendeleyConnector.ts';
+import { BaseConnector } from '../connectors/BaseConnector.ts';
+import { ConnectorCredentials, ConnectorProvider } from '../connectors/types.ts';
 import * as keytar from 'keytar';
 
 // Note: ConnectorConfigSchema removed as unused
@@ -30,10 +30,10 @@ export class ConnectorManagerService extends EventEmitter {
   private server: Server | null = null;
   private readonly OAUTH_PORT = 8080;
   private readonly SERVICE_NAME = 'Cindy-Connectors';
-  
+
   // OAuth state tracking
   private oauthStates: Map<string, { provider: ConnectorProvider; timestamp: number; config?: any }> = new Map();
-  
+
   constructor() {
     super();
   }
@@ -43,7 +43,7 @@ export class ConnectorManagerService extends EventEmitter {
    */
   private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url!, `http://127.0.0.1:${this.OAUTH_PORT}`);
-    
+
     // Set CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -73,10 +73,10 @@ export class ConnectorManagerService extends EventEmitter {
     const state = url.searchParams.get('state');
     const error = url.searchParams.get('error');
 
-    console.log('[ConnectorManager] OAuth callback received:', { 
-      hasCode: !!code, 
-      state, 
-      hasError: !!error 
+    console.log('[ConnectorManager] OAuth callback received:', {
+      hasCode: !!code,
+      state,
+      hasError: !!error
     });
 
     if (error) {
@@ -116,7 +116,7 @@ export class ConnectorManagerService extends EventEmitter {
 
       // Get OAuth credentials from stored state or settings service
       let credentialsToUse = stateInfo.config;
-      
+
       if (!credentialsToUse) {
         // Try to get credentials from settings service
         try {
@@ -131,10 +131,10 @@ export class ConnectorManagerService extends EventEmitter {
           console.warn(`[ConnectorManager] Could not load stored credentials for ${provider}:`, error);
         }
       }
-      
+
       // Temporarily set OAuth credentials from available sources
       const originalEnvVars: Record<string, string | undefined> = {};
-      
+
       if (credentialsToUse) {
         if (provider === 'gmail' && credentialsToUse.clientId && credentialsToUse.clientSecret) {
           originalEnvVars.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
@@ -201,15 +201,15 @@ export class ConnectorManagerService extends EventEmitter {
       }
 
       console.log(`[ConnectorManager] Successfully connected ${provider} connector`);
-      
+
       // Send success response
       this.sendSuccessResponse(res, provider);
 
       // Emit success event
-      this.emit('connector-connected', { 
-        provider, 
+      this.emit('connector-connected', {
+        provider,
         userInfo: connectorInfo.userInfo,
-        connected: true 
+        connected: true
       });
 
     } catch (error: any) {
@@ -252,7 +252,7 @@ export class ConnectorManagerService extends EventEmitter {
         </body>
       </html>
     `;
-    
+
     res.writeHead(200, { 'Content-Type': 'text/html' });
     res.end(html);
   }
@@ -367,7 +367,7 @@ export class ConnectorManagerService extends EventEmitter {
    */
   private async loadExistingCredentials(): Promise<void> {
     const providers = Array.from(this.connectors.keys());
-    
+
     for (const provider of providers) {
       try {
         const info = this.connectors.get(provider)!;
@@ -431,7 +431,7 @@ export class ConnectorManagerService extends EventEmitter {
     try {
       // Get OAuth credentials from settings service or use provided config
       let credentialsToUse = oauthConfig;
-      
+
       if (!credentialsToUse) {
         // Try to get credentials from settings service
         try {
@@ -446,10 +446,10 @@ export class ConnectorManagerService extends EventEmitter {
           console.warn(`[ConnectorManager] Could not load stored credentials for ${provider}:`, error);
         }
       }
-      
+
       // Temporarily set OAuth credentials from available sources
       const originalEnvVars: Record<string, string | undefined> = {};
-      
+
       if (credentialsToUse) {
         if (provider === 'gmail' && credentialsToUse.clientId && credentialsToUse.clientSecret) {
           originalEnvVars.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
@@ -470,10 +470,10 @@ export class ConnectorManagerService extends EventEmitter {
       }
 
       // Store OAuth config for later use during token exchange
-      this.oauthStates.set(state, { 
-        provider, 
-        timestamp: Date.now(), 
-        config: credentialsToUse 
+      this.oauthStates.set(state, {
+        provider,
+        timestamp: Date.now(),
+        config: credentialsToUse
       });
 
       try {
@@ -529,7 +529,7 @@ export class ConnectorManagerService extends EventEmitter {
     try {
       await info.connector.initialize(credentials);
       await this.storeCredentials('zotero', credentials);
-      
+
       info.connected = true;
       info.lastSync = new Date();
 
@@ -539,10 +539,10 @@ export class ConnectorManagerService extends EventEmitter {
       }
 
       console.log('[ConnectorManager] Successfully configured Zotero connector');
-      this.emit('connector-connected', { 
-        provider: 'zotero', 
+      this.emit('connector-connected', {
+        provider: 'zotero',
         userInfo: info.userInfo,
-        connected: true 
+        connected: true
       });
     } catch (error: any) {
       console.error('[ConnectorManager] Failed to configure Zotero:', error);
@@ -562,7 +562,7 @@ export class ConnectorManagerService extends EventEmitter {
     try {
       await info.connector.disconnect();
       await this.clearStoredCredentials(provider);
-      
+
       info.connected = false;
       info.userInfo = undefined;
       info.lastSync = undefined;
@@ -578,14 +578,14 @@ export class ConnectorManagerService extends EventEmitter {
   /**
    * Get connector status
    */
-  getConnectorStatus(): Record<ConnectorProvider, { 
-    enabled: boolean; 
-    connected: boolean; 
+  getConnectorStatus(): Record<ConnectorProvider, {
+    enabled: boolean;
+    connected: boolean;
     userInfo?: any;
     lastSync?: Date;
   }> {
     const status: Record<string, any> = {};
-    
+
     const providers = Array.from(this.connectors.keys());
     for (const provider of providers) {
       const info = this.connectors.get(provider)!;
@@ -596,7 +596,7 @@ export class ConnectorManagerService extends EventEmitter {
         lastSync: info.lastSync
       };
     }
-    
+
     return status;
   }
 
@@ -610,7 +610,7 @@ export class ConnectorManagerService extends EventEmitter {
     mendeley?: MendeleyConnector;
   } {
     const connectors: any = {};
-    
+
     const providers = Array.from(this.connectors.keys());
     for (const provider of providers) {
       const info = this.connectors.get(provider)!;
@@ -618,7 +618,7 @@ export class ConnectorManagerService extends EventEmitter {
         connectors[provider] = info.connector;
       }
     }
-    
+
     return connectors;
   }
 
@@ -673,7 +673,7 @@ export class ConnectorManagerService extends EventEmitter {
     try {
       const credentialsJson = await keytar.getPassword(this.SERVICE_NAME, `${provider}_credentials`);
       if (!credentialsJson) return null;
-      
+
       return JSON.parse(credentialsJson) as ConnectorCredentials;
     } catch (error: any) {
       console.warn(`[ConnectorManager] Failed to get stored credentials for ${provider}:`, error);
@@ -699,7 +699,7 @@ export class ConnectorManagerService extends EventEmitter {
   private cleanupExpiredStates(): void {
     const now = Date.now();
     const expiration = 10 * 60 * 1000; // 10 minutes
-    
+
     const states = Array.from(this.oauthStates.keys());
     for (const state of states) {
       const info = this.oauthStates.get(state)!;
@@ -714,7 +714,7 @@ export class ConnectorManagerService extends EventEmitter {
    */
   async cleanup(): Promise<void> {
     console.log('[ConnectorManager] Cleaning up...');
-    
+
     // Disconnect all connectors
     const providers = Array.from(this.connectors.keys());
     for (const provider of providers) {
@@ -727,13 +727,13 @@ export class ConnectorManagerService extends EventEmitter {
         console.warn(`[ConnectorManager] Failed to disconnect ${provider} during cleanup:`, error);
       }
     }
-    
+
     // Stop OAuth server
     await this.stopOAuthServer();
-    
+
     // Clear OAuth states
     this.oauthStates.clear();
-    
+
     console.log('[ConnectorManager] Cleanup complete');
   }
 }

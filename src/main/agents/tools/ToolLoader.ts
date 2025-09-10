@@ -2,22 +2,22 @@
  * Centralized tool loader for importing and registering all available tools
  */
 
-import { toolRegistry } from './ToolRegistry';
+import { toolRegistry } from './ToolRegistry.ts';
 import { TavilySearch } from "@langchain/tavily";
 import { SerpAPI } from "@langchain/community/tools/serpapi";
 import { BraveSearch } from "@langchain/community/tools/brave_search";
 import { DuckDuckGoSearch } from "@langchain/community/tools/duckduckgo_search";
 
 // Import all tool creators
-import { getApiKeyService } from '../../services/ApiKeyService';
-import { GmailConnector } from '../../connectors/GmailConnector';
-import { OutlookConnector } from '../../connectors/OutlookConnector';
-import { ZoteroConnector } from '../../connectors/ZoteroConnector';
+import { getApiKeyService } from '../../services/ApiKeyService.ts';
+import { GmailConnector } from '../../connectors/GmailConnector.ts';
+import { OutlookConnector } from '../../connectors/OutlookConnector.ts';
+import { ZoteroConnector } from '../../connectors/ZoteroConnector.ts';
 import { WikipediaQueryRun } from "@langchain/community/tools/wikipedia_query_run";
-import { MendeleyConnector } from '../../connectors/MendeleyConnector';
-import VectorSearchTool from './vector/VectorSearchTool';
-import { AccuWeatherTool } from './weather/AccuWeatherTool';
-import MapsDisplayTool from './maps/MapsDisplayTool';
+import { MendeleyConnector } from '../../connectors/MendeleyConnector.ts';
+import VectorSearchTool from './vector/VectorSearchTool.ts';
+import { AccuWeatherTool } from './weather/AccuWeatherTool.ts';
+import MapsDisplayTool from './maps/MapsDisplayTool.ts';
 import { StructuredTool } from '@langchain/core/tools';
 import {
     GmailCreateDraft,

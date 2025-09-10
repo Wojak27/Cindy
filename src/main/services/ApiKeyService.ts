@@ -7,7 +7,7 @@
  */
 
 import 'dotenv/config'; // Ensure .env is loaded early
-import { SettingsService } from './SettingsService';
+import { SettingsService } from './SettingsService.ts';
 
 export interface ApiKeyConfig {
     // Search APIs

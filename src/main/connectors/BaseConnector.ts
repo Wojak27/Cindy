@@ -3,21 +3,21 @@
  */
 
 import { EventEmitter } from 'events';
-import { 
-  ConnectorCredentials, 
-  ConnectorConfig, 
-  SearchOptions, 
-  ConnectorResponse, 
+import {
+  ConnectorCredentials,
+  ConnectorConfig,
+  SearchOptions,
+  ConnectorResponse,
   ConnectorProvider,
-  RetryConfig 
-} from './types';
+  RetryConfig
+} from './types.ts';
 
 export abstract class BaseConnector extends EventEmitter {
   protected provider: ConnectorProvider;
   protected config: ConnectorConfig;
   protected credentials: ConnectorCredentials | null = null;
   protected retryConfig: RetryConfig;
-  
+
   constructor(provider: ConnectorProvider, config: ConnectorConfig) {
     super();
     this.provider = provider;
@@ -28,7 +28,7 @@ export abstract class BaseConnector extends EventEmitter {
       maxResults: 25,
       ...config
     };
-    
+
     this.retryConfig = {
       maxAttempts: this.config.retryAttempts || 3,
       baseDelay: this.config.retryDelay || 1000,
@@ -129,45 +129,45 @@ export abstract class BaseConnector extends EventEmitter {
    * Retry operation with exponential backoff
    */
   protected async retryOperation<T>(
-    operation: () => Promise<T>, 
+    operation: () => Promise<T>,
     attempt = 1
   ): Promise<T> {
     try {
       const startTime = Date.now();
       const result = await this.withTimeout(operation(), this.config.timeout!);
       const duration = Date.now() - startTime;
-      
+
       console.log(`[${this.provider}] Operation completed in ${duration}ms`);
       return result;
     } catch (error: any) {
       const isRetriableError = this.isRetriableError(error);
       const shouldRetry = attempt < this.retryConfig.maxAttempts && isRetriableError;
-      
+
       console.error(`[${this.provider}] Operation failed (attempt ${attempt}):`, error.message);
-      
+
       if (shouldRetry) {
         const delay = Math.min(
           this.retryConfig.baseDelay * Math.pow(this.retryConfig.backoffFactor, attempt - 1),
           this.retryConfig.maxDelay
         );
-        
+
         // Add jitter to prevent thundering herd
         const jitteredDelay = delay + Math.random() * 1000;
-        
+
         console.log(`[${this.provider}] Retrying in ${Math.round(jitteredDelay)}ms...`);
         await this.sleep(jitteredDelay);
-        
+
         return this.retryOperation(operation, attempt + 1);
       }
-      
+
       // Final failure
-      this.emit('error', { 
-        provider: this.provider, 
+      this.emit('error', {
+        provider: this.provider,
         error: error.message,
         attempts: attempt,
-        fatal: !isRetriableError 
+        fatal: !isRetriableError
       });
-      
+
       throw error;
     }
   }
@@ -179,12 +179,12 @@ export abstract class BaseConnector extends EventEmitter {
     if (error.code === 'ENOTFOUND' || error.code === 'ECONNRESET') {
       return true;
     }
-    
+
     if (error.response?.status) {
       const status = error.response.status;
       return status === 429 || (status >= 500 && status < 600);
     }
-    
+
     return false;
   }
 
@@ -248,11 +248,11 @@ export abstract class BaseConnector extends EventEmitter {
     if (!options.query || options.query.trim().length === 0) {
       throw new Error('Search query is required');
     }
-    
+
     if (options.maxResults && options.maxResults > 25) {
       options.maxResults = 25;
     }
-    
+
     if (options.limit && options.limit > 25) {
       options.limit = 25;
     }

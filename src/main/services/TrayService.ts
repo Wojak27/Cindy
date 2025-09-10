@@ -1,9 +1,9 @@
-import { Tray, Menu, nativeImage, NativeImage } from 'electron';
+import { Tray, Menu, nativeImage } from 'electron';
 import path from 'path';
 
 
 interface TrayConfig {
-    icon: string | NativeImage;
+    icon: string | any;
     tooltip: string;
     onOpenCindy: () => void;
     onSettings: () => void;

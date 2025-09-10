@@ -360,7 +360,7 @@ const ModernSettingsPanel: React.FC = () => {
             updateOriginalSettingsBaseline();
             ipcRenderer.invoke(IPC_CHANNELS.INITIALIZE_LLM);
         }
-    }, [dispatch, selectedProvider, providerConfigs, voiceSettings, profileSettings, searchSettings, settings, updateOriginalSettingsBaseline]);
+    }, [dispatch, selectedProvider, providerConfigs, voiceSettings, profileSettings, searchSettings, uiSettings, settings, updateOriginalSettingsBaseline]);
 
     // Cancel changes
     const cancelChanges = useCallback(() => {
@@ -372,6 +372,7 @@ const ModernSettingsPanel: React.FC = () => {
             setVoiceSettings(originalSettings.voiceSettings);
             setProfileSettings(originalSettings.profileSettings);
             setSearchSettings(originalSettings.searchSettings);
+            setUiSettings(originalSettings.uiSettings);
             setHasUnsavedChanges(false);
             setOriginalSettings(null);
             console.log('✅ Settings restored and state reset');
@@ -389,13 +390,14 @@ const ModernSettingsPanel: React.FC = () => {
                 providerConfigs: JSON.parse(JSON.stringify(providerConfigs)), // Deep copy for nested objects
                 voiceSettings: { ...voiceSettings },
                 profileSettings: { ...profileSettings },
-                searchSettings: JSON.parse(JSON.stringify(searchSettings)) // Deep copy for nested rateLimit object
+                searchSettings: JSON.parse(JSON.stringify(searchSettings)), // Deep copy for nested rateLimit object
+                uiSettings: JSON.parse(JSON.stringify(uiSettings)) // Deep copy for nested objects
             });
             console.log('📸 Original settings captured:', { selectedProvider, providerConfigs });
         } else {
             console.log('📸 Original settings already exist, not overriding');
         }
-    }, [originalSettings, selectedProvider, providerConfigs, voiceSettings, profileSettings, searchSettings]);
+    }, [originalSettings, selectedProvider, providerConfigs, voiceSettings, profileSettings, searchSettings, uiSettings]);
 
     // Toggle provider expansion
     const toggleProviderExpansion = (providerId: string) => {
@@ -752,6 +754,18 @@ const ModernSettingsPanel: React.FC = () => {
                     enabled: true,
                     requestsPerMinute: 10,
                     cooldownSeconds: 5
+                }
+            });
+            setUiSettings({
+                retrievedDocuments: {
+                    maxDocuments: settings?.ui?.retrievedDocuments?.maxDocuments || 5,
+                    showInSidePanel: settings?.ui?.retrievedDocuments?.showInSidePanel ?? true,
+                    autoExpand: settings?.ui?.retrievedDocuments?.autoExpand || false,
+                },
+                agentEvents: {
+                    showEventBlocks: settings?.ui?.agentEvents?.showEventBlocks ?? true,
+                    autoCollapse: settings?.ui?.agentEvents?.autoCollapse ?? true,
+                    showTimestamps: settings?.ui?.agentEvents?.showTimestamps ?? true,
                 }
             });
         }
@@ -1353,6 +1367,207 @@ const ModernSettingsPanel: React.FC = () => {
                                                 setHasUnsavedChanges(true);
                                             }}
                                         />
+                                    </Box>
+                                </CardContent>
+                            </Card>
+                        </Box>
+                    </TabPanel>
+
+                    {/* Interface Tab */}
+                    <TabPanel value={tabValue} index={4}>
+                        <Box sx={{ px: 3 }}>
+                            <Typography variant="h6" gutterBottom fontWeight={600}>
+                                Interface Settings
+                            </Typography>
+                            
+                            {/* Retrieved Documents Settings */}
+                            <Card sx={{ mb: 3 }}>
+                                <CardContent>
+                                    <Typography variant="subtitle1" gutterBottom fontWeight={600}>
+                                        📚 Retrieved Documents
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                                        Configure how retrieved documents are displayed when agents search your knowledge base.
+                                    </Typography>
+                                    
+                                    <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                        <Box>
+                                            <Typography variant="body2" gutterBottom>
+                                                Maximum Documents to Show: {uiSettings.retrievedDocuments.maxDocuments}
+                                            </Typography>
+                                            <Slider
+                                                value={uiSettings.retrievedDocuments.maxDocuments}
+                                                onChange={(_, value) => {
+                                                    trackOriginalSettings();
+                                                    setUiSettings(prev => ({
+                                                        ...prev,
+                                                        retrievedDocuments: {
+                                                            ...prev.retrievedDocuments,
+                                                            maxDocuments: value as number
+                                                        }
+                                                    }));
+                                                    setHasUnsavedChanges(true);
+                                                }}
+                                                min={1}
+                                                max={10}
+                                                step={1}
+                                                marks={[
+                                                    { value: 1, label: '1' },
+                                                    { value: 5, label: '5' },
+                                                    { value: 10, label: '10' }
+                                                ]}
+                                                valueLabelDisplay="auto"
+                                            />
+                                        </Box>
+                                        
+                                        <FormControl>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                                <Typography variant="body2">
+                                                    Show in Side Panel
+                                                </Typography>
+                                                <Select
+                                                    value={uiSettings.retrievedDocuments.showInSidePanel ? 'true' : 'false'}
+                                                    onChange={(e) => {
+                                                        trackOriginalSettings();
+                                                        setUiSettings(prev => ({
+                                                            ...prev,
+                                                            retrievedDocuments: {
+                                                                ...prev.retrievedDocuments,
+                                                                showInSidePanel: e.target.value === 'true'
+                                                            }
+                                                        }));
+                                                        setHasUnsavedChanges(true);
+                                                    }}
+                                                    size="small"
+                                                    sx={{ minWidth: 120 }}
+                                                >
+                                                    <MenuItem value="true">Enabled</MenuItem>
+                                                    <MenuItem value="false">Disabled</MenuItem>
+                                                </Select>
+                                            </Box>
+                                        </FormControl>
+                                        
+                                        <FormControl>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                                <Typography variant="body2">
+                                                    Auto-expand Documents
+                                                </Typography>
+                                                <Select
+                                                    value={uiSettings.retrievedDocuments.autoExpand ? 'true' : 'false'}
+                                                    onChange={(e) => {
+                                                        trackOriginalSettings();
+                                                        setUiSettings(prev => ({
+                                                            ...prev,
+                                                            retrievedDocuments: {
+                                                                ...prev.retrievedDocuments,
+                                                                autoExpand: e.target.value === 'true'
+                                                            }
+                                                        }));
+                                                        setHasUnsavedChanges(true);
+                                                    }}
+                                                    size="small"
+                                                    sx={{ minWidth: 120 }}
+                                                >
+                                                    <MenuItem value="true">Enabled</MenuItem>
+                                                    <MenuItem value="false">Disabled</MenuItem>
+                                                </Select>
+                                            </Box>
+                                        </FormControl>
+                                    </Box>
+                                </CardContent>
+                            </Card>
+
+                            {/* Agent Events Settings */}
+                            <Card>
+                                <CardContent>
+                                    <Typography variant="subtitle1" gutterBottom fontWeight={600}>
+                                        🤖 Agent Events
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                                        Control how agent communications and events are displayed in the chat.
+                                    </Typography>
+                                    
+                                    <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                        <FormControl>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                                <Typography variant="body2">
+                                                    Show Event Blocks
+                                                </Typography>
+                                                <Select
+                                                    value={uiSettings.agentEvents.showEventBlocks ? 'true' : 'false'}
+                                                    onChange={(e) => {
+                                                        trackOriginalSettings();
+                                                        setUiSettings(prev => ({
+                                                            ...prev,
+                                                            agentEvents: {
+                                                                ...prev.agentEvents,
+                                                                showEventBlocks: e.target.value === 'true'
+                                                            }
+                                                        }));
+                                                        setHasUnsavedChanges(true);
+                                                    }}
+                                                    size="small"
+                                                    sx={{ minWidth: 120 }}
+                                                >
+                                                    <MenuItem value="true">Enabled</MenuItem>
+                                                    <MenuItem value="false">Disabled</MenuItem>
+                                                </Select>
+                                            </Box>
+                                        </FormControl>
+                                        
+                                        <FormControl>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                                <Typography variant="body2">
+                                                    Auto-collapse Events
+                                                </Typography>
+                                                <Select
+                                                    value={uiSettings.agentEvents.autoCollapse ? 'true' : 'false'}
+                                                    onChange={(e) => {
+                                                        trackOriginalSettings();
+                                                        setUiSettings(prev => ({
+                                                            ...prev,
+                                                            agentEvents: {
+                                                                ...prev.agentEvents,
+                                                                autoCollapse: e.target.value === 'true'
+                                                            }
+                                                        }));
+                                                        setHasUnsavedChanges(true);
+                                                    }}
+                                                    size="small"
+                                                    sx={{ minWidth: 120 }}
+                                                >
+                                                    <MenuItem value="true">Enabled</MenuItem>
+                                                    <MenuItem value="false">Disabled</MenuItem>
+                                                </Select>
+                                            </Box>
+                                        </FormControl>
+                                        
+                                        <FormControl>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                                <Typography variant="body2">
+                                                    Show Timestamps
+                                                </Typography>
+                                                <Select
+                                                    value={uiSettings.agentEvents.showTimestamps ? 'true' : 'false'}
+                                                    onChange={(e) => {
+                                                        trackOriginalSettings();
+                                                        setUiSettings(prev => ({
+                                                            ...prev,
+                                                            agentEvents: {
+                                                                ...prev.agentEvents,
+                                                                showTimestamps: e.target.value === 'true'
+                                                            }
+                                                        }));
+                                                        setHasUnsavedChanges(true);
+                                                    }}
+                                                    size="small"
+                                                    sx={{ minWidth: 120 }}
+                                                >
+                                                    <MenuItem value="true">Enabled</MenuItem>
+                                                    <MenuItem value="false">Disabled</MenuItem>
+                                                </Select>
+                                            </Box>
+                                        </FormControl>
                                     </Box>
                                 </CardContent>
                             </Card>

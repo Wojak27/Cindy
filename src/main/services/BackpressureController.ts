@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import type { MicroChunkConfig } from './MicroChunker';
+import type { MicroChunkConfig } from './MicroChunker.ts';
 
 export interface BackpressureMetrics {
     estimatedClientBufferMs: number;

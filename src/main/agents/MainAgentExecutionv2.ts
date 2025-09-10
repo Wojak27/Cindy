@@ -372,19 +372,19 @@ export class MainAgentExecution {
                         if (rawResultsMatch) {
                             try {
                                 const rawResults = JSON.parse(rawResultsMatch[1]);
-                                
+
                                 // Yield event for document retrieval completion
                                 yield {
                                     stepId: `documents-${Date.now()}`,
                                     title: `Retrieved ${rawResults.length} document${rawResults.length === 1 ? '' : 's'}`,
                                     status: "completed",
-                                    context: { 
+                                    context: {
                                         documentCount: rawResults.length,
                                         documents: rawResults.map((file: any) => file.name || file.path)
                                     },
                                     timestamp: Date.now()
                                 };
-                                
+
                                 // Send documents as a batch to the side panel
                                 if (rawResults.length > 0) {
                                     // Convert to RetrievedDocument format
@@ -397,11 +397,11 @@ export class MainAgentExecution {
                                         relevanceScore: file.relevanceScore || file.score,
                                         matchedContent: file.matchedContent
                                     }));
-                                    
+
                                     // Emit multiple documents marker
                                     yield `side-panel-documents ${JSON.stringify(retrievedDocs)}`;
                                 }
-                                
+
                                 // Still emit individual document markers for backward compatibility
                                 for (const file of rawResults) {
                                     console.log("[MainAgentExecution] Retrieved document:", file);

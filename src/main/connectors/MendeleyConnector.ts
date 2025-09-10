@@ -3,8 +3,8 @@
  * Uses Mendeley API v1 with OAuth 2.0 authentication
  */
 
-import { BaseConnector } from './BaseConnector';
-import { ConnectorCredentials, ConnectorConfig, SearchOptions, ConnectorResponse, RefHit } from './types';
+import { BaseConnector } from './BaseConnector.ts';
+import { ConnectorCredentials, ConnectorConfig, SearchOptions, ConnectorResponse, RefHit } from './types.ts';
 import { z } from 'zod';
 
 // Validation schemas
@@ -41,7 +41,7 @@ const MendeleySearchOptionsSchema = z.object({
 export class MendeleyConnector extends BaseConnector {
   private accessToken: string | null = null;
   private baseUrl: string = 'https://api.mendeley.com/v1';
-  
+
   // Mendeley OAuth scopes
   private static readonly SCOPES = [
     'library.read',
@@ -81,7 +81,7 @@ export class MendeleyConnector extends BaseConnector {
       console.log(`[MendeleyConnector] Successfully connected to Mendeley for user: ${profileInfo.name || 'Unknown'}`);
     } catch (error: any) {
       console.error('[MendeleyConnector] Credential validation failed:', error);
-      
+
       if (error.status === 401 || error.message?.includes('401') || error.message?.includes('Unauthorized')) {
         // Try to refresh token if available
         if (await this.refreshCredentials?.()) {
@@ -90,7 +90,7 @@ export class MendeleyConnector extends BaseConnector {
         }
         throw new Error('Mendeley authentication failed. Token may be expired or invalid.');
       }
-      
+
       throw new Error(`Mendeley connector validation failed: ${error.message}`);
     }
   }
@@ -106,10 +106,10 @@ export class MendeleyConnector extends BaseConnector {
 
     try {
       console.log('[MendeleyConnector] Refreshing OAuth tokens...');
-      
+
       const clientId = this.credentials.config?.client_id || process.env.MENDELEY_CLIENT_ID;
       const clientSecret = this.credentials.config?.client_secret || process.env.MENDELEY_CLIENT_SECRET;
-      
+
       if (!clientId || !clientSecret) {
         throw new Error('Mendeley Client ID and Secret are required for token refresh');
       }
@@ -133,7 +133,7 @@ export class MendeleyConnector extends BaseConnector {
       }
 
       const tokenData = await tokenResponse.json();
-      
+
       // Update stored credentials
       this.credentials.tokens.access_token = tokenData.access_token;
       if (tokenData.refresh_token) {
@@ -151,10 +151,10 @@ export class MendeleyConnector extends BaseConnector {
       return true;
     } catch (error: any) {
       console.error('[MendeleyConnector] Token refresh failed:', error);
-      this.emit('error', { 
-        provider: 'mendeley', 
-        error: 'Token refresh failed', 
-        fatal: true 
+      this.emit('error', {
+        provider: 'mendeley',
+        error: 'Token refresh failed',
+        fatal: true
       });
       return false;
     }
@@ -172,13 +172,13 @@ export class MendeleyConnector extends BaseConnector {
       // Validate and parse search options
       this.validateSearchOptions(options);
       const validatedOptions = MendeleySearchOptionsSchema.parse(options);
-      
+
       console.log(`[MendeleyConnector] Searching Mendeley with query: "${validatedOptions.query}"`);
 
       // Build API URL and parameters
       const searchUrl = new URL(`${this.baseUrl}/search/catalog`);
       const searchParams = this.buildMendeleyParams(validatedOptions);
-      
+
       Object.entries(searchParams).forEach(([key, value]) => {
         if (value !== null && value !== undefined) {
           searchUrl.searchParams.set(key, String(value));
@@ -189,7 +189,7 @@ export class MendeleyConnector extends BaseConnector {
 
       // Make API request
       const response = await this.makeMendeleyRequest(searchUrl.toString());
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`Mendeley API request failed: ${response.status} ${errorText}`);
@@ -197,7 +197,7 @@ export class MendeleyConnector extends BaseConnector {
 
       const searchResults = await response.json();
       const documents = searchResults.documents || searchResults || [];
-      
+
       console.log(`[MendeleyConnector] Found ${documents.length} document(s)`);
 
       if (documents.length === 0) {
@@ -234,7 +234,7 @@ export class MendeleyConnector extends BaseConnector {
 
     } catch (error: any) {
       console.error('[MendeleyConnector] Search failed:', error);
-      
+
       // Check if it's an authentication error
       if (error.status === 401 || error.message?.includes('401')) {
         if (await this.refreshCredentials?.()) {
@@ -351,7 +351,7 @@ export class MendeleyConnector extends BaseConnector {
 
       // Extract document type
       let type = doc.type || 'unknown';
-      
+
       // Map Mendeley types to more readable names
       const typeMap: Record<string, string> = {
         'journal': 'Journal Article',
@@ -365,7 +365,7 @@ export class MendeleyConnector extends BaseConnector {
         'working_paper': 'Working Paper',
         'generic': 'Document'
       };
-      
+
       if (typeMap[type]) {
         type = typeMap[type];
       }
@@ -392,7 +392,7 @@ export class MendeleyConnector extends BaseConnector {
   getAuthUrl(): string {
     const clientId = this.credentials?.config?.client_id || process.env.MENDELEY_CLIENT_ID;
     const redirectUri = this.credentials?.config?.redirect_uri || 'http://localhost:8080/oauth/callback';
-    
+
     if (!clientId) {
       throw new Error('Mendeley Client ID not configured');
     }
@@ -439,7 +439,7 @@ export class MendeleyConnector extends BaseConnector {
       }
 
       const tokenData = await tokenResponse.json();
-      
+
       const credentials: ConnectorCredentials = {
         provider: 'mendeley',
         tokens: {
@@ -469,13 +469,13 @@ export class MendeleyConnector extends BaseConnector {
 
     try {
       const response = await this.makeMendeleyRequest(`${this.baseUrl}/profiles/me`);
-      
+
       if (!response.ok) {
         throw new Error(`Failed to get user profile: ${response.status} ${response.statusText}`);
       }
 
       const profile = await response.json();
-      
+
       return {
         id: profile.id,
         name: profile.display_name || profile.first_name + ' ' + profile.last_name || 'Unknown',
@@ -517,7 +517,7 @@ export class MendeleyConnector extends BaseConnector {
   async test(): Promise<{ success: boolean; message: string; data?: any }> {
     try {
       console.log('[MendeleyConnector] Running connector test...');
-      
+
       if (!this.isConnected()) {
         return {
           success: false,
@@ -526,15 +526,15 @@ export class MendeleyConnector extends BaseConnector {
       }
 
       // Test with a simple search
-      const testResult = await this.search({ 
+      const testResult = await this.search({
         query: 'machine learning', // Generic search term
-        maxResults: 3 
+        maxResults: 3
       });
 
       if (testResult.success) {
         const userInfo = await this.getUserInfo();
         const stats = await this.getLibraryStats();
-        
+
         return {
           success: true,
           message: `Mendeley connector working! Found ${testResult.data.length} references for ${userInfo.name}`,
@@ -572,13 +572,13 @@ export class MendeleyConnector extends BaseConnector {
 
     try {
       const response = await this.makeMendeleyRequest(`${this.baseUrl}/folders`);
-      
+
       if (!response.ok) {
         throw new Error(`Failed to get folders: ${response.status}`);
       }
 
       const folders = await response.json();
-      
+
       return folders.map((folder: any) => ({
         id: folder.id,
         name: folder.name || 'Unnamed Folder',

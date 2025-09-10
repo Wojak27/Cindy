@@ -191,8 +191,10 @@ class OnlineSTTEngine {
     private speechConfig: SpeechConfig | null = null;
     private apiKey: string;
     private region: string;
+    private config: STTConfig;
 
-    constructor(private config: STTConfig) {
+    constructor(config: STTConfig) {
+        this.config = config;
         this.apiKey = process.env.AZURE_SPEECH_KEY || ''; // Will be loaded from secure storage
         this.region = process.env.AZURE_SPEECH_REGION || 'westus'; // Default region
     }
@@ -391,4 +393,4 @@ class SherpaSTTEngine {
 
 
 
-export { SpeechToTextService, STTConfig };
+export { SpeechToTextService };

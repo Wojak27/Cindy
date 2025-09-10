@@ -3,8 +3,8 @@
  * Uses Zotero Web API with API key authentication
  */
 
-import { BaseConnector } from './BaseConnector';
-import { ConnectorConfig, SearchOptions, ConnectorResponse, RefHit, ConnectorCredentials } from './types';
+import { BaseConnector } from './BaseConnector.ts';
+import { ConnectorConfig, SearchOptions, ConnectorResponse, RefHit, ConnectorCredentials } from './types.ts';
 import { z } from 'zod';
 
 // Validation schemas
@@ -34,7 +34,7 @@ export class ZoteroConnector extends BaseConnector {
   private userId: string | null = null;
   private workspaceId: string | null = null;
   private baseUrl: string = 'https://api.zotero.org';
-  
+
   constructor(config: ConnectorConfig = { provider: 'zotero', enabled: true, connected: false }) {
     super('zotero', config);
     console.log('[ZoteroConnector] Initialized');
@@ -64,11 +64,11 @@ export class ZoteroConnector extends BaseConnector {
       console.log(`[ZoteroConnector] Successfully connected to Zotero for user: ${userInfo.name || this.userId}`);
     } catch (error: any) {
       console.error('[ZoteroConnector] Credential validation failed:', error);
-      
+
       if (error.message?.includes('403') || error.message?.includes('401')) {
         throw new Error('Zotero API key is invalid or expired.');
       }
-      
+
       throw new Error(`Zotero connector validation failed: ${error.message}`);
     }
   }
@@ -93,16 +93,16 @@ export class ZoteroConnector extends BaseConnector {
       // Validate and parse search options
       this.validateSearchOptions(options);
       const validatedOptions = ZoteroSearchOptionsSchema.parse(options);
-      
+
       console.log(`[ZoteroConnector] Searching Zotero with query: "${validatedOptions.query}"`);
 
       // Determine library type (user or group)
       const libraryType = this.workspaceId ? 'groups' : 'users';
       const libraryId = this.workspaceId || this.userId;
-      
+
       // Build API URL
       const searchUrl = new URL(`${this.baseUrl}/${libraryType}/${libraryId}/items`);
-      
+
       // Add search parameters
       const searchParams = this.buildZoteroParams(validatedOptions);
       Object.entries(searchParams).forEach(([key, value]) => {
@@ -115,7 +115,7 @@ export class ZoteroConnector extends BaseConnector {
 
       // Make API request
       const response = await this.makeZoteroRequest(searchUrl.toString());
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`Zotero API request failed: ${response.status} ${errorText}`);
@@ -160,7 +160,7 @@ export class ZoteroConnector extends BaseConnector {
 
     } catch (error: any) {
       console.error('[ZoteroConnector] Search failed:', error);
-      
+
       return {
         success: false,
         data: [],
@@ -231,7 +231,7 @@ export class ZoteroConnector extends BaseConnector {
   private convertToRefHit(item: any): RefHit | null {
     try {
       const data = item.data;
-      
+
       if (!data) {
         console.warn('[ZoteroConnector] Item missing data field');
         return null;
@@ -239,11 +239,11 @@ export class ZoteroConnector extends BaseConnector {
 
       // Extract title from various fields
       let title = data.title || data.shortTitle || data.bookTitle || data.publicationTitle;
-      
+
       if (!title && data.itemType === 'attachment') {
         title = data.filename || 'Untitled attachment';
       }
-      
+
       if (!title) {
         title = 'Untitled';
       }
@@ -299,13 +299,13 @@ export class ZoteroConnector extends BaseConnector {
 
     try {
       const response = await this.makeZoteroRequest(`${this.baseUrl}/users/${this.userId}`);
-      
+
       if (!response.ok) {
         throw new Error(`Failed to get user info: ${response.status} ${response.statusText}`);
       }
 
       const userData = await response.json();
-      
+
       return {
         id: this.userId,
         name: userData.name || userData.username,
@@ -313,7 +313,7 @@ export class ZoteroConnector extends BaseConnector {
       };
     } catch (error: any) {
       console.error('[ZoteroConnector] Failed to get user info:', error);
-      
+
       // Return minimal info if API call fails
       return {
         id: this.userId,
@@ -333,7 +333,7 @@ export class ZoteroConnector extends BaseConnector {
     try {
       const libraryType = this.workspaceId ? 'groups' : 'users';
       const libraryId = this.workspaceId || this.userId;
-      
+
       // Get item count
       const itemsResponse = await this.makeZoteroRequest(
         `${this.baseUrl}/${libraryType}/${libraryId}/items?format=json&limit=1`
@@ -359,7 +359,7 @@ export class ZoteroConnector extends BaseConnector {
   async test(): Promise<{ success: boolean; message: string; data?: any }> {
     try {
       console.log('[ZoteroConnector] Running connector test...');
-      
+
       if (!this.isConnected()) {
         return {
           success: false,
@@ -368,15 +368,15 @@ export class ZoteroConnector extends BaseConnector {
       }
 
       // Test with a simple search
-      const testResult = await this.search({ 
+      const testResult = await this.search({
         query: '', // Empty query to get recent items
-        maxResults: 3 
+        maxResults: 3
       });
 
       if (testResult.success) {
         const userInfo = await this.getUserInfo();
         const stats = await this.getLibraryStats();
-        
+
         return {
           success: true,
           message: `Zotero connector working! Found ${testResult.data.length} recent references for ${userInfo.name}`,
@@ -414,17 +414,17 @@ export class ZoteroConnector extends BaseConnector {
     try {
       const libraryType = this.workspaceId ? 'groups' : 'users';
       const libraryId = this.workspaceId || this.userId;
-      
+
       const response = await this.makeZoteroRequest(
         `${this.baseUrl}/${libraryType}/${libraryId}/collections?format=json`
       );
-      
+
       if (!response.ok) {
         throw new Error(`Failed to get collections: ${response.status}`);
       }
 
       const collections = await response.json();
-      
+
       return collections.map((collection: any) => ({
         key: collection.key,
         name: collection.data.name || 'Unnamed Collection',

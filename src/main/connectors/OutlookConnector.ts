@@ -13,8 +13,8 @@ try {
   const stub = require('../stubs/microsoft-graph-client');
   Client = stub.Client;
 }
-import { BaseConnector } from './BaseConnector';
-import { ConnectorCredentials, ConnectorConfig, SearchOptions, ConnectorResponse, EmailHit } from './types';
+import { BaseConnector } from './BaseConnector.ts';
+import { ConnectorCredentials, ConnectorConfig, SearchOptions, ConnectorResponse, EmailHit } from './types.ts';
 import { z } from 'zod';
 
 // Validation schemas
@@ -70,7 +70,7 @@ class OutlookAuthProvider {
 export class OutlookConnector extends BaseConnector {
   private authProvider: OutlookAuthProvider | null = null;
   private graphClient: any = null;
-  
+
   // Microsoft Graph OAuth scopes
   private static readonly SCOPES = [
     'https://graph.microsoft.com/Mail.Read',
@@ -108,11 +108,11 @@ export class OutlookConnector extends BaseConnector {
 
       // Test connection with a minimal API call
       await this.graphClient.api('/me').get();
-      
+
       console.log('[OutlookConnector] Successfully connected to Microsoft Graph API');
     } catch (error: any) {
       console.error('[OutlookConnector] Credential validation failed:', error);
-      
+
       if (error.code === 'InvalidAuthenticationToken' || error.status === 401) {
         // Try to refresh token if available
         if (await this.refreshCredentials?.()) {
@@ -121,7 +121,7 @@ export class OutlookConnector extends BaseConnector {
         }
         throw new Error('Outlook authentication failed. Token may be expired or invalid.');
       }
-      
+
       throw new Error(`Outlook connector validation failed: ${error.message}`);
     }
   }
@@ -137,10 +137,10 @@ export class OutlookConnector extends BaseConnector {
 
     try {
       console.log('[OutlookConnector] Refreshing OAuth tokens...');
-      
+
       const tenantId = this.credentials.config?.tenant || 'common';
       const tokenUrl = `${OutlookConnector.AUTHORITY_URL}/${tenantId}/oauth2/v2.0/token`;
-      
+
       const tokenResponse = await fetch(tokenUrl, {
         method: 'POST',
         headers: {
@@ -161,7 +161,7 @@ export class OutlookConnector extends BaseConnector {
       }
 
       const tokenData = await tokenResponse.json();
-      
+
       // Update stored credentials
       this.credentials.tokens.access_token = tokenData.access_token;
       if (tokenData.refresh_token) {
@@ -181,10 +181,10 @@ export class OutlookConnector extends BaseConnector {
       return true;
     } catch (error: any) {
       console.error('[OutlookConnector] Token refresh failed:', error);
-      this.emit('error', { 
-        provider: 'outlook', 
-        error: 'Token refresh failed', 
-        fatal: true 
+      this.emit('error', {
+        provider: 'outlook',
+        error: 'Token refresh failed',
+        fatal: true
       });
       return false;
     }
@@ -202,7 +202,7 @@ export class OutlookConnector extends BaseConnector {
       // Validate and parse search options
       this.validateSearchOptions(options);
       const validatedOptions = OutlookSearchOptionsSchema.parse(options);
-      
+
       console.log(`[OutlookConnector] Searching Outlook with query: "${validatedOptions.query}"`);
 
       // Build Graph API search parameters
@@ -210,8 +210,8 @@ export class OutlookConnector extends BaseConnector {
       console.log(`[OutlookConnector] Graph search query: "${searchQuery}", filter: "${filterQuery}"`);
 
       // Determine folder path
-      const folderPath = validatedOptions.folderId ? 
-        `/me/mailFolders/${validatedOptions.folderId}/messages` : 
+      const folderPath = validatedOptions.folderId ?
+        `/me/mailFolders/${validatedOptions.folderId}/messages` :
         '/me/messages';
 
       // Build Graph API request
@@ -234,7 +234,7 @@ export class OutlookConnector extends BaseConnector {
       // Execute search
       const response = await request.get();
       const messages = response.value || [];
-      
+
       console.log(`[OutlookConnector] Found ${messages.length} message(s)`);
 
       if (messages.length === 0) {
@@ -277,7 +277,7 @@ export class OutlookConnector extends BaseConnector {
 
     } catch (error: any) {
       console.error('[OutlookConnector] Search failed:', error);
-      
+
       // Check if it's an authentication error
       if (error.code === 'InvalidAuthenticationToken' || error.status === 401) {
         if (await this.refreshCredentials?.()) {
@@ -297,9 +297,9 @@ export class OutlookConnector extends BaseConnector {
   /**
    * Build Microsoft Graph search query and filter from options
    */
-  private buildGraphQuery(options: z.infer<typeof OutlookSearchOptionsSchema>): { 
-    searchQuery: string; 
-    filterQuery: string; 
+  private buildGraphQuery(options: z.infer<typeof OutlookSearchOptionsSchema>): {
+    searchQuery: string;
+    filterQuery: string;
   } {
     let searchQuery = options.query;
     const filters: string[] = [];
@@ -340,15 +340,15 @@ export class OutlookConnector extends BaseConnector {
     if (typeof emailInfo === 'string') {
       return emailInfo;
     }
-    
+
     if (emailInfo?.address) {
       return emailInfo.address;
     }
-    
+
     if (emailInfo?.emailAddress?.address) {
       return emailInfo.emailAddress.address;
     }
-    
+
     return 'Unknown';
   }
 
@@ -359,7 +359,7 @@ export class OutlookConnector extends BaseConnector {
     const tenantId = this.credentials?.config?.tenant || 'common';
     const clientId = this.credentials?.config?.client_id || process.env.MICROSOFT_CLIENT_ID;
     const redirectUri = this.credentials?.config?.redirect_uri || 'http://localhost:8080/oauth/callback';
-    
+
     if (!clientId) {
       throw new Error('Microsoft Client ID not configured');
     }
@@ -390,7 +390,7 @@ export class OutlookConnector extends BaseConnector {
       }
 
       const tokenUrl = `${OutlookConnector.AUTHORITY_URL}/${tenantId}/oauth2/v2.0/token`;
-      
+
       const tokenResponse = await fetch(tokenUrl, {
         method: 'POST',
         headers: {
@@ -412,7 +412,7 @@ export class OutlookConnector extends BaseConnector {
       }
 
       const tokenData = await tokenResponse.json();
-      
+
       const credentials: ConnectorCredentials = {
         provider: 'outlook',
         tokens: {
@@ -458,7 +458,7 @@ export class OutlookConnector extends BaseConnector {
   async test(): Promise<{ success: boolean; message: string; data?: any }> {
     try {
       console.log('[OutlookConnector] Running connector test...');
-      
+
       if (!this.isConnected()) {
         return {
           success: false,
@@ -467,9 +467,9 @@ export class OutlookConnector extends BaseConnector {
       }
 
       // Test with a simple search
-      const testResult = await this.search({ 
-        query: 'inbox', 
-        maxResults: 3 
+      const testResult = await this.search({
+        query: 'inbox',
+        maxResults: 3
       });
 
       if (testResult.success) {
