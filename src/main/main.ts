@@ -1557,10 +1557,10 @@ const createTray = async (): Promise<void> => {
         const findIconPath = (iconName: string): string => {
             // Try different possible locations for assets
             const possiblePaths = [
-                path.join(process.cwd(), 'src/renderer/assets/icons/', iconName),  // Source directory
-                path.join(__dirname, '../renderer/assets/icons/', iconName),       // Relative to compiled main
-                path.join(__dirname, '../../src/renderer/assets/icons/', iconName), // From dist directory
-                path.join(process.cwd(), 'renderer/assets/icons/', iconName),       // Production build
+                path.join(process.cwd(), 'assets/icons/', iconName),                // Assets directory
+                path.join(process.cwd(), 'src/renderer/assets/icons/', iconName),   // Source directory  
+                path.join(__dirname, '../renderer/assets/icons/', iconName),        // Relative to main process
+                path.join(__dirname, '../../assets/icons/', iconName),              // Production assets
             ];
 
             for (const iconPath of possiblePaths) {

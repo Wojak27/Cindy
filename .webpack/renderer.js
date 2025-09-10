@@ -36,13 +36,16 @@ module.exports = {
   output: {
     path: require('path').resolve(__dirname, '..', 'dist', 'renderer'),
     filename: '[name].js',
-    publicPath: './',
+    publicPath: process.env.NODE_ENV === 'production' ? './' : '/',
   },
   devServer: {
     port: 3004,
+    host: 'localhost',
     hot: true,
     liveReload: true,
-    historyApiFallback: true,
+    historyApiFallback: {
+      index: '/index.html'
+    },
     allowedHosts: 'all',
     headers: {
       'Access-Control-Allow-Origin': '*',
@@ -57,7 +60,11 @@ module.exports = {
       },
     },
     webSocketServer: 'ws',
-    static: false, // Don't serve static files - let webpack serve everything
+    compress: true,
+    static: {
+      directory: require('path').join(__dirname, '..', 'src', 'renderer'),
+      publicPath: '/',
+    },
     // Add proper MIME type for ES modules
     setupMiddlewares: (middlewares, devServer) => {
       devServer.app.get('/workers/*.mjs', (req, res, next) => {
