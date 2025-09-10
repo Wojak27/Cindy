@@ -47,6 +47,19 @@ const initialState = {
             cooldownSeconds: 5
         }
     },
+    // UI settings
+    ui: {
+        retrievedDocuments: {
+            maxDocuments: 5,
+            showInSidePanel: true,
+            autoExpand: false
+        },
+        agentEvents: {
+            showEventBlocks: true,
+            autoCollapse: true,
+            showTimestamps: true
+        }
+    },
     // Blob animation settings
     blobSensitivity: 0.5,
     blobStyle: 'moderate'
@@ -56,14 +69,14 @@ const settingsReducer = (state = initialState, action: any) => {
     switch (action.type) {
         case 'UPDATE_SETTINGS':
             // Deep merge for nested objects
-            const newState = { ...state };
+            const newState = { ...state } as any;
 
             // Handle each top-level key
             Object.keys(action.payload).forEach(key => {
                 if (typeof action.payload[key] === 'object' && action.payload[key] !== null && !Array.isArray(action.payload[key])) {
                     // For nested objects, merge them properly
                     newState[key] = {
-                        ...(state[key] || {}),
+                        ...((state as any)[key] || {}),
                         ...action.payload[key]
                     };
                 } else {

@@ -33,6 +33,7 @@ import {
     ExpandLess as ExpandLessIcon,
     Cancel as CancelIcon,
     Settings as SettingsIcon,
+    Dashboard as DashboardIcon,
 } from '@mui/icons-material';
 import { ipcRenderer } from 'electron';
 import { IPC_CHANNELS } from '../../shared/ipcChannels';
@@ -156,6 +157,20 @@ const ModernSettingsPanel: React.FC = () => {
     const [profileSettings, setProfileSettings] = useState({
         name: settings?.profile?.name || '',
         surname: settings?.profile?.surname || '',
+    });
+
+    // UI Settings State
+    const [uiSettings, setUiSettings] = useState({
+        retrievedDocuments: {
+            maxDocuments: settings?.ui?.retrievedDocuments?.maxDocuments || 5,
+            showInSidePanel: settings?.ui?.retrievedDocuments?.showInSidePanel ?? true,
+            autoExpand: settings?.ui?.retrievedDocuments?.autoExpand || false,
+        },
+        agentEvents: {
+            showEventBlocks: settings?.ui?.agentEvents?.showEventBlocks ?? true,
+            autoCollapse: settings?.ui?.agentEvents?.autoCollapse ?? true,
+            showTimestamps: settings?.ui?.agentEvents?.showTimestamps ?? true,
+        }
     });
 
     // Search Settings State
@@ -299,6 +314,7 @@ const ModernSettingsPanel: React.FC = () => {
                 hasCompletedSetup: true,
             },
             search: searchSettings,
+            ui: uiSettings,
             // Preserve other existing settings
             database: settings?.database || {
                 path: '',
@@ -812,6 +828,7 @@ const ModernSettingsPanel: React.FC = () => {
                         <Tab icon={<SettingsIcon />} label="Integrations" />
                         <Tab icon={<MicIcon />} label="Voice" />
                         <Tab icon={<PersonIcon />} label="Profile" />
+                        <Tab icon={<DashboardIcon />} label="Interface" />
                     </Tabs>
                 </Box>
 
