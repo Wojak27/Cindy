@@ -1,14 +1,9 @@
 import { LLMProvider } from '../services/LLMProvider.ts';
 import { toolRegistry } from './tools/ToolRegistry.ts';
 import { SettingsService } from '../services/SettingsService.ts';
-import { ToolNode } from "@langchain/langgraph/prebuilt";
-import { END, Annotation, StateGraph, START } from "@langchain/langgraph";
-import { AIMessage, BaseMessage, HumanMessage } from "@langchain/core/messages";
-import { ChatPromptTemplate, MessagesPlaceholder } from '@langchain/core/prompts';
-import { StructuredTool } from '@langchain/core/tools';
-import { Runnable, RunnableConfig } from '@langchain/core/runnables';
-import { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import { trimThinkTags } from '../utils/strings.ts';
+import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import { BaseMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { Runnable } from '@langchain/core/runnables';
 import toolLoader from './tools/ToolLoader.ts';
 import 'dotenv/config';
 import { logger } from '../utils/ColorLogger.ts';
@@ -40,19 +35,15 @@ async function renderLocallyWithMermaidCLI(mermaid: string, outPath: string) {
 }
 
 /**
- * Deep Research-enhanced LangGraph Agent.
- * Intelligent routing between Deep Research capabilities and standard processing.
+ * ReactAgent-based LangGraph Agent.
+ * Uses LangGraph's ReactAgent for intelligent tool usage and reasoning.
  */
 export class MainAgentExecution {
     private llmProvider: LLMProvider;
     private settingsService: SettingsService | null = null;
-    private researchAgent: any;
-    private writterAgent: any;
     private agent: Runnable;
-
-    // State management properties
-    private AgentState;
     private persistState: boolean;
+    private toolConfig: any = {};
 
     constructor(options: MainAgentGraphOptions) {
         this.llmProvider = options.llmProvider;
@@ -60,120 +51,63 @@ export class MainAgentExecution {
 
         // Create a minimal settings service for compatibility
         this.settingsService = this.createCompatibilitySettingsService();
-        this.initialize(options)
+        this.toolConfig = options.config || {};
+        this.initialize()
 
-
-
-        logger.success('RouterLangGraphAgent', 'Initialized with Deep Research routing and state management', {
+        logger.success('MainAgentExecution', 'Initialized with ReactAgent pattern and tool integration', {
             provider: this.llmProvider.getCurrentProvider(),
-            deepResearchEnabled: true,
-            fallbackEnabled: true,
+            toolCount: toolRegistry.getTools().length,
             persistentState: this.persistState
         });
     }
 
-    public async initialize(options: MainAgentGraphOptions): Promise<void> {
-                await toolLoader.loadAllTools(options.config || {});
-        this.initializeState();
-        this.agent = await this.buildGraph();
-        if (true) {
+    public async initialize(): Promise<void> {
+        // Load all available tools
+        await toolLoader.loadAllTools(this.toolConfig || {});
+        
+        // Create ReactAgent with all tools
+        this.agent = await this.buildReactAgent();
+        
+        // Optionally save graph visualization
+        if (this.toolConfig.saveGraph) {
             await this.saveAgentGraphToFile();
         }
     }
 
     /**
-     * Initialize agent session state
+     * Build ReactAgent using LangGraph's prebuilt ReactAgent
      */
-    private initializeState(): void {
-        this.AgentState = Annotation.Root({
-            messages: Annotation<BaseMessage[]>({
-                reducer: (x, y) => x.concat(y),
-            }),
-            sender: Annotation<string>({
-                reducer: (x, y) => y ?? x ?? "user",
-                default: () => "user",
-            }),
-        });
-    }
+    private async buildReactAgent(): Promise<Runnable> {
+        const tools = toolRegistry.getTools();
+        const model = this.llmProvider.getChatModel();
+        
+        if (!model) {
+            throw new Error('LLM model not available');
+        }
 
-    private async buildGraph(): Promise<Runnable> {
-        const toolNode = new ToolNode<typeof this.AgentState.State>(toolRegistry.getTools());
-        // Research agent and node
-        this.researchAgent = await this.createAgent({
-            llm: this.llmProvider.getChatModel()!,
-            tools: toolRegistry.getTools(),
-            systemMessage:
-                "You should provide accurate data for the answer writer to use.",
-            name: "Researcher",
-        });
-        // CWritter agent and node
-        this.writterAgent = await this.createAgent({
-            llm: this.llmProvider.getChatModel()!,
-            tools: [],
-            systemMessage: "Any text you write will be shown to the user.",
-            name: "Writer",
-        });
-        // 1. Create the graph
-        const workflow = new StateGraph(this.AgentState)
-            // 2. Add the nodes; these will do the work
-            .addNode("Researcher", this.researchNode.bind(this))
-            .addNode("Writer", this.writerNode.bind(this))
-            .addNode("call_tool", toolNode);
-
-        // 3. Define the edges. We will define both regular and conditional ones
-        // After a worker completes, report to supervisor
-        workflow.addConditionalEdges("Researcher", this.router.bind(this), {
-            // We will transition to the other agent
-            continue: "Writer",
-            call_tool: "call_tool",
-            end: END,
-        });
-
-        workflow.addConditionalEdges("Writer", this.router.bind(this), {
-            // We will transition to the other agent
-            continue: "Researcher",
-            call_tool: "call_tool",
-            end: END,
-        });
-
-        workflow.addConditionalEdges(
-            "call_tool",
-            // Each agent node updates the 'sender' field
-            // the tool calling node does not, meaning
-            // this edge will route back to the original agent
-            // who invoked the tool
-            (x) => {
-                return x.sender;
-            },
-            {
-                Researcher: "Researcher",
-                Writter: "Writer",
-            },
+        // Create system prompt for ReactAgent
+        const systemPrompt = new SystemMessage(
+            "You are a helpful AI assistant with access to various tools. " +
+            "Use the available tools to research information and provide accurate, comprehensive responses. " +
+            "When using tools, think step by step about what information you need and which tools can help. " +
+            "Always provide detailed explanations based on the information you gather."
         );
 
-        workflow.addEdge(START, "Researcher");
-        const graph = workflow.compile();
-        return graph;
+        // Create ReactAgent with tools
+        const agent = createReactAgent({
+            llm: model,
+            tools: tools,
+            prompt: systemPrompt
+        });
+
+        logger.info('MainAgentExecution', `ReactAgent created with ${tools.length} tools`, {
+            toolNames: tools.map(t => t.name)
+        });
+
+        return agent;
     }
 
-
-    // Either agent can decide to end
-    private router(state: typeof this.AgentState.State) {
-        const messages = state.messages;
-        const lastMessage = messages[messages.length - 1] as AIMessage;
-        if (lastMessage?.tool_calls && lastMessage.tool_calls.length > 0) {
-            // The previous agent is invoking a tool
-            return "call_tool";
-        }
-        if (
-            typeof lastMessage.content === "string" &&
-            lastMessage.content.includes("FINAL ANSWER")
-        ) {
-            // Any agent decided the work is done
-            return "end";
-        }
-        return "continue";
-    }
+    // ReactAgent handles routing and tool calling internally
     public getStatus(): { provider: string, availableTools: string[] } {
         return {
             provider: this.llmProvider.getCurrentProvider()!,
@@ -195,83 +129,7 @@ export class MainAgentExecution {
     }
 
 
-    private async runAgentNode(props: {
-        state: typeof this.AgentState.State;
-        agent: Runnable;
-        name: string;
-        config?: RunnableConfig;
-    }) {
-        logger.info('RouterLangGraphAgent', `Running agent node: ${props.name}, recent message: "${trimThinkTags(props.state.messages.slice(-1)[0]?.content ?? "")}"`);
-        const { state, agent, name, config } = props;
-        let result = await agent.invoke(state, config);
-        // We convert the agent output into a format that is suitable
-        // to append to the global state
-        if (!result?.tool_calls || result.tool_calls.length === 0) {
-            // If the agent is NOT calling a tool, we want it to
-            // look like a human message.
-            result = new HumanMessage({ ...result, name: name });
-        }
-        return {
-            messages: [result],
-            // Since we have a strict workflow, we can
-            // track the sender so we know who to pass to next.
-            sender: name,
-        };
-    }
-    private async writerNode(state: typeof this.AgentState.State) {
-        return this.runAgentNode({
-            state: state,
-            agent: this.writterAgent,
-            name: "ChartGenerator",
-        });
-    }
-
-    private async researchNode(
-        state: typeof this.AgentState.State,
-        config?: RunnableConfig,
-    ) {
-        return this.runAgentNode({
-            state: state,
-            agent: this.researchAgent,
-            name: "Researcher",
-            config,
-        });
-    }
-
-    private async createAgent({
-        llm,
-        tools,
-        systemMessage,
-        name,
-    }: {
-        llm: BaseChatModel;
-        tools: StructuredTool[];
-        systemMessage: string;
-        name?: string;
-    }): Promise<Runnable> {
-        const toolNames = tools.map((tool) => tool.name).join(", ");
-        console.log(`[RouterLangGraphAgent] Creating agent ${name ? name : ""} with tools: ${toolNames}`);
-
-        let prompt = ChatPromptTemplate.fromMessages([
-            [
-                "system",
-                "You are a helpful AI assistant, collaborating with other assistants." +
-                " Use the provided tools to progress towards answering the question." +
-                " If you are unable to fully answer, that's OK, another assistant with different tools " +
-                " will help where you left off. Execute what you can to make progress." +
-                " If you or any of the other assistants have the final answer or deliverable," +
-                " prefix your response with FINAL ANSWER so the team knows to stop." +
-                " You have access to the following tools: {tool_names}.\n{system_message}",
-            ],
-            new MessagesPlaceholder("messages"),
-        ]);
-        prompt = await prompt.partial({
-            system_message: systemMessage,
-            tool_names: toolNames,
-        });
-
-        return prompt.pipe(llm.bindTools(tools));
-    }
+    // ReactAgent handles node execution and tool calling internally
 
 
     /**

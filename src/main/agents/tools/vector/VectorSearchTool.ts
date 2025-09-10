@@ -3,12 +3,13 @@
  */
 
 import { CallbackManagerForToolRun } from '@langchain/core/callbacks/manager';
-import { Tool } from '@langchain/core/tools';
+import { StructuredTool, ToolSchemaBase } from '@langchain/core/tools';
 
 /**
  * Vector search tool for semantic document search
  */
-export class VectorSearchTool extends Tool {
+export class VectorSearchTool extends StructuredTool {
+    schema: ToolSchemaBase;
     name = 'search_documents';
     description = 'Search through users personal, indexed documents and notes using semantic similarity. Use this when users ask about stored documents, notes, or need to find specific information from their knowledge base. Triggered by #search or #find hashtags.';
     
