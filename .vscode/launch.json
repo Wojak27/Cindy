@@ -6,7 +6,7 @@
             "type": "node",
             "request": "launch",
             "cwd": "${workspaceFolder}",
-            "runtimeExecutable": "/Users/karwo09/.nvm/versions/node/v20.19.2/bin/node",
+            "runtimeExecutable": "/Users/karwo09/.nvm/versions/node/v22.18.0/bin/node",
             "program": "${workspaceFolder}/node_modules/electron/cli.js",
             "args": [
                 "${workspaceFolder}/src/main/main.ts",
@@ -57,7 +57,7 @@
             "console": "integratedTerminal",
             "env": {
                 "NODE_ENV": "development",
-                "PATH": "/Users/karwo09/.nvm/versions/node/v20.19.2/bin:${env:PATH}"
+                "PATH": "/Users/karwo09/.nvm/versions/node/v22.18.0/bin:${env:PATH}"
             }
         },
         // Optional: build+run main from dist instead of ts-node (if you ever switch)
@@ -66,7 +66,7 @@
             "type": "node",
             "request": "launch",
             "cwd": "${workspaceFolder}",
-            "runtimeExecutable": "/Users/karwo09/.nvm/versions/node/v20.19.2/bin/node",
+            "runtimeExecutable": "/Users/karwo09/.nvm/versions/node/v22.18.0/bin/node",
             "program": "${workspaceFolder}/node_modules/electron/cli.js",
             "args": [
                 "${workspaceFolder}/dist/main/main.js",
@@ -92,7 +92,7 @@
             "type": "node",
             "request": "launch",
             "cwd": "${workspaceFolder}",
-            "runtimeExecutable": "/Users/karwo09/.nvm/versions/node/v20.19.2/bin/node",
+            "runtimeExecutable": "/Users/karwo09/.nvm/versions/node/v22.18.0/bin/node",
             "program": "${workspaceFolder}/src/main/agents/scripts/test-rag.ts",
             "args": [
                 "vectordb"
@@ -124,7 +124,7 @@
             "type": "node",
             "request": "launch",
             "cwd": "${workspaceFolder}",
-            "runtimeExecutable": "/Users/karwo09/.nvm/versions/node/v20.19.2/bin/node",
+            "runtimeExecutable": "/Users/karwo09/.nvm/versions/node/v22.18.0/bin/node",
             "program": "${workspaceFolder}/src/main/agents/scripts/test-agents.ts",
             "args": [
                 "research"
@@ -156,7 +156,7 @@
             "type": "node",
             "request": "launch",
             "cwd": "${workspaceFolder}",
-            "runtimeExecutable": "/Users/karwo09/.nvm/versions/node/v20.19.2/bin/node",
+            "runtimeExecutable": "/Users/karwo09/.nvm/versions/node/v22.18.0/bin/node",
             "program": "${workspaceFolder}/src/main/agents/scripts/benchmark-locomo10.ts",
             "args": [
                 ""
@@ -188,7 +188,7 @@
             "type": "node",
             "request": "launch",
             "cwd": "${workspaceFolder}",
-            "runtimeExecutable": "/Users/karwo09/.nvm/versions/node/v20.19.2/bin/node",
+            "runtimeExecutable": "/Users/karwo09/.nvm/versions/node/v22.18.0/bin/node",
             "program": "${workspaceFolder}/src/main/agents/scripts/hotpot-qa-trainer.ts",
             "args": [
                 ""

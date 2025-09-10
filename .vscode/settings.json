@@ -1,8 +1,8 @@
 {
   "terminal.integrated.env.osx": {
-    "PATH": "/Users/karwo09/.nvm/versions/node/v20.19.2/bin:${env:PATH}"
+    "PATH": "/Users/karwo09/.nvm/versions/node/v22.18.0/bin:${env:PATH}"
   },
   "npm.packageManager": "npm",
-  "eslint.nodePath": "/Users/karwo09/.nvm/versions/node/v20.19.2/bin/node",
+  "eslint.nodePath": "/Users/karwo09/.nvm/versions/node/v22.18.0/bin/node",
   "typescript.tsdk": "node_modules/typescript/lib"
 }
