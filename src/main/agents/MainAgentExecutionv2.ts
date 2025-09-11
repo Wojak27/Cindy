@@ -159,9 +159,12 @@ export class MainAgentExecution {
     const chain = prompt.pipe(model!);
 
     const lastMessage = messages[messages.length - 1];
-
+    const content =
+      typeof messages[0].content === "string"
+        ? messages[0].content
+        : JSON.stringify(messages[0].content);
     const score = await chain.invoke({
-      question: messages[0].content as string,
+      question: content,
       context: lastMessage.content as string,
     });
 
@@ -291,10 +294,32 @@ export class MainAgentExecution {
     const docs = lastToolMessage.content as string;
 
     const prompt = await pull<ChatPromptTemplate>("rlm/rag-prompt");
+    const chainedPrompt = ChatPromptTemplate.fromMessages([
+      prompt,
+      [
+        "system",
+        "On top of the above, export all paths mentioned in the response as an array of paths without duplicates.",
+      ],
+    ]);
 
-    const llm = this.llmProvider.getChatModel()!;
-
-    const ragChain = prompt.pipe(llm);
+    const tool = {
+      returnDirect: true,
+      verboseParsingErrors: true,
+      verbose: true,
+      name: "retrieved_documents",
+      description:
+        "Give me document paths that are in the provided response without duplicates.",
+      schema: z.object({
+        documentPaths: z
+          .string()
+          .array()
+          .describe(
+            "A list of paths to relevant documents without duplicates."
+          ),
+      }),
+    };
+    const llm = this.llmProvider.getChatModel()!.bindTools!([tool]);
+    const ragChain = chainedPrompt.pipe(llm);
 
     const response = await ragChain.invoke({
       context: docs,
@@ -495,63 +520,55 @@ export class MainAgentExecution {
           };
 
           // Handle document search results
-          if (tool === "'VectorSearchTool'" && ev.data?.output) {
-            const output =
-              typeof ev.data.output === "string"
-                ? ev.data.output
-                : JSON.stringify(ev.data.output);
-            const rawResultsMatch = output.match(
-              /<!-- RAW_RESULTS: (\[.*?\]) -->/
-            );
-            if (rawResultsMatch) {
-              try {
-                const rawResults = JSON.parse(rawResultsMatch[1]);
+          if (tool === "search_documents" && ev.data?.output) {
+            if (typeof ev.data.output === "string") return;
+            const rawResults = ev.data.output.content;
+            try {
+              // Yield event for document retrieval completion
+              yield {
+                stepId: `documents-${Date.now()}`,
+                title: `Retrieved ${rawResults.length} document${rawResults.length === 1 ? "" : "s"}`,
+                status: "completed",
+                context: {
+                  documentCount: rawResults.length,
+                  documents: rawResults.map(
+                    (file: any) => file.name || file.path
+                  ),
+                },
+                timestamp: Date.now(),
+              };
 
-                // Yield event for document retrieval completion
-                yield {
-                  stepId: `documents-${Date.now()}`,
-                  title: `Retrieved ${rawResults.length} document${rawResults.length === 1 ? "" : "s"}`,
-                  status: "completed",
-                  context: {
-                    documentCount: rawResults.length,
-                    documents: rawResults.map(
-                      (file: any) => file.name || file.path
-                    ),
-                  },
-                  timestamp: Date.now(),
-                };
+              // Send documents as a batch to the side panel
+              if (rawResults.length > 0) {
+                // Convert to RetrievedDocument format
+                const retrievedDocs = rawResults.map((file: any) => ({
+                  path: file.path || "",
+                  name: file.name || file.path?.split("/").pop() || "Unknown",
+                  size: file.size || 0,
+                  mtime: file.mtime || new Date().toISOString(),
+                  chunks: file.chunks || 1,
+                  relevanceScore: file.relevanceScore || file.score,
+                  matchedContent: file.matchedContent,
+                }));
 
-                // Send documents as a batch to the side panel
-                if (rawResults.length > 0) {
-                  // Convert to RetrievedDocument format
-                  const retrievedDocs = rawResults.map((file: any) => ({
-                    path: file.path || "",
-                    name: file.name || file.path?.split("/").pop() || "Unknown",
-                    size: file.size || 0,
-                    mtime: file.mtime || new Date().toISOString(),
-                    chunks: file.chunks || 1,
-                    relevanceScore: file.relevanceScore || file.score,
-                    matchedContent: file.matchedContent,
-                  }));
-
-                  // Emit multiple documents marker
-                  yield `side-panel-documents ${JSON.stringify(retrievedDocs)}`;
-                }
-
-                // Still emit individual document markers for backward compatibility
-                for (const file of rawResults) {
-                  console.log("[MainAgentExecution] Retrieved document:", file);
-                  // Explicit side-panel marker for renderer
-                  yield `side-panel-document ${JSON.stringify(file)}`;
-                }
-              } catch (parseError) {
-                console.error(
-                  "[MainAgentExecution] Failed to parse RAW_RESULTS:",
-                  parseError
-                );
+                // Emit multiple documents marker
+                yield `side-panel-documents ${JSON.stringify(retrievedDocs)}`;
               }
+
+              // Still emit individual document markers for backward compatibility
+              for (const file of rawResults) {
+                console.log("[MainAgentExecution] Retrieved document:", file);
+                // Explicit side-panel marker for renderer
+                yield `side-panel-document ${JSON.stringify(file)}`;
+              }
+            } catch (parseError) {
+              console.error(
+                "[MainAgentExecution] Failed to parse RAW_RESULTS:",
+                parseError
+              );
             }
           }
+
           break;
         }
         // Optional: stream LLM tokens as they arrive

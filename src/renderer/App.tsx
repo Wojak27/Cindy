@@ -1132,20 +1132,21 @@ const App: React.FC = () => {
 
                     // Detect and auto-show documents mentioned in the AI response
                     try {
-                        detectAndShowDocuments(lastMessage.content).then(detectedDocs => {
-                            if (detectedDocs.length > 0) {
-                                console.log('🔍 DEBUG: Auto-detected', detectedDocs.length, 'documents from AI response');
-                                // Show the first detected document in side panel
-                                handleShowDocument(detectedDocs[0]);
+                        console.log(lastMessage)
+                        // detectAndShowDocuments(lastMessage).then(detectedDocs => {
+                        //     if (detectedDocs.length > 0) {
+                        //         console.log('🔍 DEBUG: Auto-detected', detectedDocs.length, 'documents from AI response');
+                        //         // Show the first detected document in side panel
+                        //         handleShowDocument(detectedDocs[0]);
 
-                                // Log all detected documents
-                                detectedDocs.forEach(doc => {
-                                    console.log('📄 [Detected Document]:', doc.name, doc.path);
-                                });
-                            }
-                        }).catch(error => {
-                            console.warn('🔍 DEBUG: Document detection failed:', error);
-                        });
+                        //         // Log all detected documents
+                        //         detectedDocs.forEach(doc => {
+                        //             console.log('📄 [Detected Document]:', doc.name, doc.path);
+                        //         });
+                        //     }
+                        // }).catch(error => {
+                        //     console.warn('🔍 DEBUG: Document detection failed:', error);
+                        // });
                     } catch (error) {
                         console.warn('🔍 DEBUG: Document detection error:', error);
                     }
