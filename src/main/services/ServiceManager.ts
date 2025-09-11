@@ -2,8 +2,8 @@ import { EventEmitter } from 'events';
 import { DuckDBSettingsService } from './DuckDBSettingsService.ts';
 import { LLMProvider } from './LLMProvider.ts';
 import { toolRegistry } from '../agents/tools/ToolRegistry.ts';
-import { toolLoader } from '../agents/tools/ToolLoader.ts';
 import { MainAgentExecution } from '../agents/MainAgentExecutionv2.ts';
+import toolLoader from '../agents/tools/ToolLoader.ts';
 
 /**
  * ServiceManager - Handles dynamic loading of heavy LangChain services
@@ -94,9 +94,9 @@ export class ServiceManager extends EventEmitter {
             };
 
             // Initialize all tools
-            // await toolLoader.loadAllTools(toolConfig);
+            await toolLoader.loadAllTools(toolConfig);
 
-            // console.log('[ServiceManager] Tools initialized successfully via ToolLoader');
+            console.log('[ServiceManager] Tools initialized successfully via ToolLoader');
 
             this.toolsInitialized = true;
             this.emit('toolsInitialized');
@@ -173,6 +173,7 @@ export class ServiceManager extends EventEmitter {
                 },
                 llmProvider: this.llmProvider
             });
+            await this.langChainCindyAgent.initialize();
 
             console.log('[ServiceManager] LangGraphAgent loaded successfully');
             this.emit('cindyAgentLoaded', this.langChainCindyAgent);

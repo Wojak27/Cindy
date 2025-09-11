@@ -3,6 +3,7 @@
  */
 
 import { DynamicStructuredTool } from '@langchain/core/tools';
+import type { DuckDBVectorStore } from '../../../services/DuckDBVectorStore';
 import { z } from 'zod';
 
 /**
@@ -23,7 +24,7 @@ const vectorSearchSchema = z.object({
 /**
  * Creates a Vector search tool for semantic document search
  */
-export function createVectorSearchTool(vectorStore: any): DynamicStructuredTool {
+export function createVectorSearchTool(vectorStore: DuckDBVectorStore): DynamicStructuredTool {
     return new DynamicStructuredTool({
         name: 'search_documents',
         description: 'Search through users personal, indexed documents and notes using semantic similarity. Use this when users ask about stored documents, notes, or need to find specific information from their knowledge base. Triggered by #search or #find hashtags.',
