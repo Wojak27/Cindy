@@ -316,7 +316,6 @@ export class DuckDBVectorStore extends EventEmitter {
       console.log(
         `[DuckDBVectorStore] 🔄 Recreating documents table with ${embedDim} dimensions...`
       );
-      await this.db.all(`DROP TABLE IF EXISTS documents;`);
 
       const createTableSQL = `
                 CREATE TABLE documents (
@@ -1225,37 +1224,6 @@ export class DuckDBVectorStore extends EventEmitter {
       this.isInitialized = false;
     }
   }
-
-  // Create a LangChain-compatible wrapper
-  asLangChainVectorStore(): any {
-    const self = this;
-
-    // Return a simplified interface for now
-    return {
-      embeddings: this.embeddings,
-
-      async addDocuments(documents: Document[]): Promise<void> {
-        return self.addDocuments(documents);
-      },
-
-      async similaritySearch(query: string, k?: number): Promise<Document[]> {
-        return self.similaritySearch(query, k);
-      },
-
-      async similaritySearchWithScore(
-        query: string,
-        k?: number
-      ): Promise<[Document, number][]> {
-        const docs = await self.similaritySearch(query, k);
-        // Return documents with dummy scores for now
-        return docs.map((doc) => [doc, 0.5]);
-      },
-
-      async delete(): Promise<void> {
-        return self.clearIndex();
-      },
-    };
-  }
 }
 
 export async function createDuckDBVectorStore(
@@ -1290,13 +1258,7 @@ export async function createDuckDBVectorStore(
     fs.mkdirSync(vectorDbDir, { recursive: true });
   }
 
-  // Use a hash of the source path to create unique database names
-  const sourcePathHash = crypto
-    .createHash("md5")
-    .update(databasePath)
-    .digest("hex")
-    .substring(0, 8);
-  const dbName = `vector-store-${sourcePathHash}.db`;
+  const dbName = `vector-store-documents.db`;
 
   let vectorStoreConfig: any = {
     databasePath: path.join(vectorDbDir, dbName),

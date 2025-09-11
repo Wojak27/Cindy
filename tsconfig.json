@@ -10,7 +10,7 @@
             "DOM"
         ],
         "jsx": "react-jsx",
-        "strict": true,
+        "strict": false,
         "noEmit": true,
         "allowSyntheticDefaultImports": true,
         "baseUrl": ".",

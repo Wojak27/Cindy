@@ -930,13 +930,13 @@ const App: React.FC = () => {
 
                 // Append the display content to the current assistant message
                 if (processedTools.displayContent) {
-                    // console.log('🧩 Appending to assistant message:', processedTools.displayContent);
+                    console.log('🧩 Appending to assistant message:', processedTools.displayContent, " displayContent: ", processedTools.displayContent);
                     dispatch({ type: 'APPEND_TO_LAST_ASSISTANT_MESSAGE', payload: processedTools.displayContent });
                 }
 
                 // Handle multiple retrieved documents
                 if (data.chunk.includes('side-panel-documents')) {
-                    const jsonMatch = data.chunk.match(/side-panel-documents (.+)/);
+                    const jsonMatch = data.chunk.match(/<side-panel-documents>\s*([\s\S]*?)<\/side-panel-documents>/);
                     console.log('📚 Detected side-panel-documents marker in stream:', jsonMatch);
                     if (jsonMatch) {
                         try {
@@ -998,7 +998,7 @@ const App: React.FC = () => {
                 }
                 // Detect side-panel-document marker from agent stream
                 if (data.chunk.includes('side-panel-document')) {
-                    const jsonMatch = data.chunk.match(/side-panel-document (.+)/);
+                    const jsonMatch = data.chunk.match(/<side-panel-document>\s*([\s\S]*?)<\/side-panel-document>/);
                     console.log('📄 Detected side-panel-document marker in stream:', jsonMatch);
                     if (jsonMatch) {
                         try {

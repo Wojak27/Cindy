@@ -84,7 +84,7 @@ export class MainAgentExecution {
 
   public async initialize(): Promise<void> {
     // // Load all available tools
-    await toolLoader.loadAllTools(this.toolConfig || {});
+    // await toolLoader.loadAllTools(this.toolConfig || {});
     this.initializeState();
 
     // Create ReactAgent with all tools
@@ -552,14 +552,14 @@ export class MainAgentExecution {
                 }));
 
                 // Emit multiple documents marker
-                yield `side-panel-documents ${JSON.stringify(retrievedDocs)}`;
+                yield `<side-panel-documents> ${JSON.stringify(retrievedDocs)}</side-panel-documents>`;
               }
 
               // Still emit individual document markers for backward compatibility
               for (const file of rawResults) {
                 console.log("[MainAgentExecution] Retrieved document:", file);
                 // Explicit side-panel marker for renderer
-                yield `side-panel-document ${JSON.stringify(file)}`;
+                yield `<side-panel-document> ${JSON.stringify(file)}</side-panel-document>`;
               }
             } catch (parseError) {
               console.error(
